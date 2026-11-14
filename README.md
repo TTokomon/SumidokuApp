@@ -1,5 +1,7 @@
 # Sumidoku
 
+For this fork’s native Apple Silicon installation, local-only login service, backups, and Safari Dock setup, see [macOS setup](docs/MACOS_SETUP.md). The helpers run the official release and existing UI without Docker or rebuilding.
+
 [![CI](https://github.com/Sumidoku/Sumidoku/actions/workflows/ci.yml/badge.svg)](https://github.com/Sumidoku/Sumidoku/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/Sumidoku/Sumidoku)](https://github.com/Sumidoku/Sumidoku/releases)
 [![docker pulls](https://img.shields.io/docker/pulls/sumidoku/sumidoku)](https://hub.docker.com/r/sumidoku/sumidoku)

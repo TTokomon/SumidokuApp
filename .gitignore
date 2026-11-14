@@ -6,3 +6,8 @@
 .DS_Store
 
 dist
+
+# Native setup keeps runtime data and credentials outside Git
+__pycache__/
+*.pyc
+macos/.local/
