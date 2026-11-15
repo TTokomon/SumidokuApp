@@ -6,24 +6,26 @@ struct DesktopDestination: Identifiable, Hashable {
     let id: String
     let title: String
     let symbol: String
+    // Symbols reference Aidoku’s own SF Symbol choices (see docs/AIDOKU_SYMBOLS.md).
+    // The glyphs are rendered by macOS, not copied from Aidoku’s GPLv3 assets.
     static let collection = [
-        Self(id: "/library", title: "Library", symbol: "books.vertical"),
-        Self(id: "/browse", title: "Sources", symbol: "safari"),
-        Self(id: "/history", title: "History", symbol: "clock"),
-        Self(id: "/downloads", title: "Downloads", symbol: "arrow.down.circle"),
-        Self(id: "/updates", title: "Chapter Updates", symbol: "bell")
+        Self(id: "/library", title: "Library", symbol: "books.vertical.fill"),
+        Self(id: "/browse", title: "Sources", symbol: "globe"),
+        Self(id: "/history", title: "History", symbol: "clock.fill"),
+        Self(id: "/downloads", title: "Downloads", symbol: "arrow.down.circle.fill"),
+        Self(id: "/updates", title: "Chapter Updates", symbol: "clock.arrow.2.circlepath")
     ]
     static let settings = [
-        Self(id: "/settings", title: "General", symbol: "slider.horizontal.3"),
-        Self(id: "/settings?section=reader", title: "Reader", symbol: "book"),
-        Self(id: "/settings?section=library", title: "Library & Categories", symbol: "square.grid.2x2"),
-        Self(id: "/settings?section=trackers", title: "Trackers", symbol: "link"),
-        Self(id: "/settings?section=downloads", title: "Download Preferences", symbol: "arrow.down.circle"),
-        Self(id: "/settings?section=source-lists", title: "Source Lists", symbol: "list.bullet.rectangle"),
-        Self(id: "/settings?section=backups", title: "Backups & Imports", symbol: "externaldrive"),
-        Self(id: "native:server", title: "Server & Account", symbol: "server.rack"),
-        Self(id: "native:updates", title: "Application Updates", symbol: "arrow.down.app"),
-        Self(id: "/settings?section=system", title: "System", symbol: "info.circle")
+        Self(id: "/settings", title: "General", symbol: "gear"),
+        Self(id: "/settings?section=reader", title: "Reader", symbol: "book.fill"),
+        Self(id: "/settings?section=library", title: "Library & Categories", symbol: "books.vertical.fill"),
+        Self(id: "/settings?section=trackers", title: "Trackers", symbol: "clock.arrow.2.circlepath"),
+        Self(id: "/settings?section=downloads", title: "Download Preferences", symbol: "arrow.down.circle.fill"),
+        Self(id: "/settings?section=source-lists", title: "Source Lists", symbol: "globe"),
+        Self(id: "/settings?section=backups", title: "Backups & Imports", symbol: "externaldrive.fill"),
+        Self(id: "native:server", title: "Server & Account", symbol: "gearshape.2.fill"),
+        Self(id: "native:updates", title: "Application Updates", symbol: "clock.arrow.2.circlepath"),
+        Self(id: "/settings?section=system", title: "System", symbol: "info.circle.fill")
     ]
 }
 
@@ -120,9 +122,9 @@ struct NativePreferences: View {
                     Text(updates.detail).foregroundStyle(.secondary)
                 }
                 Section("Appearance") { Text("The native window follows your library's light/dark appearance. System contrast, reduced transparency and reduced motion are respected.") }
-            }.formStyle(.grouped).padding().tabItem { Label("General", systemImage: "gearshape") }.tag("general")
-            ServerSettings(controller: controller).tabItem { Label("Server & Account", systemImage: "server.rack") }.tag("server")
-            ApplicationUpdatesView(updates: updates).tabItem { Label("Updates", systemImage: "arrow.down.app") }.tag("updates")
+            }.formStyle(.grouped).padding().tabItem { Label("General", systemImage: "gear") }.tag("general")
+            ServerSettings(controller: controller).tabItem { Label("Server & Account", systemImage: "gearshape.2.fill") }.tag("server")
+            ApplicationUpdatesView(updates: updates).tabItem { Label("Updates", systemImage: "clock.arrow.2.circlepath") }.tag("updates")
         }.tint(DesktopBrand.accent).frame(width: 640, height: 690)
     }
 }
