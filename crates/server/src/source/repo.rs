@@ -334,21 +334,19 @@ pub async fn refresh_preferences(pool: &SqlitePool) -> ApiResult<RefreshPreferen
 /// may carry progress, category or chapter references. Leave those packages
 /// for an explicitly approved update, which can report migration warnings.
 pub async fn auto_update_unused_packages(state: &Arc<AppState>) -> ApiResult<()> {
-	let rows: Vec<(i64, String, i64)> = sqlx::query_as(
-		"SELECT id, key, version FROM source WHERE kind = 'aidoku' AND wasm_path != ''",
+	if !refresh_preferences(&state.pool).await?.auto_update_packages { return Ok(()); }
+	let rows: Vec<(i64, String, i64, i64)> = sqlx::query_as(
+		"SELECT id, key, version, repo_id FROM source WHERE kind = 'aidoku' AND wasm_path != '' AND enabled = 1 AND repo_id IS NOT NULL",
 	).fetch_all(&state.pool).await?;
-	let latest = latest_versions(&state.pool).await?;
-	for (id, key, version) in rows {
-		let Some(&(available, repo_id)) = latest.get(&key) else { continue };
-		if available <= version { continue; }
-		let references: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM manga WHERE source_id = ?")
+	for (id, key, version, repo_id) in rows {
+		let row = match repo_row(&state.pool, repo_id).await { Ok(row) => row, Err(_) => continue };
+		if row.fetch_error.is_some() { continue; }
+		if !cached_entries(&row).iter().any(|entry| entry.key == key && entry.version > version) { continue; }
+		let references: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM manga WHERE source_id = ?)")
 			.bind(id).fetch_one(&state.pool).await?;
-		if references > 0 {
-			tracing::info!(key, available, "source update available; manual review required because manga references exist");
-			continue;
-		}
-		if let Err(error) = install_from_repo(state, repo_id, &key).await {
-			tracing::warn!(key, "automatic source package update failed: {error:?}");
+		if references { continue; }
+		if let Err(error) = install_from_repo_with_policy(state, repo_id, &key, Some(version)).await {
+			tracing::warn!(key, "automatic source package update deferred: {error:?}");
 		}
 	}
 	Ok(())
@@ -358,7 +356,7 @@ pub async fn auto_update_unused_packages(state: &Arc<AppState>) -> ApiResult<()>
 /// source-package replacement is opt-in and limited to sources without manga
 /// references so progress migrations cannot occur unattended.
 pub async fn run_periodic_refresh(state: Arc<AppState>, interval_hours: u64) {
-	let mut interval = tokio::time::interval(Duration::from_secs(interval_hours.saturating_mul(3600).max(3600)));
+	let mut interval = tokio::time::interval(Duration::from_secs(interval_hours.clamp(1, 8760) * 3600));
 	interval.tick().await;
 	loop {
 		interval.tick().await;
@@ -369,12 +367,9 @@ pub async fn run_periodic_refresh(state: Arc<AppState>, interval_hours: u64) {
 				continue;
 			}
 		};
-		if !preferences.auto_refresh_lists { continue; }
-		refresh_all(&state).await;
-		if preferences.auto_update_packages {
-			if let Err(error) = auto_update_unused_packages(&state).await {
-				tracing::warn!("automatic source package update check failed: {error:?}");
-			}
+		if preferences.auto_refresh_lists { refresh_all(&state).await; }
+		if preferences.auto_update_packages && let Err(error) = auto_update_unused_packages(&state).await {
+			tracing::warn!("automatic source package update check failed: {error:?}");
 		}
 	}
 }
@@ -502,11 +497,18 @@ pub async fn browse_sources(pool: &SqlitePool, filter: &BrowseFilter) -> ApiResu
 
 /// Downloads the .aix into the sources directory and takes the same registration path as the scan; failures clean up the landed file, leaving no partial package
 pub async fn install_from_repo(state: &Arc<AppState>, repo_id: i64, key: &str) -> ApiResult<SourceRow> {
+	install_from_repo_with_policy(state, repo_id, key, None).await
+}
+
+async fn install_from_repo_with_policy(state: &Arc<AppState>, repo_id: i64, key: &str, unused_version: Option<i64>) -> ApiResult<SourceRow> {
 	let row = repo_row(&state.pool, repo_id).await?;
 	let entry = cached_entries(&row)
 		.into_iter()
 		.find(|e| e.key == key)
 		.ok_or_else(|| ApiError::not_found("source not found in repository"))?;
+	if unused_version.is_some_and(|version| entry.version <= version) {
+		return Err(ApiError::bad_request("automatic updates cannot downgrade packages"));
+	}
 	if !crate::source::valid_source_key(key) {
 		return Err(ApiError::bad_request("invalid source key"));
 	}
@@ -528,12 +530,22 @@ pub async fn install_from_repo(state: &Arc<AppState>, repo_id: i64, key: &str) -
 	{
 		let mut archive=zip::ZipArchive::new(std::io::Cursor::new(&bytes)).map_err(|_|ApiError::bad_gateway(PACKAGE_FETCH_MSG))?;
 		let wasm=aidoku_wasm::package::read_zip_entry(&mut archive,aidoku_wasm::package::WASM_ENTRY,WASM_PAYLOAD_MAX).map_err(|_|ApiError::bad_gateway(PACKAGE_FETCH_MSG))?;
-		if !wasm.starts_with(b"\0asm\x01\0\0\0") { return Err(ApiError::bad_gateway("source package contains an invalid WASM payload")); }
+		if !wasm.starts_with(b"\0asm\x01\0\0\0") || aidoku_wasm::SourceFeatures::from_wasm_bytes(&wasm).is_err() { return Err(ApiError::bad_gateway("source package contains an invalid WASM payload")); }
+	}
+	if unused_version.is_some() && doc.get("config").and_then(|config| config.get("breakingChangeVersion")).is_some_and(|value| value.as_i64().is_none_or(|version| version < 0)) {
+		return Err(ApiError::bad_request("unknown source compatibility requires manual review"));
+	}
+	if unused_version.is_some_and(|version| doc["config"]["breakingChangeVersion"].as_i64().unwrap_or(0) > version) {
+		return Err(ApiError::bad_request("breaking source updates require manual review"));
 	}
 
 	let reinstall: Option<String> = sqlx::query_scalar("SELECT wasm_path FROM source WHERE key=?").bind(key).fetch_optional(&state.pool).await?;
 	let reinstall = reinstall.is_some_and(|path|path.is_empty());
-	let path = state.config.sources_dir().join(format!("{key}.aix"));
+	let path = if unused_version.is_some() {
+		let directory = state.config.sources_dir().join(".automatic-updates");
+		tokio::fs::create_dir_all(&directory).await.map_err(|e| ApiError::from(sqlx::Error::Io(e)))?;
+		directory.join(format!("{key}-{}-{:016x}.aix", entry.version, rand_core::RngCore::next_u64(&mut rand_core::OsRng)))
+	} else { state.config.sources_dir().join(format!("{key}.aix")) };
 	let tmp = state.config.sources_dir().join(format!(".{key}.{:016x}.aix.tmp", rand_core::RngCore::next_u64(&mut rand_core::OsRng)));
 	let previous = tokio::fs::read(&path).await.ok();
 	tokio::fs::write(&tmp, &bytes)
@@ -542,7 +554,9 @@ pub async fn install_from_repo(state: &Arc<AppState>, repo_id: i64, key: &str) -
 	tokio::fs::rename(&tmp, &path)
 		.await
 		.map_err(|e| ApiError::from(sqlx::Error::Io(e)))?;
-	let registered = crate::source::register_aix(state, &path).await;
+	let registered = if let Some(version) = unused_version {
+		crate::source::register_unused_aix(state, &path, version, repo_id).await
+	} else { crate::source::register_aix(state, &path).await };
 	match registered {
 		Ok((registered_key, _)) if registered_key == key => {}
 		Ok((registered_key, _)) => {
@@ -561,12 +575,14 @@ pub async fn install_from_repo(state: &Arc<AppState>, repo_id: i64, key: &str) -
 	}
 
 	// Marks the repo this install came from (directory-scan sideloads stay NULL), feeding the missingFromRepos check
+	if unused_version.is_none() {
 	sqlx::query("UPDATE source SET repo_id = ?, enabled = CASE WHEN ? THEN 1 ELSE enabled END WHERE key = ?")
 		.bind(repo_id)
 		.bind(reinstall)
 		.bind(key)
 		.execute(&state.pool)
 		.await?;
+	}
 	let source: SourceRow = sqlx::query_as(
 		"SELECT id, key, name, kind, version, languages, content_rating, base_url, breaking_change_version, config, icon_path,
 		 wasm_path, enabled, installed_at, updated_at, repo_id, features FROM source WHERE key = ?",
@@ -617,7 +633,7 @@ pub struct UpdateAllOutcome {
 }
 
 pub async fn update_all(state: &Arc<AppState>, user_id: i64) -> ApiResult<UpdateAllOutcome> {
-	let sources: Vec<(String, i64)> = sqlx::query_as("SELECT key, version FROM source")
+	let sources: Vec<(String, i64)> = sqlx::query_as("SELECT key, version FROM source WHERE kind = 'aidoku' AND wasm_path != ''")
 		.fetch_all(&state.pool)
 		.await?;
 	let latest = latest_versions(&state.pool).await?;

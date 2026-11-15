@@ -1,4 +1,4 @@
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::model::SourceRow;
 use crate::source::repo::{self, BrowseFilter, SourceRepoRow};
 use crate::state::AppState;
@@ -97,7 +97,7 @@ pub async fn get_refresh_preferences(State(state): State<Arc<AppState>>) -> ApiR
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RefreshPreferencesRequest {
 	pub auto_refresh_lists: bool,
 	pub auto_update_packages: bool,
@@ -105,8 +105,9 @@ pub struct RefreshPreferencesRequest {
 
 pub async fn set_refresh_preferences(
 	State(state): State<Arc<AppState>>,
-	Json(body): Json<RefreshPreferencesRequest>,
+	body: Result<Json<RefreshPreferencesRequest>, axum::extract::rejection::JsonRejection>,
 ) -> ApiResult<Json<Value>> {
+	let Json(body) = body.map_err(|_| ApiError::bad_request("source update preferences require two boolean fields"))?;
 	let mut tx = crate::db::begin_write(&state.pool).await?;
 	repo::AUTO_REFRESH_LISTS.set(&mut *tx, &body.auto_refresh_lists).await?;
 	repo::AUTO_UPDATE_PACKAGES.set(&mut *tx, &body.auto_update_packages).await?;

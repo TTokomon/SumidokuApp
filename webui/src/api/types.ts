@@ -1207,6 +1207,11 @@ export type SourcePatch = {
 	enabled?: boolean;
 };
 
+export type SourceRefreshPreferences = {
+	autoRefreshLists: boolean;
+	autoUpdatePackages: boolean;
+};
+
 export type SourceRepo = {
 	id: number;
 	url: string;

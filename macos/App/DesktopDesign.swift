@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 enum DesktopBrand {
     // Existing Sumidoku brand red, shared by native navigation and controls.
@@ -44,5 +45,14 @@ struct SystemGlassAction<Label: View>: View {
     var body: some View {
         if #available(macOS 26.0, *), !reduceTransparency, contrast != .increased, !forceBordered { Button(action: action, label: label).buttonStyle(.glass) }
         else { Button(action: action, label: label).buttonStyle(.bordered) }
+    }
+}
+
+/// Symbol names are resolved on the running OS, including older supported Macs.
+enum NativeSymbol {
+    static func resolve(_ preferred: String, available: (String) -> Bool = { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) -> String {
+        if available(preferred) { return preferred }
+        let fallback = preferred == "clock.arrow.2.circlepath" ? "clock.arrow.circlepath" : "circle"
+        return available(fallback) ? fallback : "questionmark.circle"
     }
 }

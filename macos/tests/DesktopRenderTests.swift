@@ -66,7 +66,26 @@ struct DesktopRenderTests {
                         try await wait("document.documentElement.dataset.theme === 'light' && document.querySelectorAll('.cover-card').length >= 4")
                         let fixture = try JSONSerialization.jsonObject(with:Data(contentsOf:root.appendingPathComponent("preview.json"))) as! [String:Int]
                         let routes = [("manga-details","/manga/\(fixture["manga"]!)"),("sources","/browse"),("source-lists","/settings?section=source-lists"),("history","/history"),("backup-import","/settings?section=backups"),("reader","/reader/\(fixture["chapter"]!)")]
-                        for (name,route) in routes { controller.navigate(route);try await wait("location.pathname + location.search === '\(route)'");try await capture(name) }
+                        for (name,route) in routes {
+                            controller.navigate(route)
+                            try await wait("location.pathname + location.search === '\(route)'")
+                            if name == "source-lists" {
+                                try await wait("document.querySelector('input[aria-label=\"Automatically install source updates\"]') !== null")
+                                _ = try await controller.webView.evaluateJavaScript("document.querySelector('input[aria-label=\"Automatically install source updates\"]').click()")
+                                try await wait("Array.from(document.querySelectorAll('button')).some(b => b.textContent === 'Enable automatic source updates')")
+                                _ = try await controller.webView.evaluateJavaScript("Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Enable automatic source updates').click()")
+                                try await wait("document.querySelector('input[aria-label=\"Automatically install source updates\"]').checked")
+                                _ = try await controller.webView.evaluateJavaScript("location.reload()")
+                                try await wait("document.querySelector('input[aria-label=\"Automatically install source updates\"]')?.checked === true")
+                                _ = try await controller.webView.evaluateJavaScript("document.querySelector('input[aria-label=\"Automatically install source updates\"]').click()")
+                                try await wait("document.querySelector('input[aria-label=\"Automatically install source updates\"]').checked === false")
+                                _ = try await controller.webView.evaluateJavaScript("document.querySelector('input[aria-label=\"Automatically refresh source lists\"]').click()")
+                                try await wait("document.querySelector('input[aria-label=\"Automatically refresh source lists\"]').checked === false")
+                                _ = try await controller.webView.evaluateJavaScript("document.querySelector('input[aria-label=\"Automatically refresh source lists\"]').click()")
+                                try await wait("document.querySelector('input[aria-label=\"Automatically refresh source lists\"]').checked === true")
+                            }
+                            try await capture(name)
+                        }
                         controller.nativePanel = "updates";try await capture("application-updates")
                         controller.nativePanel = "server";try await capture("native-server-settings")
                         try await captureAccessibility()

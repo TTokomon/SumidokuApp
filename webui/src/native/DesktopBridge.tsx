@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { qk } from '../api/hooks';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 
@@ -13,13 +15,16 @@ export function validDesktopRoute(value: unknown): value is string {
 }
 export function DesktopNavigationBridge() {
 	const navigate = useNavigate();
+	const client = useQueryClient();
 	useEffect(() => {
 		if (!desktopHost()) return;
 		const listener = (event: Event) => { const route = (event as CustomEvent<unknown>).detail; if (validDesktopRoute(route)) navigate(route); };
 		(window as DesktopWindow).__sumidokuRouterReady = true;
 		window.addEventListener('sumidoku:navigate', listener);
-		return () => { (window as DesktopWindow).__sumidokuRouterReady = false; window.removeEventListener('sumidoku:navigate', listener); };
-	}, [navigate]);
+		const sourcesChanged = () => { void client.invalidateQueries({ queryKey: qk.sourceRepos }); };
+		window.addEventListener('sumidoku:source-lists', sourcesChanged);
+		return () => { (window as DesktopWindow).__sumidokuRouterReady = false; window.removeEventListener('sumidoku:navigate', listener); window.removeEventListener('sumidoku:source-lists', sourcesChanged); };
+	}, [navigate, client]);
 	return null;
 }
 export function DesktopUpdatesSection() {

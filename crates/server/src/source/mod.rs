@@ -85,6 +85,7 @@ pub async fn scan_sources_dir(state: &AppState, dir: &Path) -> ApiResult<ScanOut
 		.await
 		.map_err(|e| ApiError::from(sqlx::Error::Io(e)))?
 	{
+		if entry.file_name() == ".automatic-updates" { continue; }
 		let file_type = entry.file_type().await;
 		let is_aix = entry
 			.path()
@@ -176,6 +177,14 @@ async fn scan_one_dir(state: &AppState, path: &Path) -> Result<(String, Register
 
 /// The single entry for .aix registration: shared by directory scan and repo install; on success returns (key, the registration outcome)
 pub(crate) async fn register_aix(state: &AppState, path: &Path) -> Result<(String, RegisterOutcome), String> {
+	register_aix_with_policy(state, path, None).await
+}
+
+pub(crate) async fn register_unused_aix(state: &AppState, path: &Path, version: i64, repo: i64) -> Result<(String, RegisterOutcome), String> {
+	register_aix_with_policy(state, path, Some((version, repo))).await
+}
+
+async fn register_aix_with_policy(state: &AppState, path: &Path, unused: Option<(i64, i64)>) -> Result<(String, RegisterOutcome), String> {
 	let path_buf = path.to_path_buf();
 	// Zip parsing is synchronous IO, offloaded to the blocking pool; package contents stay in memory, never extracted to disk
 	let (doc, settings, icon) = tokio::task::spawn_blocking(move || read_aix_package(&path_buf))
@@ -183,7 +192,7 @@ pub(crate) async fn register_aix(state: &AppState, path: &Path) -> Result<(Strin
 		.map_err(|e| format!("join: {e}"))??;
 	// The embedded icon lands next to the package for /sources/{id}/icon to read (Aidoku reads icon.png from the unpacked directory)
 	let icon_path = write_aix_icon(path, icon).await;
-	register_source(
+	register_source_with_policy(
 		state,
 		SourcePackage {
 			doc,
@@ -191,6 +200,7 @@ pub(crate) async fn register_aix(state: &AppState, path: &Path) -> Result<(Strin
 			icon_path,
 			settings,
 		},
+		unused,
 	)
 	.await
 }
@@ -265,6 +275,10 @@ async fn register_source(
 	state: &AppState,
 	package: SourcePackage,
 ) -> Result<(String, RegisterOutcome), String> {
+	register_source_with_policy(state, package, None).await
+}
+
+async fn register_source_with_policy(state: &AppState, package: SourcePackage, unused: Option<(i64, i64)>) -> Result<(String, RegisterOutcome), String> {
 	let pool = &state.pool;
 	let doc = &package.doc;
 	let key = manifest_key(doc)?;
@@ -311,16 +325,36 @@ async fn register_source(
 		.fetch_optional(pool)
 		.await
 		.map_err(|e| format!("db: {e}"))?;
+	if unused.is_some() && existing.is_none() { return Err("source was removed; automatic replacement cancelled".into()); }
+	if existing.is_some_and(|(_, old)| version < old) { return Err("older package would downgrade the installed source".into()); }
 	// The dynamic value is the source of truth for base_url: once stored, the synthesized setting's candidates and seed and the login host fallback all come from the row
-	let (dynamic, features) = resolve_dynamic_base_url(state, &key, &wasm, existing.map(|(id, _)| id), doc)
-		.await
-		.unwrap_or_else(|| (String::new(), "{}".to_string()));
+	let (dynamic, features) = if unused.is_some() {
+		// Metadata inspection must not execute package code or write defaults
+		// before the final reference/opt-out guard has accepted this update.
+		let path = std::path::PathBuf::from(&wasm);
+		let features = tokio::task::spawn_blocking(move || {
+			let bytes = aidoku_wasm::package::read_wasm_payload(&path).map_err(|e| e.to_string())?;
+			let features = aidoku_wasm::SourceFeatures::from_wasm_bytes(&bytes)?;
+			serde_json::to_string(&features).map_err(|e| e.to_string())
+		}).await.map_err(|e| e.to_string())??;
+		let base: Option<String> = sqlx::query_scalar("SELECT base_url FROM source WHERE key = ?")
+			.bind(&key).fetch_one(pool).await.map_err(|e| e.to_string())?;
+		(base.unwrap_or_default(), features)
+	} else {
+		resolve_dynamic_base_url(state, &key, &wasm, existing.map(|(id, _)| id), doc)
+			.await.unwrap_or_else(|| (String::new(), "{}".to_string()))
+	};
 	let base_url = if dynamic.is_empty() { base_url } else { Some(dynamic) };
 	let (id, outcome) = if let Some((id, old_version)) = existing {
 		// An existing source keeps enabled and source_setting; only the metadata is refreshed
-		sqlx::query(
+		let mut transaction = crate::db::begin_write(pool).await.map_err(|e| e.to_string())?;
+		if unused.is_some() && !repo::AUTO_UPDATE_PACKAGES.get(&mut *transaction).await.map_err(|e| e.message().to_string())?.unwrap_or(false) {
+			return Err("automatic source updates were disabled".into());
+		}
+		let changed = sqlx::query(
 			"UPDATE source SET name = ?, version = ?, languages = ?, content_rating = ?,
-			 base_url = ?, breaking_change_version = ?, config = ?, wasm_path = ?, icon_path = ?, updated_at = ?, features = ? WHERE id = ?",
+			 base_url = ?, breaking_change_version = ?, config = ?, wasm_path = ?, icon_path = ?, updated_at = ?, features = ? WHERE id = ?
+			 AND (? IS NULL OR (version = ? AND repo_id = ? AND enabled = 1 AND NOT EXISTS (SELECT 1 FROM manga WHERE source_id = source.id)))",
 		)
 		.bind(name)
 		.bind(version)
@@ -334,9 +368,14 @@ async fn register_source(
 		.bind(now)
 		.bind(&features)
 		.bind(id)
-		.execute(pool)
+		.bind(unused.map(|value| value.0))
+		.bind(unused.map(|value| value.0))
+		.bind(unused.map(|value| value.1))
+		.execute(&mut *transaction)
 		.await
 		.map_err(|e| format!("db: {e}"))?;
+		if changed.rows_affected() != 1 { return Err("source changed or has manga; manual review required".into()); }
+		transaction.commit().await.map_err(|e| e.to_string())?;
 		(id, if old_version == version { RegisterOutcome::Refreshed } else { RegisterOutcome::Updated })
 	} else {
 		let result = sqlx::query(
@@ -362,7 +401,9 @@ async fn register_source(
 		.map_err(|e| format!("db: {e}"))?;
 		(result.last_insert_rowid(), RegisterOutcome::Installed)
 	};
-	seed_source_defaults(pool, id, package.settings.as_ref(), doc).await?;
+	// Unattended updates retain stored settings verbatim; settings opened later
+	// can seed new dynamic defaults through the existing settings workflow.
+	if unused.is_none() { seed_source_defaults(pool, id, package.settings.as_ref(), doc).await?; }
 	Ok((key, outcome))
 }
 

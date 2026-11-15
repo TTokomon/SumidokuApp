@@ -5648,6 +5648,68 @@
           }
         ]
       }
+    },
+    "/api/v1/source-repos/preferences": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "operationId": "getSourceRefreshPreferences",
+        "summary": "Get source refresh preferences",
+        "responses": {
+          "200": {
+            "description": "Source refresh preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRefreshPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "repos"
+        ],
+        "operationId": "putSourceRefreshPreferences",
+        "summary": "Put source refresh preferences",
+        "responses": {
+          "200": {
+            "description": "Source refresh preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRefreshPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRefreshPreferences"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12403,6 +12465,23 @@
         "properties": {
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "SourceRefreshPreferences": {
+        "type": "object",
+        "required": [
+          "autoRefreshLists",
+          "autoUpdatePackages"
+        ],
+        "properties": {
+          "autoRefreshLists": {
+            "type": "boolean",
+            "default": true
+          },
+          "autoUpdatePackages": {
+            "type": "boolean",
+            "default": false
           }
         }
       }

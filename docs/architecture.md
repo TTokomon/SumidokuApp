@@ -39,6 +39,13 @@ changing the same job. The origin-checked main-frame WebKit message bridge prese
 a native multiple-folder picker for Local Files. Native Settings links to the single
 web Source Lists manager. See [source contracts](SOURCE_INTEGRATIONS.md).
 
+After authentication, including a restored WebKit session, the native client
+subscribes once to the official community index if absent. The private per-library
+marker recognizes both published index aliases and preserves deliberate removal.
+Offline failures leave no marker and retry at most once a minute while authenticated.
+Subscription creates no packages or chapters. A desktop event invalidates Source
+Lists queries without replacing the document or losing an import preview.
+
 `DesktopShell.swift` now owns native NavigationSplitView, toolbar/menu routing and
 application update status. The WebKit document retains existing library/source/reader
 logic; an origin-checked desktop bridge routes local paths and appearance. Actual
@@ -355,7 +362,7 @@ no alias is derived from migration text.
   unreachable repo never breaks the installed-source list. Refreshing is the
   only way the cache moves: the API's manual per-repo refresh, plus an
   optional periodic sweep of every repo when `repo_refresh_interval_hours`
-  (config file/env `SUMIDOKU_REPO_REFRESH_INTERVAL_HOURS`, default 0 = off)
+  (config file/env `SUMIDOKU_REPO_REFRESH_INTERVAL_HOURS`, default 1 hour; explicit 0 = off)
   is non-zero; a failed refresh keeps the old cache and records
   `fetch_error`. Install downloads
   the `.aix` (http/https only, 64 MiB cap) into `sources/` and registers it
@@ -365,6 +372,15 @@ no alias is derived from migration text.
   NULL), and `repo::source_json` reports `missingFromRepos` when a
   repo-installed source's key is absent from every cached index — Aidoku's
   "missing source list" warning, the deprecation signal for external sources.
+  The protected `/source-repos/preferences` API separates catalog refresh (default
+  on) from automatic package replacement (default off). Their scheduler switches
+  are independent. Automatic packages must remain enabled, unused by any manga,
+  nonbreaking and from their original repository. Candidate bytes use immutable
+  paths under `sources/.automatic-updates`; a typed-settings read and conditional
+  source update in one write transaction recheck opt-in/version/origin/references.
+  Candidate metadata inspection executes no package code, and stored source
+  settings remain unchanged. Directory scans ignore the reserved cache and reject
+  older packages, so retained versions cannot silently downgrade a source.
 - Built-in setup (`api/integrations.rs`, `internal/integration.rs`) always exposes
   Local Files, Komga, Kavita and Suwayomi independently of repositories. Local and
   OPDS persistence/readers are reused; `internal/suwayomi.rs` adapts live GraphQL

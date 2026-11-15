@@ -51,7 +51,7 @@ app = Path(sys.argv[1])
 info = {
     'CFBundleName': 'Sumidoku', 'CFBundleDisplayName': 'Sumidoku',
     'CFBundleIdentifier': 'app.sumidoku.desktop', 'CFBundleExecutable': 'Sumidoku',
-    'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.3.0', 'CFBundleVersion': '5',
+    'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.3.0', 'CFBundleVersion': '6',
     'LSMinimumSystemVersion': '13.0', 'NSHighResolutionCapable': True,
     'SUEnableAutomaticChecks': False, 'SUAutomaticallyUpdate': False, 'SUAllowsAutomaticUpdates': False,
     'SUVerifyUpdateBeforeExtraction': True, 'SURequireSignedFeed': True,

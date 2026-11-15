@@ -40,7 +40,7 @@ struct DesktopShell: View {
         else { controller.navigate(route) }
     }
     private func destinationRow(_ item: DesktopDestination) -> some View {
-        Label(item.title, systemImage: item.symbol).tag(item.id).contextMenu {
+        Label(item.title, systemImage: NativeSymbol.resolve(item.symbol)).tag(item.id).contextMenu {
             Button("Open \(item.title)") { select(item.id) }
         }
     }
@@ -48,7 +48,7 @@ struct DesktopShell: View {
         NavigationSplitView(columnVisibility: $visibility) {
             List(selection: selection) {
                 Section("Collection") { ForEach(DesktopDestination.collection) { item in destinationRow(item) } }
-                Section("Settings") { ForEach(DesktopDestination.settings) { item in Label(item.title, systemImage: item.symbol).tag(item.id) } }
+                Section("Settings") { ForEach(DesktopDestination.settings) { item in Label(item.title, systemImage: NativeSymbol.resolve(item.symbol)).tag(item.id) } }
             }.safeAreaInset(edge: .top, alignment: .leading) {
                 HStack(spacing: 10) {
                     Image(nsImage: NSImage(named: NSImage.applicationIconName)!)
@@ -124,7 +124,7 @@ struct NativePreferences: View {
                 Section("Appearance") { Text("The native window follows your library's light/dark appearance. System contrast, reduced transparency and reduced motion are respected.") }
             }.formStyle(.grouped).padding().tabItem { Label("General", systemImage: "gear") }.tag("general")
             ServerSettings(controller: controller).tabItem { Label("Server & Account", systemImage: "gearshape.2.fill") }.tag("server")
-            ApplicationUpdatesView(updates: updates).tabItem { Label("Updates", systemImage: "clock.arrow.2.circlepath") }.tag("updates")
+            ApplicationUpdatesView(updates: updates).tabItem { Label("Updates", systemImage: NativeSymbol.resolve("clock.arrow.2.circlepath")) }.tag("updates")
         }.tint(DesktopBrand.accent).frame(width: 640, height: 690)
     }
 }

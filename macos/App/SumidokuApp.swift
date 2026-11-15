@@ -137,6 +137,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         username = (login.json["user"] as? [String: Any])?["username"] as? String ?? ""
         signedIn = true; available = true; loaded = true; controlError = nil
         webView.load(URLRequest(url: address))
+        bootstrapCommunitySourceList()
     }
 
     func prepareRuntime() throws {
@@ -225,6 +226,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
             let identity = status.json["username"] as? String
             signedIn = identity != nil
             username = identity ?? ""
+            if signedIn { bootstrapCommunitySourceList(cookie: cookie) }
             if signedIn && (!loaded || reload) {
                 loaded = true
                 webView.load(URLRequest(url: address))
@@ -234,6 +236,21 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
             guard generation == sessionGeneration, operation == nil else { return }
             available = false
             message = "The local server is unavailable. Start it to open your library."
+        }
+    }
+
+    func bootstrapCommunitySourceList(cookie: String? = nil) {
+        guard signedIn, let library else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            let sessionCookie = if let cookie { cookie } else { await self.cookieHeader() }
+            self.manager.scheduleCommunitySourceBootstrap(library, cookie: sessionCookie) { [weak controller = self] succeeded in
+                Task { @MainActor [weak controller] in
+                    guard let controller, controller.signedIn, controller.library == library else { return }
+                    let state = succeeded ? "ready" : "deferred"
+                    _ = try? await controller.webView.evaluateJavaScript("window.__sumidokuCommunityStatus='\(state)';window.dispatchEvent(new CustomEvent('sumidoku:source-lists',{detail:'\(state)'}))")
+                }
+            }
         }
     }
 
