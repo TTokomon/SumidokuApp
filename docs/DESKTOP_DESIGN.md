@@ -188,3 +188,9 @@ comic fixtures, resized for documentation. No personal library data is included.
 ![Reader](images/desktop/reader.png)
 ![Native glass](images/desktop/native-glass.png)
 ![Forced native system material fallback](images/desktop/native-material-fallback.png)
+
+![Native application updates](images/desktop/application-updates.png)
+
+The empty-catalog regression was deliberately broken from the committed green
+state: returning green for no published desktop releases failed the targeted test.
+A single-file restore returned all 37 assertions to green.
