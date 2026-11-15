@@ -6,6 +6,24 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Uninstall a package without deleting its persistent source identity.**
+Foreign-key deletion of a source can cascade into manga, categories and reading
+progress. A package-only uninstall must disable runtime capability while retaining
+the source row, and directory scans must respect that retained uninstalled state.
+Validate replacement package ID/version before registration can create another row.
+- Evidence: 2026-11-15, `source_repo` fixtures retain imported Aidoku manga,
+  categories and chapter progress through list/package removal, reject a mismatched
+  update before replacing bytes, skip stale sideload resurrection and reconnect the
+  same records after exact-ID reinstall.
+
+**Protected catalog locators must keep stable identities across refreshes.**
+Encrypting each private OPDS link with a fresh random nonce hides credentials but
+changes otherwise identical navigation/reader locators. Cache the random sealed
+locator by a keyed digest of its target; never make nonce reuse deterministic.
+- Evidence: 2026-11-15, built-in OPDS fixtures assert stable search entries across
+  repeated fetches, successful page streaming and absence of private endpoint keys
+  from source metadata and portable exports.
+
 **A crossfade keeps its target fully opaque; only the outgoing layer fades.**
 Fading the target in underneath the outgoing layer does not sum the two
 opacities: the outgoing layer masks the target, so the canvas shows through
