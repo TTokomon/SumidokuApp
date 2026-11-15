@@ -312,12 +312,70 @@ pub async fn refresh_all(state: &Arc<AppState>) {
 }
 
 /// Periodic refresh task: interval's first tick completes immediately, so the first run waits a full period
+/// Refreshing published source lists is separate from installing source
+/// packages. Both are user-controlled, and package updates are off by default.
+pub const AUTO_REFRESH_LISTS: crate::settings::Key<bool> = crate::settings::Key::new("sources.autoRefreshLists");
+pub const AUTO_UPDATE_PACKAGES: crate::settings::Key<bool> = crate::settings::Key::new("sources.autoUpdatePackages");
+
+pub struct RefreshPreferences {
+	pub auto_refresh_lists: bool,
+	pub auto_update_packages: bool,
+}
+
+pub async fn refresh_preferences(pool: &SqlitePool) -> ApiResult<RefreshPreferences> {
+	Ok(RefreshPreferences {
+		auto_refresh_lists: AUTO_REFRESH_LISTS.get(pool).await?.unwrap_or(true),
+		auto_update_packages: AUTO_UPDATE_PACKAGES.get(pool).await?.unwrap_or(false),
+	})
+}
+
+/// Automated package replacement is deliberately conservative. A source whose
+/// manga rows have been registered (even without being saved to the library)
+/// may carry progress, category or chapter references. Leave those packages
+/// for an explicitly approved update, which can report migration warnings.
+pub async fn auto_update_unused_packages(state: &Arc<AppState>) -> ApiResult<()> {
+	let rows: Vec<(i64, String, i64)> = sqlx::query_as(
+		"SELECT id, key, version FROM source WHERE kind = 'aidoku' AND wasm_path != ''",
+	).fetch_all(&state.pool).await?;
+	let latest = latest_versions(&state.pool).await?;
+	for (id, key, version) in rows {
+		let Some(&(available, repo_id)) = latest.get(&key) else { continue };
+		if available <= version { continue; }
+		let references: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM manga WHERE source_id = ?")
+			.bind(id).fetch_one(&state.pool).await?;
+		if references > 0 {
+			tracing::info!(key, available, "source update available; manual review required because manga references exist");
+			continue;
+		}
+		if let Err(error) = install_from_repo(state, repo_id, &key).await {
+			tracing::warn!(key, "automatic source package update failed: {error:?}");
+		}
+	}
+	Ok(())
+}
+
+/// Periodic source-index refresh; no download of manga chapters. Automatic
+/// source-package replacement is opt-in and limited to sources without manga
+/// references so progress migrations cannot occur unattended.
 pub async fn run_periodic_refresh(state: Arc<AppState>, interval_hours: u64) {
-	let mut interval = tokio::time::interval(Duration::from_secs(interval_hours * 3600));
+	let mut interval = tokio::time::interval(Duration::from_secs(interval_hours.saturating_mul(3600).max(3600)));
 	interval.tick().await;
 	loop {
 		interval.tick().await;
+		let preferences = match refresh_preferences(&state.pool).await {
+			Ok(value) => value,
+			Err(error) => {
+				tracing::warn!("reading source refresh preferences failed: {error:?}");
+				continue;
+			}
+		};
+		if !preferences.auto_refresh_lists { continue; }
 		refresh_all(&state).await;
+		if preferences.auto_update_packages {
+			if let Err(error) = auto_update_unused_packages(&state).await {
+				tracing::warn!("automatic source package update check failed: {error:?}");
+			}
+		}
 	}
 }
 
