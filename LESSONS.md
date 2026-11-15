@@ -1908,3 +1908,16 @@ Test that contract at the helper boundary and in the native application.
   `test_restart_signals_existing_job_without_unregistering_it` fails
   when the unregister/rebootstrap path is restored and passes after the
   committed helper is restored; the test never controls a real job.
+
+**An owner password seeded from configuration is a startup override, not a one-time registration API.**
+Use an explicit user-chosen seed only during local owner creation or confirmed
+recovery. Verify authentication, remove the seed from the active config, and
+keep subsequent password changes in the server's hashed database state.
+Before changing credentials on an existing library, stop gracefully and retain
+a private cold recovery snapshot. Never turn authentication off to implement
+password recovery.
+- Evidence: 2026-11-14, `auth::init` reapplies configured credentials on every
+  boot, while `change_password` updates only the database. Disposable desktop
+  lifecycle tests verify custom owner creation, seed removal, password changes
+  across restart, old-password rejection, and explicit recovery preserving
+  reading progress, including a temporary launchd job unload/reload.
