@@ -195,7 +195,8 @@ struct LibraryManagerTests {
         let result = try manager.create(root: root, username: "fixture-owner", password: password, confirmation: password)
         let library = result.0
         var cookie = LocalAPI.cookieHeader(result.1.cookies)
-        try expect(!String(contentsOf: library.config.appendingPathComponent("config.toml"), encoding: .utf8).contains(password), "plaintext seed removed after owner creation")
+        let activeConfig = try String(contentsOf: library.config.appendingPathComponent("config.toml"), encoding: .utf8)
+        try expect(!activeConfig.contains("[auth]") && !activeConfig.contains("password = "), "plaintext seed removed after owner creation")
         NSApplication.shared.setActivationPolicy(.prohibited)
         let store = WKWebsiteDataStore.nonPersistent()
         for cookie in result.1.cookies { await store.httpCookieStore.setCookie(cookie) }
