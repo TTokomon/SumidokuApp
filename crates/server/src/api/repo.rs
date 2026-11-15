@@ -85,6 +85,35 @@ pub(crate) fn source_json(
 	})
 }
 
+/// Distinguish catalog refresh (enabled by default) from automatic package
+/// replacement (opt-in, conservative). Authentication is enforced by the
+/// existing protected API router.
+pub async fn get_refresh_preferences(State(state): State<Arc<AppState>>) -> ApiResult<Json<Value>> {
+	let prefs = repo::refresh_preferences(&state.pool).await?;
+	Ok(Json(json!({
+		"autoRefreshLists": prefs.auto_refresh_lists,
+		"autoUpdatePackages": prefs.auto_update_packages,
+	})))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshPreferencesRequest {
+	pub auto_refresh_lists: bool,
+	pub auto_update_packages: bool,
+}
+
+pub async fn set_refresh_preferences(
+	State(state): State<Arc<AppState>>,
+	Json(body): Json<RefreshPreferencesRequest>,
+) -> ApiResult<Json<Value>> {
+	let mut tx = crate::db::begin_write(&state.pool).await?;
+	repo::AUTO_REFRESH_LISTS.set(&mut *tx, &body.auto_refresh_lists).await?;
+	repo::AUTO_UPDATE_PACKAGES.set(&mut *tx, &body.auto_update_packages).await?;
+	tx.commit().await?;
+	get_refresh_preferences(State(state)).await
+}
+
 pub async fn list_repos(State(state): State<Arc<AppState>>) -> ApiResult<Json<Value>> {
 	let repos = repo::list_repos(&state.pool).await?;
 	let out: Vec<Value> = repos.iter().map(repo_json).collect();

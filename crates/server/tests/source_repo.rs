@@ -187,6 +187,34 @@ async fn source_by_key(app: &axum::Router, key: &str) -> Value {
 }
 
 #[tokio::test]
+async fn source_update_preferences_default_off_for_package_install_and_roundtrip() {
+	let app = test_app().await;
+	let (status, initial) = request(&app.app, "GET", "/api/v1/source-repos/preferences", None).await;
+	assert_eq!(status, StatusCode::OK, "{initial}");
+	assert_eq!(initial["autoRefreshLists"], true);
+	assert_eq!(initial["autoUpdatePackages"], false);
+
+	let (status, saved) = request(
+		&app.app, "PUT", "/api/v1/source-repos/preferences",
+		Some(json!({"autoRefreshLists": false, "autoUpdatePackages": true})),
+	).await;
+	assert_eq!(status, StatusCode::OK, "{saved}");
+	assert_eq!(saved["autoRefreshLists"], false);
+	assert_eq!(saved["autoUpdatePackages"], true);
+	let (status, persisted) = request(&app.app, "GET", "/api/v1/source-repos/preferences", None).await;
+	assert_eq!(status, StatusCode::OK, "{persisted}");
+	assert_eq!(persisted["autoRefreshLists"], false);
+	assert_eq!(persisted["autoUpdatePackages"], true);
+
+	// Reject malformed payloads instead of guessing or enabling downloads.
+	let (status, _) = request(
+		&app.app, "PUT", "/api/v1/source-repos/preferences",
+		Some(json!({"autoRefreshLists": "yes", "autoUpdatePackages": false})),
+	).await;
+	assert!(status.is_client_error(), "invalid preference must not be accepted");
+}
+
+#[tokio::test]
 async fn repo_lifecycle_install_and_update() {
 	let (logs, _guard) = common::capture_logs();
 	let app = test_app().await;

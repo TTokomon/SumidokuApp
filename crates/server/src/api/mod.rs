@@ -96,6 +96,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 			"/api/v1/source-repos",
 			get(repo::list_repos).post(repo::add_repo),
 		)
+		.route("/api/v1/source-repos/preferences", get(repo::get_refresh_preferences).put(repo::set_refresh_preferences))
 		.route("/api/v1/source-repos/{id}", delete(repo::delete_repo).put(repo::rename_repo))
 		.route("/api/v1/source-repos/{id}/refresh", post(repo::refresh_repo))
 		.route("/api/v1/source-repos/sources", get(repo::browse_sources))
