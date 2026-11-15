@@ -364,8 +364,10 @@ button svg,a svg {
 	margin: 0 auto;
 	padding-top: 24px;
 }
+/* The native shell now exposes only one Settings destination.
+   Keep the five Settings categories visible inside the embedded page. */
 [data-native-shell='true'] .settings-nav {
-	display: none;
+	display: flex;
 }
 [data-native-shell='true'] .settings-layout {
 	grid-template-columns: minmax(0,1fr);
