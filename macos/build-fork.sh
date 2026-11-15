@@ -20,6 +20,7 @@ for raw in sorted(set(files)):
     path=root/raw.decode()
     if path.is_file(): digest.update(raw+b'\0'+path.read_bytes())
 info={'variant':'fork','featureSet':'source-integrations-v1','upstreamVersion':'1.23.3',
+      'databaseSchemaVersion':max(int(p.name.split('_')[0]) for p in (root/'crates/server/migrations').glob('*.sql')),
       'sourceRevision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
       'sourceTreeSha256':digest.hexdigest(),'sha256':hashlib.sha256(binary.read_bytes()).hexdigest()}
 (root/'dist/fork/server-build.json').write_text(json.dumps(info,indent=2)+'\n')

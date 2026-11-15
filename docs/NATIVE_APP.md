@@ -77,6 +77,10 @@ Command-R checks/reloads, Command-W closes the active window, and Command-Q quit
 Standard macOS menus, the existing icon, native file pickers, and upload/download
 panels remain available. The chosen folder and owner state survive client updates.
 
+## Native shell and application updates
+
+The redesigned sidebar, toolbar and update controls use system SwiftUI/AppKit, including real Liquid Glass on macOS 26 and native material fallbacks. App update checking is operational; unattended app/server installation remains gated on release signing and certified coordination. See [design, operational status and release instructions](DESKTOP_DESIGN.md).
+
 ## Source integrations
 
 The current feature build uses the separately named [source integrations fork](SOURCE_INTEGRATIONS.md). Follow that guide to build and activate Built-in Sources and Settings → Source Lists. The official-only commands below remain available for the base upstream client. Native Settings → Source Lists opens the single repository manager inside the application window.

@@ -39,6 +39,17 @@ changing the same job. The origin-checked main-frame WebKit message bridge prese
 a native multiple-folder picker for Local Files. Native Settings links to the single
 web Source Lists manager. See [source contracts](SOURCE_INTEGRATIONS.md).
 
+`DesktopShell.swift` now owns native NavigationSplitView, toolbar/menu routing and
+application update status. The WebKit document retains existing library/source/reader
+logic; an origin-checked desktop bridge routes local paths and appearance. Actual
+SwiftUI Liquid Glass is guarded at macOS 26; older systems use native materials and
+accessibility modes can request opaque controls. `AppUpdates.swift` checks explicitly
+published desktop releases with cached daily polling and separate native states.
+Sparkle 2 is pinned/embedded, but installation remains hard-gated pending signing,
+feed infrastructure and a certified paired-server handoff. The separately tested
+transaction stage retains cold recovery snapshots and never automatically downgrades
+a migrated database. See [design boundaries, release contract and checks](DESKTOP_DESIGN.md).
+
 ## Server (`crates/server`)
 
 axum 0.8, SQLite via sqlx. Entry `main.rs`; app wiring `lib.rs:build_app`.
@@ -2138,7 +2149,7 @@ This provides installation and an application shell, not
 offline chapters or offline reading progress.
 Typography uses system stacks through `--font-sans`, `--font-display`,
 `--font-brand` and `--font-mono`; brand marks use the rounded brand stack,
-page-header titles use display serif, and content names and controls stay sans.
+the desktop presentation uses system sans typography for page titles, content names and controls. `src/styles/desktop.css` applies restrained neutral opaque surfaces and a teal accent after the upstream tokens; CSS does not simulate native Liquid Glass.
 Colors, radii, shadows and motion come from `src/styles/tokens.css`: three
 surface levels (`--bg`, `--bg-elev`, `--bg-raise` for floating layers), one
 set of easing/duration variables, and `--accent-grad` for primary fills.

@@ -55,7 +55,7 @@ export function AppLayout() {
 
 			<header className="app__topbar">
 				<div className="app__logo app__logo--sm">
-					<img className="app__logo-mark" src="/icon.svg" alt="" />
+					<img className="app__logo-mark" src="/desktop-icon.png" alt="" />
 					<span className="app__logo-text">Sumidoku</span>
 				</div>
 				<div className="app__shell-actions">

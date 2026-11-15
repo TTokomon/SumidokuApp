@@ -11,7 +11,7 @@
 			// Apply the saved theme before the first paint to avoid a light flash in dark mode.
 			try {
 				var t = localStorage.getItem('sumidoku.theme');
-				if (t === 'system') {
+				if (!t || t === 'system') {
 					document.documentElement.dataset.theme = window.matchMedia(
 						'(prefers-color-scheme: dark)'
 					).matches

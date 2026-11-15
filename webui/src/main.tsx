@@ -10,6 +10,7 @@ import './styles/app.css';
 import './components/components.css';
 import './layout/layout.css';
 import './pages/pages.css';
+import './styles/desktop.css';
 
 if (import.meta.env.PROD || import.meta.env.MODE === 'pwa') {
 	void import('./pwa/register').then(({ registerPwa }) => registerPwa());

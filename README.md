@@ -29,6 +29,8 @@ The draft application separates **Built-in Sources** from **External Sources**:
 
 Not every GitHub repository is an installable manga source. A compatible source index or package is required. An Aidoku backup may reference source IDs that must be installed before its manga and progress can be imported.
 
+See the [native design and application update status](docs/DESKTOP_DESIGN.md) for genuine system Liquid Glass, web/native boundaries and the signing gates that keep unattended app/server installation disabled in development.
+
 ## macOS development and installation
 
 The desktop implementation and its verified local setup are documented on the active feature branch:

@@ -20,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandlerWithReply {
-    static let address = URL(string: "http://127.0.0.1:3000")!
+    var address: URL { manager.api.base }
     @Published var available = false
     @Published var checking = true
     @Published var operation: String?
@@ -31,15 +31,24 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     @Published var signedIn = false
     @Published var onboarding = "welcome"
     let manager: LibraryManager
+    @Published var route = "/library"
+    @Published var routeTitle = "Library"
+    @Published var nativePanel: String?
+    var showUpdates: (() -> Void)?
+    var checkAppUpdates: (() -> Void)?
     let webView: WKWebView
+    private var navigationGeneration = 0
+    @Published var canGoBack = false
+    @Published var canGoForward = false
     private var sessionGeneration = 0
     private var probing = false
     private var loaded = false
     private let session: URLSession
 
-    init(manager injectedManager: LibraryManager? = nil) {
+    init(manager injectedManager: LibraryManager? = nil, dataStore: WKWebsiteDataStore? = nil) {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
+        configuration.websiteDataStore = dataStore ?? .default()
+        configuration.userContentController.addUserScript(WKUserScript(source: Self.shellScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView = WKWebView(frame: .zero, configuration: configuration)
         let network = URLSessionConfiguration.ephemeral
         network.timeoutIntervalForRequest = 2
@@ -59,19 +68,62 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         webView.navigationDelegate = self
         webView.uiDelegate = self
         configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "chooseLocalFolders")
+        configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "desktop")
         webView.allowsBackForwardNavigationGestures = true
+        webView.publisher(for: \.canGoBack).receive(on: RunLoop.main).assign(to: &$canGoBack)
+        webView.publisher(for: \.canGoForward).receive(on: RunLoop.main).assign(to: &$canGoForward)
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
                                replyHandler: @escaping (Any?, String?) -> Void) {
-        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, NavigationPolicy.isLocal(url) else {
+        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, NavigationPolicy.isLocal(url, port: manager.api.base.port ?? 3000) else {
             replyHandler(nil, "Folder selection is restricted to the local library interface.")
             return
+        }
+        if message.name == "desktop" {
+            if let body = message.body as? [String: String] {
+                if body["action"] == "updates" || body["action"] == "checkUpdates" { showUpdates?() }
+                if body["action"] == "checkUpdates" { checkAppUpdates?() }
+                if let path = body["path"], path.hasPrefix("/"), !path.hasPrefix("//") { route = path }
+                if let title = body["title"] { routeTitle = String(title.prefix(120)).replacingOccurrences(of: " · Sumidoku", with: "") }
+                if let theme = body["theme"] { NSApp.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua) }
+            }
+            replyHandler(true, nil); return
         }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = true
         panel.prompt = "Choose Manga Folders"
         panel.begin { result in replyHandler(result == .OK ? panel.urls.map(\.path) : [], nil) }
+    }
+
+    static let shellScript = """
+    window.__sumidokuDesktop = true;
+    const ready = () => {
+        document.documentElement.dataset.nativeShell = 'true';
+        const notify = () => window.webkit.messageHandlers.desktop.postMessage({path:location.pathname+location.search,title:document.title,theme:document.documentElement.dataset.theme||'light'}).catch(()=>{});
+        new MutationObserver(notify).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+        const title = document.querySelector('title'); if(title) new MutationObserver(notify).observe(title,{childList:true});
+        window.addEventListener('popstate',notify);
+        for (const name of ['pushState','replaceState']) { const old=history[name]; history[name]=function(...args){const result=old.apply(this,args);notify();return result;}; }
+        notify();
+    };
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ready,{once:true});else ready();
+    """
+    func navigate(_ path: String) {
+        guard path.hasPrefix("/"), !path.hasPrefix("//"), !path.contains("\\"), path.utf8.count <= 2048 else { return }
+        nativePanel = nil
+        let data = try! JSONSerialization.data(withJSONObject: [path])
+        let encoded = String(data: data, encoding: .utf8)!
+        navigationGeneration += 1
+        let generation = navigationGeneration
+        webView.evaluateJavaScript("window.__sumidokuRouterReady === true ? (window.dispatchEvent(new CustomEvent('sumidoku:navigate',{detail:\(encoded)[0]})),true) : false") { [weak self] result, _ in
+            guard let self, generation == self.navigationGeneration else { return }
+            if result as? Bool != true, let url = URL(string: path, relativeTo: self.address) { self.webView.load(URLRequest(url: url)) }
+        }
+    }
+    func readerKey(_ key: String) {
+        guard route.hasPrefix("/reader/"), ["PageUp","PageDown"].contains(key) else { return }
+        webView.evaluateJavaScript("window.dispatchEvent(new KeyboardEvent('keydown',{key:'\(key)',bubbles:true}))")
     }
 
     func cookieHeader() async -> String {
@@ -84,7 +136,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         self.library = library
         username = (login.json["user"] as? [String: Any])?["username"] as? String ?? ""
         signedIn = true; available = true; loaded = true; controlError = nil
-        webView.load(URLRequest(url: Self.address))
+        webView.load(URLRequest(url: address))
     }
 
     func prepareRuntime() throws {
@@ -175,7 +227,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
             username = identity ?? ""
             if signedIn && (!loaded || reload) {
                 loaded = true
-                webView.load(URLRequest(url: Self.address))
+                webView.load(URLRequest(url: address))
             }
             if !signedIn { loaded = false; onboarding = "signin" }
         } catch {
@@ -188,14 +240,16 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     func openLibrary() { if let library = library { NSWorkspace.shared.open(library.root) } }
     func openBackups() { if let library = library { NSWorkspace.shared.open(library.backups) } }
     func showSourceLists() {
+        nativePanel = nil
         guard signedIn else { controlError = "Sign in to manage Source Lists."; return }
-        webView.load(URLRequest(url: URL(string: "http://127.0.0.1:3000/settings?section=source-lists")!))
+        webView.load(URLRequest(url: URL(string: "settings?section=source-lists", relativeTo: address)!))
     }
 
     func showBackupRestore() {
+        nativePanel = nil
         guard signedIn else { controlError = "Sign in before opening Backup and Restore."; return }
         // Keep the upstream backup UI, its preview and section selectors.
-        webView.load(URLRequest(url: URL(string: "http://127.0.0.1:3000/settings?section=backups")!))
+        webView.load(URLRequest(url: URL(string: "settings?section=backups", relativeTo: address)!))
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -261,7 +315,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         if navigationAction.shouldPerformDownload { decisionHandler(.download); return }
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
-        if NavigationPolicy.isLocal(url) || ["about", "blob"].contains(url.scheme ?? "") {
+        if NavigationPolicy.isLocal(url, port: manager.api.base.port ?? 3000) || ["about", "blob"].contains(url.scheme ?? "") {
             decisionHandler(.allow)
         } else {
             decisionHandler(.cancel)
@@ -278,7 +332,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url {
-            if NavigationPolicy.isLocal(url) { webView.load(URLRequest(url: url)) }
+            if NavigationPolicy.isLocal(url, port: manager.api.base.port ?? 3000) { webView.load(URLRequest(url: url)) }
             else if ["https", "http"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }
         }
         return nil
@@ -345,6 +399,7 @@ struct EmbeddedInterface: NSViewRepresentable {
 struct MainWindow: View {
     @ObservedObject var controller: ServerController
     let delegate: AppDelegate
+    @ObservedObject var updates: AppUpdates
     @Environment(\.openWindow) private var openWindow
     private let refresh = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
@@ -354,7 +409,7 @@ struct MainWindow: View {
                 ScrollView {
                     WelcomeView(controller: controller).frame(maxWidth: .infinity, minHeight: 540)
                 }
-            } else if controller.available && controller.signedIn { EmbeddedInterface(controller: controller) }
+            } else if controller.available && controller.signedIn { DesktopShell(controller: controller, updates: updates) }
             else {
                 VStack(spacing: 16) {
                     Image(nsImage: NSImage(named: NSImage.applicationIconName)!)
@@ -379,7 +434,28 @@ struct MainWindow: View {
         .frame(minWidth: 760, minHeight: 540)
         .task {
             delegate.reopen = { openWindow(id: "main") }
+            controller.showUpdates = { openWindow(id: "application-updates") }
+            controller.checkAppUpdates = { updates.check() }
+            if let library = controller.library { updates.loadInstalledHistory(library.backups) }
+            updates.checkIfDue()
             await controller.check()
+            if let index = CommandLine.arguments.firstIndex(of: "--capture-window"), CommandLine.arguments.count > index + 1 {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if let routeIndex = CommandLine.arguments.firstIndex(of: "--capture-route"), CommandLine.arguments.count > routeIndex + 1 {
+                    let route = CommandLine.arguments[routeIndex + 1]
+                    if route == "native:updates" { controller.nativePanel = "updates" }
+                    else if route == "native:server" { controller.nativePanel = "server" }
+                    else { controller.navigate(route) }
+                }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                let captureURL = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+                var report: [String: Any] = ["configured": controller.library != nil, "serverAvailable": controller.available, "signedIn": controller.signedIn, "route": controller.route, "nativePanel": controller.nativePanel ?? "", "version": updates.installed, "captureSucceeded": false]
+                if let window = NSApp.windows.first(where: { $0.isVisible && !$0.isSheet }) {
+                    do { try await OwnWindowCapture.save(window, webView: controller.signedIn && controller.nativePanel == nil ? controller.webView : nil, to: captureURL); report["captureSucceeded"] = true }
+                    catch { fputs("Own-window capture failed: \(error.localizedDescription)\n", stderr) }
+                }
+                if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: captureURL.appendingPathExtension("status.json"), options: .atomic) }
+            }
         }
         .onReceive(refresh) { _ in
             guard controller.operation == nil else { return }
@@ -408,9 +484,9 @@ struct WelcomeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Image(nsImage: NSImage(named: NSImage.applicationIconName)!).resizable().frame(width: 60, height: 60)
+                Image(nsImage: NSImage(named: NSImage.applicationIconName)!).resizable().frame(width: 80, height: 80)
                 VStack(alignment: .leading) {
-                    Text("Welcome to Sumidoku").font(.largeTitle).bold()
+                    Text("Your next chapter.").font(.system(size: 34, weight: .bold, design: .rounded))
                     Text("Your manga library, on this Mac.").foregroundStyle(.secondary)
                 }
             }
@@ -456,13 +532,14 @@ struct WelcomeView: View {
             if let error = controller.controlError { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             if let operation = controller.operation { HStack { ProgressView().controlSize(.small); Text(operation) } }
         }
-        .padding(40).frame(maxWidth: 640)
+        .padding(40).frame(maxWidth: 620).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 24)).padding(28).tint(.teal)
         .disabled(controller.operation != nil)
         .onAppear { if let root = controller.library?.root { folder = root } }
     }
 }
 
 struct ServerSettings: View {
+    var embedded = false
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var controller: ServerController
     @State private var changingPassword = false
@@ -485,8 +562,8 @@ struct ServerSettings: View {
             if controller.signedIn {
                 Section("Owner account") {
                     Button("Change Password…") { changingPassword = true }
-                    Button("Source Lists") { controller.showSourceLists(); NSApp.keyWindow?.close(); openWindow(id: "main") }
-                    Button("Backup and Restore…") { controller.showBackupRestore(); NSApp.keyWindow?.close(); openWindow(id: "main") }
+                    Button("Source Lists") { controller.showSourceLists(); if !embedded { NSApp.keyWindow?.close(); openWindow(id: "main") } }
+                    Button("Backup and Restore…") { controller.showBackupRestore(); if !embedded { NSApp.keyWindow?.close(); openWindow(id: "main") } }
                     Button("Sign Out") { Task { await controller.signOut() } }
                     Text("Backup and Restore opens the existing server's Settings. Use its export, restore preview and section selectors. Restoring settings may change your download preferences; review them afterward.").font(.footnote)
                 }
@@ -535,12 +612,23 @@ struct PasswordSheet: View {
 struct SumidokuDesktopApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var controller = ServerController()
+    @StateObject private var updates = AppUpdates()
     var body: some Scene {
         Window("Sumidoku", id: "main") {
-            MainWindow(controller: controller, delegate: delegate)
+            MainWindow(controller: controller, delegate: delegate, updates: updates)
         }
         .defaultSize(width: 1200, height: 820)
+        .windowToolbarStyle(.unified)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { controller.showUpdates?(); updates.check() }
+            }
+            CommandMenu("Navigate") {
+                Button("Library") { controller.navigate("/library") }.keyboardShortcut("1", modifiers: .command)
+                Button("Sources") { controller.navigate("/browse") }.keyboardShortcut("2", modifiers: .command)
+                Button("History") { controller.navigate("/history") }.keyboardShortcut("3", modifiers: .command)
+                Button("Find…") { controller.webView.evaluateJavaScript("document.querySelector(\"input[type=search]\")?.focus()") }.keyboardShortcut("f", modifiers: .command)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
                     .keyboardShortcut("w", modifiers: .command)
@@ -555,7 +643,8 @@ struct SumidokuDesktopApp: App {
                 Button("Open Logs") { controller.openFolder("Library/Logs/Sumidoku") }
             }
         }
-        Settings { ServerSettings(controller: controller) }
+        Window("Application Updates", id: "application-updates") { ApplicationUpdatesView(updates: updates) }
+        Settings { NativePreferences(controller: controller, updates: updates) }
     }
 }
 
