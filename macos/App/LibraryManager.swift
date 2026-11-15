@@ -162,6 +162,47 @@ final class LibraryManager: @unchecked Sendable {
         try data.write(to: url, options: .atomic)
         try files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
+    // Installing a source LIST is not installing source packages or manga chapters.
+    // A private marker lives with the library, surviving app updates and preventing
+    // deliberate removal of the list from being undone on a later sign-in.
+    private static let communitySourceIndex = "https://aidoku-community.github.io/sources/index.min.json"
+
+    private func ensureCommunitySourceList(_ library: LocalLibrary, cookie: String) throws {
+        let marker = library.config.appendingPathComponent(".aidoku-community-list-initialized")
+        guard !files.fileExists(atPath: marker.path) else { return }
+        let reply = try api.request("api/v1/source-repos", cookie: cookie)
+        guard let entries = try JSONSerialization.jsonObject(with: reply.data) as? [[String: Any]] else {
+            throw LibraryFailure(text: "The source-list response was invalid; the existing library is unchanged.")
+        }
+        let subscribed = entries.contains { entry in
+            guard let raw = entry["url"] as? String, let url = URL(string: raw),
+                  let host = url.host?.lowercased() else { return false }
+            return host == "aidoku-community.github.io"
+                && (url.path == "/sources/index.min.json" || url.path == "/sources/index.json")
+        }
+        if !subscribed {
+            _ = try api.request("api/v1/source-repos", method: "POST",
+                                body: ["url": Self.communitySourceIndex, "name": "Aidoku Community"],
+                                cookie: cookie)
+        }
+        // Mark only after the list exists. If offline, retry at the next
+        // authenticated connection instead of blocking owner creation.
+        try privateWrite(Data("subscribed once; removal is respected\n".utf8), to: marker)
+    }
+
+    private func scheduleCommunitySourceBootstrap(_ library: LocalLibrary, cookies: [HTTPCookie]) {
+        let cookie = LocalAPI.cookieHeader(cookies)
+        DispatchQueue.global(qos: .utility).async { [self] in
+            do {
+                try ensureCommunitySourceList(library, cookie: cookie)
+            } catch {
+                // The source-list request can fail offline. The library remains
+                // usable; no marker is written, so a later sign-in can retry.
+                NSLog("Default community source-list setup deferred: %@", error.localizedDescription)
+            }
+        }
+    }
+
     static func quote(_ value: String) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]
@@ -349,6 +390,7 @@ final class LibraryManager: @unchecked Sendable {
             }
             try removeSeed(library)
             try persist(library)
+            scheduleCommunitySourceBootstrap(library, cookies: login.cookies)
             return (library, login)
         } catch {
             if agentMade {
@@ -382,6 +424,7 @@ final class LibraryManager: @unchecked Sendable {
             try waitReady()
             let login = try api.login(username: username, password: password)
             try persist(library)
+            scheduleCommunitySourceBootstrap(library, cookies: login.cookies)
             return (library, login)
         } catch {
             if madeAgent { try service.stop(); try files.removeItem(at: agent) }
