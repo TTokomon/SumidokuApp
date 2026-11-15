@@ -48,8 +48,29 @@ def private_copy(source, target):
 
 
 def service(action):
-    subprocess.run(['/bin/bash', str(ROOT / 'macos/service.sh'), action], check=True,
-                   stdout=subprocess.DEVNULL)
+    try:
+        subprocess.run(['/bin/bash', str(ROOT / 'macos/service.sh'), action], check=True,
+                       stdout=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        if action != 'start':
+            raise
+        # A new ad-hoc signature can require a user-approved Documents prompt.
+        # Leave the same loaded job intact while the owner responds; never change
+        # privacy settings or repeatedly replace the binary beneath that prompt.
+        loaded = subprocess.run(['/bin/launchctl', 'print', f'gui/{os.getuid()}/app.sumidoku.server'],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if loaded.returncode != 0:
+            raise
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            try:
+                with urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=1) as response:
+                    if response.status == 200:
+                        return
+            except OSError:
+                pass
+            time.sleep(0.3)
+        raise
 
 
 def prepare_recovery(config, recovery, agent, descriptor, runner, fork):

@@ -2,6 +2,8 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import re
+import subprocess
+from unittest.mock import MagicMock, patch
 import unittest
 
 spec = importlib.util.spec_from_file_location('activation', Path(__file__).resolve().parents[1] / 'activate-fork.py')
@@ -54,3 +56,11 @@ class ActivationRecoveryTests(unittest.TestCase):
         self.assertRegex(binary + ' --capture-window /tmp/own-window.png', activation.APPLICATION_PROCESS_PATTERN)
         self.assertIsNone(re.search(activation.APPLICATION_PROCESS_PATTERN, binary + 'Helper'))
         self.assertIsNone(re.search(activation.APPLICATION_PROCESS_PATTERN, '/tmp' + binary))
+
+    def test_loaded_service_can_finish_after_folder_permission_is_approved(self):
+        failure = subprocess.CalledProcessError(1, ['fixture-service', 'start'])
+        ready = MagicMock()
+        ready.__enter__.return_value.status = 200
+        with patch.object(activation.subprocess, 'run', side_effect=[failure, subprocess.CompletedProcess([], 0)]), patch.object(activation.urllib.request, 'urlopen', return_value=ready) as request:
+            activation.service('start')
+        request.assert_called_once()
