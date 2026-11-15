@@ -1896,3 +1896,15 @@ otherwise-green suite as infrastructure flake, not a regression.
   failed twice in `source-card-mobile.test.ts` and another SSR test with
   errno -4094 reading i18n locale modules; the three files passed alone
   (15/15) and the unchanged full suite then passed 340/340.
+
+**Exercise service controls from the desktop client, not just a terminal.**
+A KeepAlive job can be restarted by signaling its runner gracefully and
+waiting for a different healthy runner, without unregistering the job.
+Test that contract at the helper boundary and in the native application.
+- Evidence: 2026-11-14, the desktop client exposed a failing GUI
+  `bootout`/`bootstrap` restart path despite the terminal check passing.
+  The retained-job signal path returned the native Settings status to
+  Running and reloaded the embedded interface. The regression
+  `test_restart_signals_existing_job_without_unregistering_it` fails
+  when the unregister/rebootstrap path is restored and passes after the
+  committed helper is restored; the test never controls a real job.
