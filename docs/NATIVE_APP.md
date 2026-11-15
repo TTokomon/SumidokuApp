@@ -123,10 +123,14 @@ using a unique temporary macOS launchd label and the real graceful runner. No te
 uses the permanent database or chosen personal credentials. The jobs and fixture
 directories are removed after the checks.
 
-Passed: 32 lifecycle assertions using the real temporary LaunchAgent, 12 navigation
+Passed: 32 lifecycle assertions with each of the direct-process and real temporary
+LaunchAgent drivers, 12 navigation
 policy cases, and seven Python installer/service/checkpoint tests. Native welcome,
 create and sign-in views were rendered by an isolated AppKit/SwiftUI test app without
-creating an owner or service. The lifecycle test also authenticates an actual
+creating an owner or service. The seed-removal assertion was verified red when active seed cleanup was removed
+and green after restoring the committed manager. The transient-unload regression
+was verified red with a single bootout attempt and green with the committed retry.
+The lifecycle test also authenticates an actual
 WKWebView with the native login cookie, clears it on sign-out, and tears down its
 live document before graceful service shutdown.
 

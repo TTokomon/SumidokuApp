@@ -98,6 +98,7 @@ before trusting a migration; retain original Aidoku data and backups.
 ./macos/test-onboarding.sh
 ./macos/test-onboarding.sh --launchagent
 ./macos/test-app.sh
+./macos/test-welcome.sh
 python3 -m unittest discover -s macos/tests -v
 python3 macos/smoke-test.py
 ```
