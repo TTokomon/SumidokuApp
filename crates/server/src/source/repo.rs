@@ -314,8 +314,8 @@ pub async fn refresh_all(state: &Arc<AppState>) {
 /// Periodic refresh task: interval's first tick completes immediately, so the first run waits a full period
 /// Refreshing published source lists is separate from installing source
 /// packages. Both are user-controlled, and package updates are off by default.
-pub const AUTO_REFRESH_LISTS: crate::settings::Key<bool> = crate::settings::Key::new("sources.autoRefreshLists");
-pub const AUTO_UPDATE_PACKAGES: crate::settings::Key<bool> = crate::settings::Key::new("sources.autoUpdatePackages");
+pub(crate) const AUTO_REFRESH_LISTS: crate::settings::Key<bool> = crate::settings::Key::new("sources.autoRefreshLists");
+pub(crate) const AUTO_UPDATE_PACKAGES: crate::settings::Key<bool> = crate::settings::Key::new("sources.autoUpdatePackages");
 
 pub struct RefreshPreferences {
 	pub auto_refresh_lists: bool,
