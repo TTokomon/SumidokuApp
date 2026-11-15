@@ -36,7 +36,9 @@ and private OPDS endpoints are omitted from public source metadata. Stable opaqu
 fetch locators prevent API-key-bearing OPDS links from leaking into library metadata.
 A portable JSON export does not include the encryption key: retain a private full
 cold copy of the Server directory, including `integration-secrets.key`, when moving
-an installation. Without that key, reconnect remote integrations using new credentials.
+an installation. Existing protected library locators also require the original key; reconnecting
+credentials alone does not decrypt those old locators. Preserve a full Server copy
+alongside portable JSON exports when moving or recovering these integrations.
 Never share a full Server copy publicly.
 
 ## External Sources and Source Lists
@@ -129,3 +131,43 @@ API references: [Suwayomi contribution/API guide](https://github.com/Suwayomi/Su
 [Suwayomi schema](https://github.com/Suwayomi/Suwayomi-VUI/blob/main/schema.graphql),
 [Komga OPDS](https://komga.org/docs/guides/opds/),
 [Kavita OPDS](https://wiki.kavitareader.com/guides/features/opds/).
+
+## Delivery verification (2026-11-15)
+
+- Full Rust workspace: **1,272 passed, 2 skipped**. Strict all-target workspace
+  clippy passed. The two initially failing checks were corrected fixture comparison
+  of stable locators versus assigned database IDs, and an asset snapshot changing
+  during the test build; the final run used frozen production assets.
+- Complete frontend: **375 passed**, type check and production build passed. The
+  final full rerun bounded Node test concurrency to four after a resource-related
+  cancellation during simultaneous compiler/test workloads.
+- Native checks: **12 navigation cases**, **7 Python maintenance tests**, and
+  **32 lifecycle assertions with each of direct-process and temporary LaunchAgent
+  drivers**. The fork also passed the real temporary LaunchAgent driver, including
+  login, restart, password/recovery and progress/library/source preservation.
+- The exact delivery binary rendered Sources, all four setup/test forms, the
+  dedicated Source Lists section/sidebar link and its add-list form in an isolated
+  WKWebView. Own-view snapshots were inspected. Interactive folder choice and
+  connections to private Komga/Kavita/Suwayomi installations remain manual checks.
+- Manual disposable public GitHub discovery resolved the Aidoku Community
+  repository to its published index and returned **171 entries** at verification
+  time, installing no packages or chapters. Automated suites use local fixtures.
+- The desktop sidebar regression was deliberately removed after committing green:
+  its focused test failed with `ERR_ASSERTION` for the missing Source Lists href.
+  `git restore -- webui/src/layout/DesktopSidebar.tsx` restored the single file and
+  the test passed. The final package includes the restored version.
+- Native client **1.2.0 (3)** was installed and strictly signature-verified. Backup-first
+  activation preserved the original executable byte-for-byte and retained a private
+  cold recovery copy. A normal restart preserved account, library, category and
+  progress fingerprints. Client quit left the server running, relaunch succeeded,
+  and a single listener remained bound to localhost.
+- Cleanup removed the obsolete generated native bundle, a superseded staging bundle,
+  and the disposable Cargo debug/test cache (about 17 GB). Test source files,
+  release artifacts, user data/downloads, original executables, Aidoku and every
+  original/recovery backup were retained. No repository dependency was removed;
+  Rust and Node are required to maintain the explicit fork.
+
+Suwayomi JWT/OIDC, extension management and remote progress synchronization remain
+unsupported. Personal remote-server connectivity, owner-driven folder selection,
+reboot/logout behavior and elapsed backup retention were not certified by these
+checks. Local development signing remains ad-hoc, without Developer ID notarization.
