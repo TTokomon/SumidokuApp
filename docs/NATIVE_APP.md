@@ -79,3 +79,52 @@ Run focused checks:
 python3 -m unittest discover -s macos/tests -v
 bash -n macos/build-app.sh macos/service.sh macos/test-app.sh
 ```
+
+## Redundant-component cleanup
+
+The post-install audit found one native client, one user LaunchAgent, and one
+backend listener bound to loopback. No Sumidoku Safari web app was found in
+the system or user Applications folders, and no duplicate Sumidoku service
+plist was found in the user/system LaunchAgents or system LaunchDaemons.
+No service configuration or persistent storage needed modification.
+
+The obsolete Safari action in `macos/service.sh open` now launches the installed
+native app. Its bundled copy was updated and the client re-signed and reopened.
+The backend kept the same PID and remained healthy throughout. No dependency
+was installed solely for the abandoned browser-app method, so none was removed.
+
+Removed only confirmed disposable development artifacts (about 292 MiB):
+
+- Checkout `dist/native/`: generated app copy, Swift module cache, iconset,
+  and compiled navigation-test executable; then its empty `dist/` parent.
+- Python bytecode caches under `macos/` and `macos/tests/`.
+- Temporary `sumidoku-1.23.3-arm64.tar.gz`, `sumidoku-release-extract/`,
+  and `sumidoku-release.json`: verified installer download, extracted duplicate
+  server/README, and release metadata. The extracted server matched the installed
+  binary before removal.
+- Temporary `sumidoku-app-build.log`, `sumidoku-app-build-final.log`,
+  `sumidoku-restart-red.log`, `sumidoku-cleanup-red.log`, and
+  `sumidoku-server-before-quit.pid`: development build/test output and PID note.
+- Temporary `sumidoku-app-cleanup-rollback.app`: client-only rollback copy,
+  removed after installed signature, launch, helper equality, and health checks.
+- Temporary cleanup inventory/preservation JSON reports after verification.
+
+No disposable server database was found left over from the self-cleaning smoke
+tests. All test source and fixtures remain. WebKit runtime storage was retained.
+Configuration, LaunchAgent, server binary, and runner hashes were unchanged;
+all preexisting backup files remained present. The application-support data
+folder, downloads, source repositories, login credentials, backup schedule,
+Aidoku installations/backups, and unrelated projects were left intact.
+
+Desktop and Downloads could not be inspected because macOS denied directory
+access; nothing there was removed. Unknown shortcuts or user data were not
+classified as disposable. The cleanup audit therefore covers the accessible
+installation, service, checkout, and temporary-file locations, rather than
+claiming an exhaustive scan of protected folders.
+
+Validation: five isolated Python helper/checkpoint tests pass. The native-open
+regression fails with the old Safari command and passes after restoring the
+committed native command. Strict installed signature verification passes; the
+client runs independently, and the original loopback backend remains healthy.
+The earlier native-window, offline recovery, restart, and quit checks above
+remain applicable; this cleanup changed only the launcher helper and docs.
