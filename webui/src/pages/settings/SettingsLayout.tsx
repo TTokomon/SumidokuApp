@@ -14,6 +14,27 @@ export const SETTINGS_GROUPS = [
 
 export type SettingsGroupKey = (typeof SETTINGS_GROUPS)[number][0];
 
+const SUBSECTION_LABELS: Record<SettingsGroupKey, string> =
+	Object.fromEntries(SETTINGS_GROUPS) as Record<SettingsGroupKey, string>;
+
+/** Five visible categories; keep all eight legacy deep-link section IDs intact. */
+export const SETTINGS_CATEGORIES: ReadonlyArray<{
+	id: string;
+	label: string;
+	sections: readonly SettingsGroupKey[];
+}> = [
+	{ id: 'reading', label: 'Reading & Library', sections: ['reader', 'library'] },
+	{ id: 'sources', label: 'Sources & Tracking', sections: ['source-lists', 'trackers'] },
+	{ id: 'storage', label: 'Downloads & Backups', sections: ['downloads', 'backups'] },
+	{ id: 'appearance', label: 'Appearance & Updates', sections: ['general'] },
+	{ id: 'server', label: 'Server & Account', sections: ['system'] }
+];
+
+/** The old section query parameter continues to determine both category and subsection. */
+export function settingsCategoryFor(section: SettingsGroupKey) {
+	return SETTINGS_CATEGORIES.find((category) => category.sections.includes(section)) ?? SETTINGS_CATEGORIES[3];
+}
+
 interface SettingsLayoutProps {
 	current: SettingsGroupKey;
 	onSelect: (key: SettingsGroupKey) => void;
@@ -23,23 +44,36 @@ interface SettingsLayoutProps {
 export function SettingsLayout({ current, onSelect, panels }: SettingsLayoutProps) {
 	const { t } = useTranslation();
 	const active = SETTINGS_GROUPS.some(([key]) => key === current) ? current : 'general';
+	const category = settingsCategoryFor(active);
 	return (
 		<div className="settings-layout">
-			<nav className="settings-nav" aria-label={t('settings.groupNav')}>
-				{SETTINGS_GROUPS.map(([key, labelKey]) => (
+			<nav className="settings-nav" aria-label="Settings categories">
+				{SETTINGS_CATEGORIES.map((item) => (
 					<button
 						type="button"
-						key={key}
-						data-settings-group={key}
-						className={active === key ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'}
-						aria-current={active === key ? 'page' : undefined}
-						onClick={() => onSelect(key)}
-					>
-						{t(labelKey)}
-					</button>
+						key={item.id}
+						data-settings-category={item.id}
+						className={category.id === item.id ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'}
+						aria-pressed={category.id === item.id}
+						onClick={() => onSelect(item.sections[0])}
+					>{item.label}</button>
 				))}
 			</nav>
 			<div className="settings-panel">
+				{category.sections.length > 1 && (
+					<nav className="settings-subnav" aria-label={t('settings.groupNav')}>
+						{category.sections.map((section) => (
+							<button
+								type="button"
+								key={section}
+								data-settings-group={section}
+								className={active === section ? 'settings-subnav__item settings-subnav__item--active' : 'settings-subnav__item'}
+								aria-current={active === section ? 'page' : undefined}
+								onClick={() => onSelect(section)}
+							>{t(SUBSECTION_LABELS[section])}</button>
+						))}
+					</nav>
+				)}
 				{SETTINGS_GROUPS.map(([key]) => (
 					<div key={key} data-settings-panel={key} hidden={active !== key}>
 						{panels[key]}
