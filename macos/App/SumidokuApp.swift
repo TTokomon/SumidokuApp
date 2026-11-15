@@ -83,6 +83,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         if message.name == "desktop" {
             if let body = message.body as? [String: String] {
                 if body["action"] == "updates" || body["action"] == "checkUpdates" { showUpdates?() }
+                if body["action"] == "server" { nativePanel = "server" }
                 if body["action"] == "checkUpdates" { checkAppUpdates?() }
                 if let path = body["path"], path.hasPrefix("/"), !path.hasPrefix("//") { route = path }
                 if let title = body["title"] { routeTitle = String(title.prefix(120)).replacingOccurrences(of: " · Sumidoku", with: "") }
