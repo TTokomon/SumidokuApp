@@ -27,8 +27,9 @@ with tempfile.TemporaryDirectory(prefix='sumidoku-native-ui-fixture-') as tempor
     (root/'config.toml').write_text('addr = "127.0.0.1:3309"\nauto_download_new_chapters = false\nauto_download_limit = 0\nupdate_interval_hours = 0\nbackup_enabled = false\nwebui_dir = '+json.dumps(str(ROOT/'webui/build'))+'\n')
     app=root/'DesktopRenderTests.app';resources=app/'Contents/Resources';resources.mkdir(parents=True);(app/'Contents/MacOS').mkdir()
     import plistlib,shutil
-    (app/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'app.sumidoku.desktop-ui-tests','CFBundleExecutable':'DesktopRenderTests','CFBundlePackageType':'APPL','CFBundleShortVersionString':'1.3.0','CFBundleVersion':'1','NSPrincipalClass':'NSApplication','NSAppTransportSecurity':{'NSAllowsLocalNetworking':True}}))
+    (app/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'app.sumidoku.desktop-ui-tests','CFBundleExecutable':'DesktopRenderTests','CFBundlePackageType':'APPL','CFBundleShortVersionString':'1.3.0','CFBundleVersion':'1','CFBundleIconFile':'AppIcon.png','NSPrincipalClass':'NSApplication','NSAppTransportSecurity':{'NSAllowsLocalNetworking':True}}))
     shutil.copyfile(ROOT/'macos/service.sh',resources/'service.sh')
+    shutil.copyfile(ROOT/'webui/public/icons/icon-512.png',resources/'AppIcon.png')
     subprocess.run(['xcrun','swiftc','-swift-version','5','-parse-as-library','-D','NATIVE_UI_TESTS','-module-cache-path',str(ROOT/'dist/native/ModuleCache'),*[str(p) for p in (ROOT/'macos/App').glob('*.swift')],str(ROOT/'macos/tests/DesktopRenderTests.swift'),'-o',str(app/'Contents/MacOS/DesktopRenderTests')],env=env,check=True)
     def request(path,body=None,method=None):
         data=json.dumps(body).encode() if body is not None else None

@@ -174,7 +174,7 @@ struct ApplicationUpdatesView: View {
         Form {
             Section {
                 HStack(alignment: .top, spacing: 16) {
-                    Image(systemName: "arrow.down.app").font(.system(size: 32)).foregroundStyle(.teal)
+                    Image(systemName: "arrow.down.app").font(.system(size: 32)).foregroundStyle(DesktopBrand.accent)
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Application Updates").font(.title2.bold())
                         Label { Text(updates.label) } icon: { Circle().fill(updates.color).frame(width: 8, height: 8) }
@@ -215,6 +215,6 @@ struct ApplicationUpdatesView: View {
                     }
                 }
             }
-        }.formStyle(.grouped).padding(12).frame(minWidth: 530, minHeight: 600)
+        }.tint(DesktopBrand.accent).formStyle(.grouped).padding(12).frame(minWidth: 530, minHeight: 600)
     }
 }

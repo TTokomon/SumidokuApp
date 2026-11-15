@@ -112,7 +112,7 @@ export function DesktopSidebar({ collapsed, onToggle, children }: DesktopSidebar
 				aria-label={collapsed ? 'Sumidoku' : undefined}
 				title={collapsed ? 'Sumidoku' : undefined}
 			>
-				<img className="app__logo-mark" src="/desktop-icon.png" alt="" />
+				<img className="app__logo-mark" src="/icon.svg" alt="" />
 				<span className="app__logo-text" hidden={collapsed}>Sumidoku</span>
 			</NavLink>
 			<nav className="side-nav" aria-label={t('layout.primaryNav')}>

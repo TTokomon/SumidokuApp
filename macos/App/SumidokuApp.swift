@@ -532,7 +532,7 @@ struct WelcomeView: View {
             if let error = controller.controlError { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             if let operation = controller.operation { HStack { ProgressView().controlSize(.small); Text(operation) } }
         }
-        .padding(40).frame(maxWidth: 620).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 24)).padding(28).tint(.teal)
+        .padding(40).frame(maxWidth: 620).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 24)).padding(28).tint(DesktopBrand.accent)
         .disabled(controller.operation != nil)
         .onAppear { if let root = controller.library?.root { folder = root } }
     }

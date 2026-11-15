@@ -2149,7 +2149,7 @@ This provides installation and an application shell, not
 offline chapters or offline reading progress.
 Typography uses system stacks through `--font-sans`, `--font-display`,
 `--font-brand` and `--font-mono`; brand marks use the rounded brand stack,
-the desktop presentation uses system sans typography for page titles, content names and controls. `src/styles/desktop.css` applies restrained neutral opaque surfaces and a teal accent after the upstream tokens; CSS does not simulate native Liquid Glass.
+the desktop presentation uses system sans typography for page titles, content names and controls. `src/styles/desktop.css` applies restrained neutral opaque surfaces and a Sumidoku red accent after the upstream tokens; CSS does not simulate native Liquid Glass.
 Colors, radii, shadows and motion come from `src/styles/tokens.css`: three
 surface levels (`--bg`, `--bg-elev`, `--bg-raise` for floating layers), one
 set of easing/duration variables, and `--accent-grad` for primary fills.

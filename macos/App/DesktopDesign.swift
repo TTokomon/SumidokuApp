@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum DesktopBrand {
+    // Existing Sumidoku brand red, shared by native navigation and controls.
+    static let accent = Color(red: 1, green: 47.0 / 255, blue: 82.0 / 255)
+}
+
 struct SurfacePolicy: Equatable {
     enum Material { case liquidGlass, systemMaterial, opaque }
     static func material(majorVersion: Int, reduceTransparency: Bool, increasedContrast: Bool) -> Material {

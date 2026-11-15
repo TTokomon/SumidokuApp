@@ -47,6 +47,12 @@ struct DesktopShell: View {
             List(selection: selection) {
                 Section("Collection") { ForEach(DesktopDestination.collection) { item in destinationRow(item) } }
                 Section("Settings") { ForEach(DesktopDestination.settings) { item in Label(item.title, systemImage: item.symbol).tag(item.id) } }
+            }.safeAreaInset(edge: .top, alignment: .leading) {
+                HStack(spacing: 10) {
+                    Image(nsImage: NSImage(named: NSImage.applicationIconName)!)
+                        .resizable().frame(width: 30, height: 30).accessibilityHidden(true)
+                    Text("Sumidoku").font(.headline)
+                }.padding(.horizontal, 16).padding(.vertical, 10)
             }.listStyle(.sidebar).navigationSplitViewColumnWidth(min: 185, ideal: 215, max: 270)
                 .safeAreaInset(edge: .bottom) {
                     VStack(alignment: .leading, spacing: 10) {
@@ -88,7 +94,7 @@ struct DesktopShell: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .tint(.teal)
+        .tint(DesktopBrand.accent)
         .transaction { if reduceMotion { $0.animation = nil } }
         .onChange(of: controller.nativePanel) { panel in
             if panel != nil { visibility = .all }
@@ -117,6 +123,6 @@ struct NativePreferences: View {
             }.formStyle(.grouped).padding().tabItem { Label("General", systemImage: "gearshape") }.tag("general")
             ServerSettings(controller: controller).tabItem { Label("Server & Account", systemImage: "server.rack") }.tag("server")
             ApplicationUpdatesView(updates: updates).tabItem { Label("Updates", systemImage: "arrow.down.app") }.tag("updates")
-        }.frame(width: 640, height: 690)
+        }.tint(DesktopBrand.accent).frame(width: 640, height: 690)
     }
 }

@@ -51,7 +51,7 @@ app = Path(sys.argv[1])
 info = {
     'CFBundleName': 'Sumidoku', 'CFBundleDisplayName': 'Sumidoku',
     'CFBundleIdentifier': 'app.sumidoku.desktop', 'CFBundleExecutable': 'Sumidoku',
-    'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.3.0', 'CFBundleVersion': '4',
+    'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.3.0', 'CFBundleVersion': '5',
     'LSMinimumSystemVersion': '13.0', 'NSHighResolutionCapable': True,
     'SUEnableAutomaticChecks': False, 'SUAutomaticallyUpdate': False, 'SUAllowsAutomaticUpdates': False,
     'SUVerifyUpdateBeforeExtraction': True, 'SURequireSignedFeed': True,
@@ -68,9 +68,9 @@ PY
 ICONSET="$OUT/AppIcon.iconset"
 mkdir -p "$ICONSET"
 for size in 16 32 128 256 512; do
-  sips -z "$size" "$size" "$ROOT/macos/Assets/DesktopIcon.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+  sips -z "$size" "$size" "$ROOT/webui/public/icons/icon-512.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))
-  sips -z "$double" "$double" "$ROOT/macos/Assets/DesktopIcon.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+  sips -z "$double" "$double" "$ROOT/webui/public/icons/icon-512.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 # Remove only Finder/resource-fork metadata from our generated build product.

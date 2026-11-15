@@ -11,7 +11,7 @@ The visual reference is Aidoku's current content-first library, rounded covers,
 compact controls and reader navigation. The macOS adaptation uses a real sidebar,
 title bar, toolbar, SF Symbols, menus, hover states and keyboard navigation rather
 than an enlarged phone tab bar. System typography, neutral surfaces and a restrained
-teal accent keep covers and reading pages dominant.
+Sumidoku red accent keep covers and reading pages dominant.
 
 References reviewed:
 
@@ -19,8 +19,8 @@ References reviewed:
   and [release notes](https://aidoku.app/release-notes/).
 - [Aidoku GPL-3.0 license](https://github.com/Aidoku/Aidoku/blob/main/LICENSE).
   No Aidoku source code, manga artwork, logos or screenshots were copied into the
-  implementation. The original icon and disposable geometric comic fixtures are
-  independent assets. Existing Sumidoku attribution and license files are retained.
+  implementation. The existing Sumidoku logo/icon is retained; disposable geometric comic fixtures
+  are independent assets. Custom icon design is outside this change. Existing Sumidoku attribution and license files are retained.
 - [Apple: applying Liquid Glass](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views).
 - [Sparkle programmatic SwiftUI integration](https://sparkle-project.org/documentation/programmatic-setup/)
   and [security/distribution setup](https://sparkle-project.org/documentation/).
@@ -194,3 +194,7 @@ comic fixtures, resized for documentation. No personal library data is included.
 The empty-catalog regression was deliberately broken from the committed green
 state: returning green for no published desktop releases failed the targeted test.
 A single-file restore returned all 37 assertions to green.
+
+Branding uses the existing Sumidoku logo and original red theme tokens in both
+light and dark content. Native controls use the same brand red. No custom app-icon
+replacement is shipped.
