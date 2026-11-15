@@ -22,13 +22,40 @@ start_server() {
 }
 stop_server() {
   if launchctl print "$domain/$label" >/dev/null 2>&1; then
+    old_pid=$(launchctl print "$domain/$label" | awk '$1 == "pid" && $2 == "=" { print $3; exit }')
     launchctl bootout "$domain/$label"
+    # A GUI caller can return from bootout before the old runner exits. Wait
+    # for that specific runner so its delayed cleanup cannot remove a new job.
+    if [[ -n "$old_pid" ]]; then
+      for attempt in {1..200}; do
+        kill -0 "$old_pid" 2>/dev/null || return 0
+        sleep 0.2
+      done
+      echo 'The old server is still stopping. Check logs before starting another instance.' >&2
+      return 1
+    fi
   fi
+}
+restart_server() {
+  if ! launchctl print "$domain/$label" >/dev/null 2>&1; then start_server; return; fi
+  old_pid=$(launchctl print "$domain/$label" | awk '$1 == "pid" && $2 == "=" { print $3; exit }')
+  # Keep the existing job registered. Its runner forwards TERM as server SIGINT,
+  # and KeepAlive restarts it after graceful exit, without a bootstrap race.
+  launchctl kill SIGTERM "$domain/$label"
+  for attempt in {1..200}; do
+    new_pid=$(launchctl print "$domain/$label" 2>/dev/null | awk '$1 == "pid" && $2 == "=" { print $3; exit }')
+    if [[ -n "$new_pid" && "$new_pid" != "$old_pid" ]] && curl --silent --fail --max-time 1 http://127.0.0.1:3000/health >/dev/null; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo 'The existing LaunchAgent did not restart in time. Inspect the server logs.' >&2
+  return 1
 }
 case "${1:-status}" in
   start) start_server ;;
   stop) stop_server ;;
-  restart) stop_server; start_server ;;
+  restart) restart_server ;;
   status) launchctl print "$domain/$label" ;;
   open) open -a Safari http://localhost:3000 ;;
   disable) stop_server; launchctl disable "$domain/$label" ;;
