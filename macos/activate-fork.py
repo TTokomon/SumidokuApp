@@ -60,9 +60,22 @@ def prepare_recovery(config, recovery, agent, descriptor, runner, fork):
         private_copy(descriptor, recovery / 'desktop-library.json')
     private_copy(runner, recovery / 'run-server.sh')
     private_copy(fork, recovery / 'previous-fork')
+    private_copy(fork.parent.parent / 'server-build.json', recovery / 'server-build.json')
     if Path('/Applications/Sumidoku.app').exists():
         subprocess.run(['/usr/bin/ditto', '--norsrc', '--noextattr', '/Applications/Sumidoku.app', str(recovery / 'PreviousClient.app')], check=True)
     (recovery / 'KEEP-UNTIL-APPROVED.txt').write_text('Private cold recovery copy. Retain until the upgrade is verified and the owner explicitly approves removal. The official cached executable was not replaced.\n')
+
+
+def restore_previous_runtime(recovery, fork, runner, agent):
+    # Restore the matching runtime before starting the previous LaunchAgent again.
+    shutil.copyfile(recovery / 'LaunchAgent.plist', agent)
+    shutil.copyfile(recovery / 'run-server.sh', runner)
+    runner.chmod(0o700)
+    if (recovery / 'previous-fork').exists():
+        shutil.copyfile(recovery / 'previous-fork', fork)
+        fork.chmod(0o700)
+    if (recovery / 'server-build.json').exists():
+        shutil.copyfile(recovery / 'server-build.json', fork.parent.parent / 'server-build.json')
 
 
 def main():
@@ -150,8 +163,7 @@ def main():
         if config:
             try:
                 service('stop')
-                shutil.copyfile(recovery / 'LaunchAgent.plist', agent)
-                shutil.copyfile(recovery / 'run-server.sh', runner); runner.chmod(0o700)
+                restore_previous_runtime(recovery, fork, runner, agent)
                 service('start')
             except Exception:
                 print('Previous runtime needs recovery from the retained private snapshot.')
