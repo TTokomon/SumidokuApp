@@ -1921,3 +1921,14 @@ password recovery.
   lifecycle tests verify custom owner creation, seed removal, password changes
   across restart, old-password rejection, and explicit recovery preserving
   reading progress, including a temporary launchd job unload/reload.
+
+**Close the embedded web document before graceful desktop server maintenance.**
+Stopping a WKWebView's navigation alone does not close an established EventSource.
+Replace the document and wait for blank navigation before stopping/restarting the
+server or taking a cold credential-recovery snapshot. Leave ordinary app quit and
+sign-out independent of the server lifecycle.
+- Evidence: 2026-11-14, the signed-in WKWebView lifecycle test kept an SSE connection
+  alive and delayed a disposable launchd job's graceful exit. Shared native document
+  teardown released it; custom credentials, restart, recovery and unload/reload then
+  passed with the real temporary job. Failure injection after actual server readiness
+  also verified that rollback removes only newly owned setup files.
