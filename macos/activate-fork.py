@@ -15,6 +15,7 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
+APPLICATION_PROCESS_PATTERN = r'^/Applications/Sumidoku[.]app/Contents/MacOS/Sumidoku( |$)'
 
 
 def digest(path):
@@ -66,16 +67,29 @@ def prepare_recovery(config, recovery, agent, descriptor, runner, fork):
     (recovery / 'KEEP-UNTIL-APPROVED.txt').write_text('Private cold recovery copy. Retain until the upgrade is verified and the owner explicitly approves removal. The official cached executable was not replaced.\n')
 
 
+def atomic_copy(source, target, mode=0o700):
+    # Replacing a Mach-O file needs a new inode: in-place copies can leave the
+    # kernel's cached code-signing pages inconsistent with the new executable.
+    target = Path(target)
+    temporary = target.with_name('.' + target.name + '-' + uuid.uuid4().hex)
+    try:
+        shutil.copyfile(source, temporary)
+        temporary.chmod(mode)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def restore_previous_runtime(recovery, fork, runner, agent):
     # Restore the matching runtime before starting the previous LaunchAgent again.
-    shutil.copyfile(recovery / 'LaunchAgent.plist', agent)
-    shutil.copyfile(recovery / 'run-server.sh', runner)
+    atomic_copy(recovery / 'LaunchAgent.plist', agent, 0o600)
+    atomic_copy(recovery / 'run-server.sh', runner)
     runner.chmod(0o700)
     if (recovery / 'previous-fork').exists():
-        shutil.copyfile(recovery / 'previous-fork', fork)
+        atomic_copy(recovery / 'previous-fork', fork)
         fork.chmod(0o700)
     if (recovery / 'server-build.json').exists():
-        shutil.copyfile(recovery / 'server-build.json', fork.parent.parent / 'server-build.json')
+        atomic_copy(recovery / 'server-build.json', fork.parent.parent / 'server-build.json', 0o600)
 
 
 def main():
@@ -111,10 +125,10 @@ def main():
             raise RuntimeError('An existing untracked installation needs review; nothing was replaced.')
         backups = home / 'Library/Application Support/Sumidoku Runtime Recovery'
     # Quit only this client and wait for WebKit's stream to close before stopping.
-    if subprocess.run(['/usr/bin/pgrep', '-f', '^/Applications/Sumidoku.app/Contents/MacOS/Sumidoku$'], stdout=subprocess.DEVNULL).returncode == 0:
+    if subprocess.run(['/usr/bin/pgrep', '-f', APPLICATION_PROCESS_PATTERN], stdout=subprocess.DEVNULL).returncode == 0:
         subprocess.run(['/usr/bin/osascript', '-e', 'tell application id "app.sumidoku.desktop" to quit'], check=True)
         for _ in range(100):
-            if subprocess.run(['/usr/bin/pgrep', '-f', '^/Applications/Sumidoku.app/Contents/MacOS/Sumidoku$'], stdout=subprocess.DEVNULL).returncode != 0:
+            if subprocess.run(['/usr/bin/pgrep', '-f', APPLICATION_PROCESS_PATTERN], stdout=subprocess.DEVNULL).returncode != 0:
                 break
             time.sleep(0.1)
         else:
@@ -132,11 +146,11 @@ def main():
     baseline = identity(config) if config else None
     try:
         fork.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        shutil.copyfile(payload, fork)
+        atomic_copy(payload, fork)
         fork.chmod(0o700)
-        shutil.copyfile(ROOT / 'macos/run-server.sh', runner)
+        atomic_copy(ROOT / 'macos/run-server.sh', runner)
         runner.chmod(0o700)
-        shutil.copyfile(ROOT / 'dist/fork/server-build.json', support / 'server-build.json')
+        atomic_copy(ROOT / 'dist/fork/server-build.json', support / 'server-build.json', 0o600)
         if config:
             # Explicit requested metadata-only behavior; all other settings remain.
             with sqlite3.connect(config / 'sumidoku.db') as db:
