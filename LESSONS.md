@@ -1960,3 +1960,14 @@ keep personal libraries out of public screenshots.
   content. Own-window system captures showed the complete shell and exposed a
   reader-to-settings navigation defect; the final fixture pass covers light/dark,
   reader/settings navigation and four native material/accessibility variants.
+
+**A rebuilt ad-hoc executable can need fresh macOS folder authorization.**
+A healthy previous build does not establish Documents access for a new code
+identity. Preserve private cold recovery copies, keep the same managed service,
+and allow time for the system prompt rather than repeatedly replacing a runtime
+or altering privacy settings. Distinguish authorization failure from database
+corruption; no database rollback is implied.
+- Evidence: 2026-11-15, the privacy log reported a failed code-requirement match
+  for Documents and a pending authorization request during desktop activation.
+  Explicit system approval restored startup. Final native login, normal service
+  restart and ten protected-table fingerprints passed without replacing the database.
