@@ -118,6 +118,25 @@ test('collapsing keeps the sidebar toggle at the same spot', async () => {
 });
 
 
+test('Source Lists stays visible inside the grouped Settings page without losing hidden panels', async () => {
+	const vite = await createServer({
+		root: fileURLToPath(new URL('../', import.meta.url)),
+		configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true }
+	});
+	try {
+		const { SettingsLayout, SETTINGS_GROUPS } = await vite.ssrLoadModule('/src/pages/settings/SettingsLayout.tsx');
+		const panels = Object.fromEntries(SETTINGS_GROUPS.map(([id]: [string]) => [id, createElement('span', null, id)]));
+		const markup = renderToStaticMarkup(createElement(SettingsLayout, {
+			current: 'source-lists', onSelect: () => {}, panels
+		}));
+		assert.equal((markup.match(/data-settings-category=/g) ?? []).length, 5);
+		assert.match(markup, /data-settings-group="source-lists"[^>]*aria-current="page"/);
+		assert.match(markup, /data-settings-group="trackers"/);
+		assert.equal((markup.match(/data-settings-panel=/g) ?? []).length, 8);
+		assert.match(markup, /data-settings-panel="source-lists">/);
+	} finally { await vite.close(); }
+});
+
 test('five Settings categories preserve every historical deep link', async () => {
 	const vite = await createServer({
 		root: fileURLToPath(new URL('../', import.meta.url)),
