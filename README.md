@@ -1,6 +1,6 @@
 # Sumidoku
 
-For this fork’s native Apple Silicon installation, local-only login service, backups, and Safari Dock setup, see [macOS setup](docs/MACOS_SETUP.md). The helpers run the official release and existing UI without Docker or rebuilding.
+For this fork’s native Apple Silicon installation, local-only login service, backups, and native desktop application, see [macOS setup](docs/MACOS_SETUP.md). The helpers run the official release and existing UI without Docker or rebuilding the server/frontend. [Sumidoku.app](docs/NATIVE_APP.md) is a standalone SwiftUI/WKWebView client for the same server.
 
 [![CI](https://github.com/Sumidoku/Sumidoku/actions/workflows/ci.yml/badge.svg)](https://github.com/Sumidoku/Sumidoku/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/Sumidoku/Sumidoku)](https://github.com/Sumidoku/Sumidoku/releases)

@@ -4,22 +4,17 @@ This fork adds installation and service helpers under `macos/`. It runs the offi
 
 ## Open Sumidoku
 
-Open **http://localhost:3000** in Safari. Sign in as **admin**. The generated password is in the private local file:
+Open **Sumidoku.app** from Applications or the Dock. The genuine SwiftUI/WKWebView desktop client uses the existing server and interface, with native status/start/restart controls. See [native application instructions and verification](NATIVE_APP.md).
+
+Sign in as **admin** with the existing password in the private local file. The app does not read or reveal it:
 
 ```sh
 open -e "$HOME/Library/Application Support/Sumidoku/config.toml"
 ```
 
-Read `password` under `[auth]`. Do not paste this file into GitHub, chat, or shell commands. Change this value in the private file and restart if you want a different password. The configured value is reapplied on every boot, so a password changed only in the web UI would be reset at the next restart.
+Do not paste this file into GitHub, chat, or shell commands. The configured password is reapplied on server boot, so a change only in the web UI would be reset at the next restart. The server also remains accessible at **http://localhost:3000** when a browser is deliberately desired; Safari is not required to use the desktop app.
 
-To make it a standalone Dock app:
-
-1. Open **http://localhost:3000** in Safari and sign in.
-2. Choose **File → Add to Dock** (or Share → Add to Dock).
-3. Name it **Sumidoku**, keep the local address, and click **Add**.
-4. Open Sumidoku from the Dock; sign in again there if needed.
-
-This uses [Safari's existing web-app feature](https://support.apple.com/en-us/104996). Adding the Dock item is a manual step. The server's LaunchAgent starts independently when the macOS user logs in. Closing the Dock window does not stop the server. After a restart, sign into macOS before opening it; the server is not a system-wide boot daemon.
+The LaunchAgent starts independently at macOS login. Quitting the desktop client does not stop the server or backups. A real logout/login auto-start cycle has not been observed here.
 
 ## Installed locations
 
@@ -67,7 +62,7 @@ Run these from the checkout:
 ./macos/service.sh enable
 ```
 
-`stop` unloads the job for the current login; the plist remains for the next login. `disable` additionally disables its launchd label across logins. `enable` reverses that and starts it. Repeated `start` calls reuse the loaded job. Start/restart waits for the health endpoint, and restart retries the short unload/reload race in launchd. Do not launch a second server manually on the same data directory.
+`stop` unloads the job for the current login; the plist remains for the next login. `disable` additionally disables its launchd label across logins. `enable` reverses that and starts it. Repeated `start` calls reuse the loaded job. Start waits for the health endpoint. Restart gracefully signals the retained LaunchAgent and waits for a new healthy runner; stop waits for the previous runner to exit. Do not launch a second server manually on the same data directory.
 
 The runner forwards termination to the server as **SIGINT**, which the shipped server handles for graceful shutdown. `KeepAlive` restarts an unexpected exit; `ThrottleInterval` limits restart loops. The job runs in the current user's GUI launchd domain and uses no root daemon. Inspect logs with:
 
@@ -151,7 +146,7 @@ Validated 2026-11-14 against official **1.23.3**; fork baseline **53d823cd560061
 
 Passed: release SHA-256; native ARM64 executable startup; health/version; launchd load and restart; one loopback listener; private file permissions; authenticated API access and anonymous rejection; persisted metadata-only settings; initial scheduled backup; existing sign-in UI rendering; existing library/category UI rendering against disposable data; fixture repository installation and source setting readback; synthetic `.aib` dry-run rollback/import with skip reports; category/page-progress preservation; JSON export and restore to a fresh disposable instance; restart persistence; invalid-version backup rejection with library unchanged; zero chapter downloads; checkpoint rejection/non-overwrite test; shell syntax checks.
 
-Not performed: personal `.aib` import, external real-source connectivity/site login, full historical session migration (unsupported), elapsed 24-hour scheduling/retention pruning, real logout/login auto-start, off-device backup, Safari Dock creation, or manual login in the permanent browser. The permanent library remains empty. No Aidoku application/data, AidokuBlue project, or unrelated checkout was modified by this setup.
+Not performed: personal `.aib` import, external real-source connectivity/site login, full historical session migration (unsupported), elapsed 24-hour scheduling/retention pruning, real logout/login auto-start, off-device backup, manual login in the permanent client. The native app and Dock entry are now installed; see the native-app verification record for those checks. The permanent library remains empty. No Aidoku application/data, AidokuBlue project, or unrelated checkout was modified by this setup.
 
 Re-run the focused checks without rebuilding the application:
 
