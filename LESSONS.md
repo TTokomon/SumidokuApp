@@ -1971,3 +1971,15 @@ corruption; no database rollback is implied.
   for Documents and a pending authorization request during desktop activation.
   Explicit system approval restored startup. Final native login, normal service
   restart and ten protected-table fingerprints passed without replacing the database.
+
+**Recheck automatic-update eligibility at the metadata write, through the owning settings API.**
+A scheduler's initial reference count can become stale while a package downloads.
+Keep candidate bytes separate from the active package, then check source version,
+origin, enabled state, current opt-in and manga references at the guarded write.
+Use typed settings access inside that write transaction rather than reading its
+table from an unrelated module. Do not execute candidate package code before
+eligibility is accepted.
+- Evidence: 2026-11-15, integration review added deterministic download gates that
+  register manga or disable updates mid-flight. Both cases retained the old package.
+  The ownership regression caught a direct settings-table read; typed access within
+  the source metadata transaction passed the complete workspace suite.
