@@ -61,7 +61,7 @@ pub(crate) fn manifest_key(doc: &serde_json::Value) -> Result<String, String> {
 	if !valid_source_key(&key) {
 		return Err(format!("invalid source key {key:?}"));
 	}
-	if key == crate::model::LOCAL_SOURCE_KEY {
+	if ["local.", "opds.", "komga.", "kavita.", "suwayomi."].iter().any(|prefix| key.starts_with(prefix)) {
 		return Err(format!("source key {key:?} is reserved for the built-in local source"));
 	}
 	Ok(key)
@@ -100,6 +100,23 @@ pub async fn scan_sources_dir(state: &AppState, dir: &Path) -> ApiResult<ScanOut
 			.file_name()
 			.map(|n| n.to_string_lossy().into_owned())
 			.unwrap_or_else(|| path.display().to_string());
+		// Retained source identities are intentional package-only uninstalls.
+		// A stale sideload directory must not silently resurrect one on scan.
+		let manifest = if path.is_dir() {
+			tokio::fs::read(path.join("source.json")).await.ok().and_then(|raw|serde_json::from_slice::<serde_json::Value>(&raw).ok())
+		} else {
+			let manifest_path=path.clone();
+			tokio::task::spawn_blocking(move || {
+				use aidoku_wasm::package::{JSON_ENTRY_MAX, MANIFEST_ENTRY, read_zip_entry};
+				let mut archive=zip::ZipArchive::new(std::fs::File::open(manifest_path).ok()?).ok()?;
+				let raw=read_zip_entry(&mut archive,MANIFEST_ENTRY,JSON_ENTRY_MAX).ok()?;
+				serde_json::from_slice::<serde_json::Value>(&raw).ok()
+			}).await.ok().flatten()
+		};
+		if let Some(key)=manifest.as_ref().and_then(|doc|manifest_key(doc).ok()) {
+			let uninstalled:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM source WHERE key=? AND kind='aidoku' AND wasm_path='')").bind(key).fetch_one(&state.pool).await?;
+			if uninstalled { outcome_report.skipped.push(SkippedSource { dir:dir_name, reason:"source intentionally uninstalled; reinstall explicitly".into() }); continue; }
+		}
 		let result = if path.is_dir() {
 			scan_one_dir(state, &path).await
 		} else {

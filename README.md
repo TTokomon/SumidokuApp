@@ -1,105 +1,63 @@
-# Sumidoku
+# Sumidoku Desktop
 
-For this fork’s native Apple Silicon installation, local-only login service, backups, and native desktop application, see [macOS setup](docs/MACOS_SETUP.md). The helpers run the official release and existing UI without Docker or rebuilding the server/frontend. [Sumidoku.app](docs/NATIVE_APP.md) is a standalone SwiftUI/WKWebView client for the same server.
+**A native macOS home for your self-hosted manga library, powered by [Sumidoku](https://github.com/Sumidoku/Sumidoku).**
 
-[![CI](https://github.com/Sumidoku/Sumidoku/actions/workflows/ci.yml/badge.svg)](https://github.com/Sumidoku/Sumidoku/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/release/Sumidoku/Sumidoku)](https://github.com/Sumidoku/Sumidoku/releases)
-[![docker pulls](https://img.shields.io/docker/pulls/sumidoku/sumidoku)](https://hub.docker.com/r/sumidoku/sumidoku)
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+Sumidoku Desktop is an independent macOS application project built around the open-source Sumidoku server and its existing manga-reading interface. It aims to make local setup, library management, sources, and backups feel like using a regular Mac app—without Docker or a browser tab.
 
-Self-hosted manga server: Aidoku WASM and OPDS sources, REST API, shipped as a single binary or a Docker image.
+> **Development status:** The native app and first-run setup are implemented in [draft PR #1](https://github.com/TTokomon/SumidokuApp/pull/1), **not yet merged into `main` or published as a signed release**. This default branch still contains the upstream Sumidoku server. Built-in Sources, live Suwayomi library connectivity and Settings → Source Lists are implemented on the draft branch; fixture and native WebKit verification are documented below. This is a community derivative, not an official Sumidoku release.
 
-![Library](docs/images/library.png)
-![Source repositories](docs/images/source-repos.png)
+## What we're building
 
-## Features
+- **Native Mac experience:** a SwiftUI application with a dedicated window using WKWebView to show Sumidoku's existing interface.
+- **Guided first run:** create a local library, choose an owner username/password, and select where its data is stored; reconnect to an existing installation without overwriting it.
+- **Self-hosted by default:** one local Sumidoku server, a persistent library, native service controls, and localhost-only access by default.
+- **Metadata-first library:** save manga, categories, progress, and source references; chapter downloads remain optional rather than automatic.
+- **Backup and recovery:** scheduled metadata backups and an Aidoku `.aib` import flow, with explicit import previews and preservation of original backups.
 
-- **Aidoku WASM sources** — run source packages from any Aidoku-compatible
-  repository: listings, search, filters, source home pages, settings,
-  JavaScript execution, canvas drawing, and partial-result streaming all
-  work server-side.
-- **Source repositories** — add Aidoku-style source repos, browse with
-  language/NSFW filters, one-click install and update.
-- **Local source** — a built-in source reads manga straight from a local
-  directory (`<manga>/<chapter>` image folders or CBZ files), with
-  `ComicInfo.xml` metadata and cover fallback.
-- **OPDS sources** — add Komga, Kavita, Calibre-Web and other OPDS 1.2 or
-  2.0 catalogs as sources, with optional per-catalog credentials.
-- **Library and reading** — categories and Aidoku-style filter groups
-  (saved rule sets over reading state, source, content rating and
-  category), reading progress, history, chapter downloads, and scheduled
-  library updates.
-- **Cloudflare bypass** — an optional [trawl](https://github.com/germondai/trawl)
-  sidecar solves a challenged host once, then keeps routing it through trawl.
-- **Real-browser login** — the same trawl sidecar doubles as the webview
-  browser backend, cookies landing in the source's session.
-- **Single-owner authentication** — off by default; once an admin
-  password is set, username + password login guards the web UI and REST API.
-  One built-in admin owns all data, with session tokens and long-lived API keys.
-- **Backup and migration** — versioned JSON backup, scheduled backups with
-  retention, and imports from Aidoku (`.aib`) and Suwayomi/Mihon
-  (`.tachibk`, `.proto.gz`).
+## Sources
 
-## macOS application
+The draft application separates **Built-in Sources** from **External Sources**:
 
-Open Sumidoku.app to **Create New Library** with your own local owner credentials
-and storage folder, or **Sign In** to an existing library. Native Settings manages
-the server and account; the existing manga interface remains embedded in its own
-window. See [native installation and onboarding](docs/NATIVE_APP.md).
-
-## Quick start
-
-```sh
-docker compose up -d
-```
-
-The compose file pulls the published `sumidoku/sumidoku:latest` image and mounts `./config` and `./downloads`. Open http://localhost:3000. The same image is published to GitHub Container Registry as `ghcr.io/sumidoku/sumidoku`; point the compose `image:` at either.
-
-| Volume | Purpose |
+| Source | Support and status |
 | --- | --- |
-| `/config` | database, settings, cover cache, source packages |
-| `/downloads` | downloaded chapters |
+| **Local Files** | Setup/test/edit forms reuse upstream local folders and supported archives |
+| **Komga** | Setup/test/edit forms reuse upstream OPDS catalogs |
+| **Kavita** | Setup/test/edit forms reuse upstream OPDS catalogs |
+| **Suwayomi** | Implemented live GraphQL saved-library browsing and reading, with public/HTTP Basic access; separate from backup import. Extension management, JWT/OIDC and remote progress sync are not implemented |
+| **External Aidoku sources** | Supported by upstream through compatible repository indexes and `.aix` packages |
+| **Settings → Source Lists** | Implemented GitHub/published-index discovery, naming, browse/filter, confirmed install, refresh/update and explicit subscription/package removal choices; remains in the draft PR |
 
-Everything runs with defaults; the full configuration reference (environment variables, `config.toml`, precedence) lives in [docs/configuration.md](docs/configuration.md).
+Not every GitHub repository is an installable manga source. A compatible source index or package is required. An Aidoku backup may reference source IDs that must be installed before its manga and progress can be imported.
 
-## Windows desktop
+## macOS development and installation
 
-The release also ships a portable Windows app: download `sumidoku_<version>_x86_64-pc-windows-msvc.zip` from the [latest release](https://github.com/Sumidoku/Sumidoku/releases/latest), extract it anywhere and run `sumidoku-server.exe`. It listens on http://localhost:3000 only, keeps its data under `%LOCALAPPDATA%\Sumidoku`, and sits in the notification area — a left click (or Open) opens the web UI, and the menu offers the data and log folders, Start with Windows, and Exit. Started as a service or scheduled task it stays headless and takes the same configuration channels as any other install.
+The desktop implementation and its verified local setup are documented on the active feature branch:
 
-## Installing sources
+- [Native macOS app, onboarding, build, and verification](https://github.com/TTokomon/SumidokuApp/blob/feat/native-macos-setup/docs/NATIVE_APP.md)
+- [Local server setup, data, backups, and Aidoku import limitations](https://github.com/TTokomon/SumidokuApp/blob/feat/native-macos-setup/docs/MACOS_SETUP.md)
+- [Source integration contracts, fork build/update process and tests](docs/SOURCE_INTEGRATIONS.md)
+- [Draft PR #1: development progress](https://github.com/TTokomon/SumidokuApp/pull/1)
 
-Drop `.aix` source packages (or extracted source directories) into `./config/sources`, then press the scan button on the web UI's browse page (or `POST /api/v1/sources/scan`). You can also add an Aidoku-compatible source repository from the browse page and install sources from it directly.
+The current local build targets Apple Silicon macOS. It uses **ad-hoc code signing** for development and is **not notarized for public distribution**. There is no public downloadable macOS installer yet.
 
-## OPDS sources
+## Principles
 
-Use the browse page to add Komga, Kavita, Calibre-Web or other OPDS 1.2/2.0 catalogs as sources. Multiple catalogs can be added, with optional per-catalog credentials. Sumidoku consumes these catalogs but does not expose an OPDS API.
+1. **Keep ownership local.** No required external cloud account or hosted manga storage.
+2. **Don't silently download chapters.** Online reading and optional offline downloads are different actions.
+3. **Protect libraries.** Never overwrite an existing database or discard unmatched manga during import without clear reporting and confirmation.
+4. **Build on upstream.** Reuse Sumidoku's existing reader, server, source runtime, and APIs rather than maintaining a redundant frontend.
+5. **Be clear about compatibility.** Importing an Aidoku backup does not automatically sync an iPhone/iPad Aidoku installation with the server.
 
-## Documentation
+## Development and contributing
 
-- [docs/configuration.md](docs/configuration.md) — environment variables, `config.toml`, precedence
-- [docs/authentication.md](docs/authentication.md) — the auth model, credentials and token details
-- [docs/sidecars.md](docs/sidecars.md) — trawl (Cloudflare bypass and webview login) setup
-- [docs/backup.md](docs/backup.md) — backup format, scheduled backups, and the Aidoku/Suwayomi import paths
-- [docs/architecture.md](docs/architecture.md) — the technical contract: API surface, WASM runtime, data flow
+This repository currently carries the upstream Sumidoku source tree alongside the macOS client work in its draft branch. Changes to the core server should remain clearly separated from macOS packaging and integration features, so upstream updates can be reviewed and incorporated safely.
 
-## Local build
+Issue reports and PRs are welcome. Please include reproduction steps, the macOS version, and relevant **redacted** logs; do not upload passwords, private backups, source credentials, or database files.
 
-The web UI is embedded into the binary at compile time, so it must be built first:
+For the original server's features, Docker and Rust development instructions, see [the preserved upstream README](UPSTREAM.md) and [Sumidoku upstream](https://github.com/Sumidoku/Sumidoku).
 
-```sh
-cd webui && npm ci && npm run build && cd ..
-cargo build --release -p sumidoku-server
-```
+## Credits and license
 
-## Development
+**Sumidoku Desktop** is built on [Sumidoku](https://github.com/Sumidoku/Sumidoku), an open-source self-hosted manga server. The original Sumidoku project and its authors retain credit for the underlying server and web interface. This project is independently maintained and is not endorsed by the upstream maintainers.
 
-- `cargo nextest run --workspace` — test suite
-- `cd webui && npm run dev` — Vite dev server, proxying API calls to the server on :3000
-
-## Contributing
-
-Issues and pull requests are welcome. The project is built and maintained by agent sessions — [AGENTS.md](AGENTS.md) is the entry point for how that works, and [docs/contributors.md](docs/contributors.md) describes how community PRs are triaged and reviewed.
-
-## License
-
-MIT
+The repository's code is governed by its applicable existing licenses; see [LICENSE](LICENSE) and any bundled third-party license notices.

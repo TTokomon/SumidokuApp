@@ -154,6 +154,7 @@ pub async fn load_defaults(pool: &SqlitePool, source_id: i64) -> ApiResult<HashM
 			.await?;
 	let mut defaults = HashMap::new();
 	for (key, raw) in rows {
+		if key == crate::internal::integration::SETTINGS_KEY { continue; }
 		match serde_json::from_str::<DefaultValue>(&raw) {
 			Ok(value) => {
 				defaults.insert(key, value);

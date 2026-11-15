@@ -12,8 +12,8 @@ c6fcd267ab03cc456199fbc556ed1b7b8b49c41f8c0858f63e90b7eeb05318a1
 ```
 
 The packaged server binary SHA-256 is checked separately by the native build.
-No Docker, Rust build, npm install or additional runtime package is needed. The
-native client uses only macOS frameworks and the official executable.
+For the official-only base build, no Docker, Rust build, npm install or additional runtime package is needed. The
+native client uses only macOS frameworks at runtime. The optional [source integrations fork](SOURCE_INTEGRATIONS.md) requires a one-time Rust/web UI build and runs a separately named executable through the same service; it preserves the cached official binary.
 
 ## Storage and controls
 

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import {
 	useDeleteSourceRepo,
 	useInstallRepoSource,
+	useRenameSourceRepo,
 	useRefreshSourceRepo,
 	useRepoSources,
 	useSourceRepos,
@@ -109,11 +110,13 @@ function RepoList({
 	repos,
 	onRefresh,
 	onDelete,
+	onRename,
 	refreshPending
 }: {
 	repos: SourceRepo[];
 	onRefresh: (r: SourceRepo) => void;
 	onDelete: (r: SourceRepo) => void;
+	onRename: (r: SourceRepo) => void;
 	refreshPending: boolean;
 }) {
 	const { t } = useTranslation();
@@ -131,6 +134,7 @@ function RepoList({
 							{r.fetchedAt ? t('reposPanel.fetchedAt', { time: relativeTime(r.fetchedAt) }) : ''}
 						</div>
 					</div>
+					<Button onClick={() => onRename(r)}>Rename</Button>
 					<IconButton
 						label={t('reposPanel.refresh', { name: repoTitle(r.url, r.name) })}
 						onClick={() => onRefresh(r)}
@@ -151,15 +155,24 @@ function RepoList({
 	);
 }
 
-export default function ReposPanel() {
+export default function ReposPanel({ manage = true }: { manage?: boolean }) {
 	const { t } = useTranslation();
 	const repos = useSourceRepos();
 	const delRepo = useDeleteSourceRepo();
 	const refreshRepo = useRefreshSourceRepo();
 	const [pendingDelete, setPendingDelete] = useState<SourceRepo | null>(null);
 	const [expanded, setExpanded] = useState(false);
+	const rename = useRenameSourceRepo();
+	const batch = useInstallRepoSource();
+	const [renameTarget, setRenameTarget] = useState<SourceRepo | null>(null);
+	const [renameName, setRenameName] = useState('');
+	const [uninstallSources, setUninstallSources] = useState(false);
+	const [selected, setSelected] = useState<string[]>([]);
+	const [batchConfirm, setBatchConfirm] = useState(false);
+	const [batchReport, setBatchReport] = useState('');
 
 	const [query, setQuery] = useState('');
+	const [repoFilter, setRepoFilter] = useState('');
 	const [langs, setLangs] = useState<string[]>(loadRepoLangs);
 	const [ratings, setRatings] = useState<number[]>(() =>
 		CONTENT_RATING_LEVELS.map((level) => level.value)
@@ -226,7 +239,7 @@ export default function ReposPanel() {
 	async function confirmDelete() {
 		if (!pendingDelete) return;
 		try {
-			await delRepo.mutateAsync(pendingDelete.id);
+			await delRepo.mutateAsync({ id: pendingDelete.id, uninstallSources });
 			pushToast(t('reposPanel.repoDeleted', { name: repoTitle(pendingDelete.url, pendingDelete.name) }), 'info');
 			setPendingDelete(null);
 		} catch {
@@ -234,6 +247,17 @@ export default function ReposPanel() {
 		}
 	}
 
+	const filteredEntries = (entries.data ?? []).filter((entry) => !repoFilter || String(entry.repoId) === repoFilter);
+	const selectedEntries = filteredEntries.filter((entry) => selected.includes(`${entry.repoId}:${entry.key}`) && entry.installedId === null);
+	async function installSelected() {
+		const failures: string[] = [];
+		for (const entry of selectedEntries) {
+			try { await batch.mutateAsync({ repoId: entry.repoId, sourceKey: entry.key }); }
+			catch { failures.push(`${entry.repoId}:${entry.key}`); }
+		}
+		setSelected(failures); setBatchConfirm(false);
+		setBatchReport(failures.length ? `Some sources could not be installed: ${failures.join(', ')}. Completed installs were kept; retry the remaining selections.` : 'Selected sources installed. No chapters downloaded.');
+	}
 	return (
 		<div className="repos">
 			{repos.isPending ? (
@@ -250,13 +274,14 @@ export default function ReposPanel() {
 				/>
 			) : (
 				<>
-					<RepoList
+					{manage && <RepoList
 						repos={(repos.data ?? []).slice(0, expanded ? undefined : COLLAPSED_COUNT)}
 						onRefresh={onRefresh}
-						onDelete={setPendingDelete}
+						onDelete={(repo) => { setUninstallSources(false); setPendingDelete(repo); }}
+						onRename={(repo) => { setRenameTarget(repo); setRenameName(repoTitle(repo.url, repo.name)); }}
 						refreshPending={refreshRepo.isPending}
-					/>
-					{(repos.data ?? []).length > COLLAPSED_COUNT && (
+					/>}
+					{manage && (repos.data ?? []).length > COLLAPSED_COUNT && (
 						<button
 							type="button"
 							className="repos__expand"
@@ -276,7 +301,13 @@ export default function ReposPanel() {
 						</button>
 					)}
 
+					{selectedEntries.length > 0 && <Button onClick={() => setBatchConfirm(true)}>Install selected sources ({selectedEntries.length})…</Button>}
+					{batchReport && <p role="status">{batchReport}</p>}
 					<div className="repos__filters">
+						<label>Source List <select aria-label="Source List" value={repoFilter} onChange={(e) => { setRepoFilter(e.currentTarget.value); setSelected([]); }}>
+							<option value="">All Source Lists</option>
+							{(repos.data ?? []).map((repo) => <option key={repo.id} value={repo.id}>{repoTitle(repo.url, repo.name)}</option>)}
+						</select></label>
 						<Input
 							icon={<Search size={15} />}
 							type="search"
@@ -315,12 +346,13 @@ export default function ReposPanel() {
 								<Skeleton key={i} height={82} style={{ borderRadius: 'var(--r-md)' }} />
 							))}
 						</div>
-					) : (entries.data ?? []).length === 0 ? (
+					) : filteredEntries.length === 0 ? (
 						<EmptyState icon={Search} title={t('reposPanel.noMatch')} hint={t('reposPanel.noMatchHint')} />
 					) : (
 						<div className="source-list">
-							{(entries.data ?? []).map((entry) => (
+							{filteredEntries.map((entry) => (
 								<div key={`${entry.repoId}:${entry.key}`} className="source-card">
+									{entry.installedId === null && <input type="checkbox" aria-label={`Select ${entry.name} (${entry.key}) from ${entry.repoName ?? entry.repoId}`} checked={selected.includes(`${entry.repoId}:${entry.key}`)} onChange={(event) => { const checked = event.currentTarget.checked; const key = `${entry.repoId}:${entry.key}`; setSelected((old) => checked ? [...old.filter((item) => !item.endsWith(`:${entry.key}`)), key] : old.filter((item) => item !== key)); }} />}
 									<EntryIcon entry={entry} />
 									<div className="source-card__main">
 										<div className="source-card__name">
@@ -389,7 +421,16 @@ export default function ReposPanel() {
 					</>
 				}
 			>
-				<p className="muted">{t('reposPanel.deleteHint')}</p>
+				<p>Removing a subscription and uninstalling its packages are separate choices. Library entries, categories and reading progress are preserved in both cases.</p>
+				<label><input type="radio" name="remove-list" checked={!uninstallSources} onChange={() => setUninstallSources(false)} /> Remove subscription only; keep installed sources</label>
+				<label><input type="radio" name="remove-list" checked={uninstallSources} onChange={() => setUninstallSources(true)} /> Also uninstall its packages; retain library and progress for an exact-ID reinstall</label>
+			</Modal>
+			<Modal open={renameTarget !== null} title="Rename Source List" onClose={() => setRenameTarget(null)} footer={<Button loading={rename.isPending} onClick={() => { if (renameTarget) void rename.mutateAsync({ id: renameTarget.id, name: renameName }).then(() => setRenameTarget(null)).catch(() => {}); }}>Save Name</Button>}>
+				<Input aria-label="Source list name" value={renameName} onChange={(e) => setRenameName(e.currentTarget.value)} />
+			</Modal>
+			<Modal open={batchConfirm} title="Install Selected Sources" onClose={() => setBatchConfirm(false)} footer={<Button loading={batch.isPending} onClick={() => void installSelected()}>Confirm Installation</Button>}>
+				<p>Install only these selected packages. This does not download manga chapters.</p>
+				<ul>{selectedEntries.map((entry) => <li key={`${entry.repoId}:${entry.key}`}>{entry.key} · {entry.repoName ?? entry.repoId} · v{entry.version}</li>)}</ul>
 			</Modal>
 		</div>
 	);

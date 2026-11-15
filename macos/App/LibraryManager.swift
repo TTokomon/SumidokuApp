@@ -260,7 +260,7 @@ final class LibraryManager: @unchecked Sendable {
     func validateAgent(_ library: LocalLibrary) throws {
         let plist = try PropertyListSerialization.propertyList(from: Data(contentsOf: agent), format: nil) as? [String: Any]
         let args = plist?["ProgramArguments"] as? [String]
-        let regular = args == ["/bin/bash", runner.path, library.config.path]
+        let regular = args == ["/bin/bash", runner.path, library.config.path, binary.path] || args == ["/bin/bash", runner.path, library.config.path]
         let legacy = args == ["/bin/bash", runner.path] && library.config.path == support.path
             && plist?["WorkingDirectory"] as? String == support.path
         guard regular || legacy else { throw LibraryFailure(text: "A different Sumidoku LaunchAgent exists. It was not replaced.") }
@@ -273,7 +273,7 @@ final class LibraryManager: @unchecked Sendable {
         let logs = home.appendingPathComponent("Library/Logs/Sumidoku")
         try privateDirectory(logs)
         let plist: [String: Any] = ["Label": "app.sumidoku.server",
-            "ProgramArguments": ["/bin/bash", runner.path, library.config.path],
+            "ProgramArguments": ["/bin/bash", runner.path, library.config.path, binary.path],
             "WorkingDirectory": library.config.path, "RunAtLoad": true, "KeepAlive": true,
             "ThrottleInterval": 10, "ExitTimeOut": 30, "ProcessType": "Background", "Umask": 0o077,
             "StandardOutPath": logs.appendingPathComponent("server.log").path,

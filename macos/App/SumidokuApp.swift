@@ -19,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @MainActor
-final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandlerWithReply {
     static let address = URL(string: "http://127.0.0.1:3000")!
     @Published var available = false
     @Published var checking = true
@@ -47,7 +47,10 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         session = URLSession(configuration: network)
         let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Sumidoku/bin")
         let helper = Bundle.main.url(forResource: "service", withExtension: "sh")!
-        manager = injectedManager ?? LibraryManager(binary: support.appendingPathComponent("sumidoku-server"),
+        let runtime = Bundle.main.url(forResource: "server-build", withExtension: "json")
+            .flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let executable = runtime?["variant"] as? String == "fork" ? "sumidoku-server-fork" : "sumidoku-server"
+        manager = injectedManager ?? LibraryManager(binary: support.appendingPathComponent(executable),
                                  runner: support.appendingPathComponent("run-server.sh"),
                                  service: LaunchAgentService(helper: helper))
         super.init()
@@ -55,7 +58,20 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         catch { controlError = error.localizedDescription }
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "chooseLocalFolders")
         webView.allowsBackForwardNavigationGestures = true
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
+                               replyHandler: @escaping (Any?, String?) -> Void) {
+        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, NavigationPolicy.isLocal(url) else {
+            replyHandler(nil, "Folder selection is restricted to the local library interface.")
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = true
+        panel.prompt = "Choose Manga Folders"
+        panel.begin { result in replyHandler(result == .OK ? panel.urls.map(\.path) : [], nil) }
     }
 
     func cookieHeader() async -> String {
@@ -171,6 +187,11 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
 
     func openLibrary() { if let library = library { NSWorkspace.shared.open(library.root) } }
     func openBackups() { if let library = library { NSWorkspace.shared.open(library.backups) } }
+    func showSourceLists() {
+        guard signedIn else { controlError = "Sign in to manage Source Lists."; return }
+        webView.load(URLRequest(url: URL(string: "http://127.0.0.1:3000/settings?section=source-lists")!))
+    }
+
     func showBackupRestore() {
         guard signedIn else { controlError = "Sign in before opening Backup and Restore."; return }
         // Keep the upstream backup UI, its preview and section selectors.
@@ -464,6 +485,7 @@ struct ServerSettings: View {
             if controller.signedIn {
                 Section("Owner account") {
                     Button("Change Password…") { changingPassword = true }
+                    Button("Source Lists") { controller.showSourceLists(); NSApp.keyWindow?.close(); openWindow(id: "main") }
                     Button("Backup and Restore…") { controller.showBackupRestore(); NSApp.keyWindow?.close(); openWindow(id: "main") }
                     Button("Sign Out") { Task { await controller.signOut() } }
                     Text("Backup and Restore opens the existing server's Settings. Use its export, restore preview and section selectors. Restoring settings may change your download preferences; review them afterward.").font(.footnote)

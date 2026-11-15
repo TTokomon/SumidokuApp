@@ -124,3 +124,11 @@ test('collapsing keeps the sidebar toggle at the same spot', async () => {
 	// the expanded footer starts it at the same 6.5px so it does not shift sideways.
 	assert.match(rule('.app__sidebar-foot'), /padding:\s*8px 4px 0 6\.5px;/);
 });
+
+
+test('desktop Settings exposes the dedicated Source Lists destination', async () => {
+	const markup = await renderSidebar(false, '/settings?section=source-lists');
+	assert.match(markup, /href="\/settings\?section=source-lists"/);
+	assert.match(markup, /side-nav__item--active[^>]*href="\/settings\?section=source-lists"/);
+	assert.match(markup, />Source Lists</);
+});

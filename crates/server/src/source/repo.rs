@@ -6,7 +6,6 @@
 
 use crate::error::{ApiError, ApiResult};
 use crate::model::{SourceRow, unix_now};
-use crate::source::routed::RoutedClients;
 use crate::state::AppState;
 use aidoku_wasm::package::WASM_PAYLOAD_MAX;
 use reqwest::Url;
@@ -93,6 +92,16 @@ fn resolve_url(base: &Url, raw: Option<&str>, legacy: Option<&str>, legacy_dir: 
 /// Parses and validates raw index text; URLs resolve against base. A missing sources array means a bad index
 pub fn parse_index(raw: &[u8], base: &Url) -> Result<ParsedIndex, String> {
 	let index: RepoIndex = serde_json::from_slice(raw).map_err(|e| format!("parse index: {e}"))?;
+	let mut seen = std::collections::HashSet::new();
+	for entry in &index.sources {
+		if !crate::source::valid_source_key(&entry.id) || entry.version < 0 || !seen.insert(entry.id.clone())
+			|| ["local.","opds.","komga.","kavita.","suwayomi."].iter().any(|prefix|entry.id.starts_with(prefix)) {
+			return Err("invalid, reserved or duplicate source ID/version".into());
+		}
+		if let Some(value)=resolve_url(base,entry.download_url.as_deref(),entry.file.as_deref(),"sources/") { parse_repo_url(&value).map_err(|_|"invalid package URL")?; }
+		if let Some(value)=resolve_url(base,entry.icon_url.as_deref(),entry.icon.as_deref(),"icons/") { parse_repo_url(&value).map_err(|_|"invalid icon URL")?; }
+		if let Some(value)=entry.base_url.as_deref().filter(|v|!v.is_empty()) { parse_repo_url(value).map_err(|_|"invalid source base URL")?; }
+	}
 	let entries = index
 		.sources
 		.into_iter()
@@ -120,40 +129,89 @@ pub fn parse_index(raw: &[u8], base: &Url) -> Result<ParsedIndex, String> {
 /// Repo URLs allow only http/https: self-hosted users will point at intranet addresses, so there is no IP-based check
 pub fn parse_repo_url(raw: &str) -> ApiResult<Url> {
 	let url = Url::parse(raw).map_err(|_| ApiError::bad_request("invalid repository url"))?;
-	if !matches!(url.scheme(), "http" | "https") {
+	if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() || !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
 		return Err(ApiError::bad_request("repository url must be http or https"));
 	}
 	Ok(url)
 }
 
 /// GET with an overall timeout and a size cap; error details go to the logs, outward messages stay unified
-async fn fetch_capped(http: &RoutedClients, url: &Url, max: u64) -> Result<Vec<u8>, String> {
-	let fetch = async {
-		let mut response = http.get(url).await.map_err(|e| format!("request: {e}"))?;
-		if let Some(len) = response.content_length()
-			&& len > max
-		{
-			return Err(format!("body exceeds {max} bytes"));
-		}
-		let mut out = Vec::new();
-		while let Some(chunk) = response.chunk().await.map_err(|e| format!("read body: {e}"))? {
-			if out.len() as u64 + chunk.len() as u64 > max {
-				return Err(format!("body exceeds {max} bytes"));
-			}
-			out.extend_from_slice(&chunk);
-		}
-		Ok(out)
-	};
-	match tokio::time::timeout(FETCH_TIMEOUT, fetch).await {
-		Ok(result) => result,
-		Err(_) => Err("request timed out".into()),
+fn private_ip(ip: std::net::IpAddr) -> bool {
+	match ip {
+		std::net::IpAddr::V4(v) => v.is_private() || v.is_loopback() || v.is_link_local() || v.is_unspecified() || v.is_broadcast() || v.is_multicast(),
+		std::net::IpAddr::V6(v) => v.is_loopback() || v.is_unspecified() || v.is_multicast() || (v.segments()[0]&0xfe00)==0xfc00 || (v.segments()[0]&0xffc0)==0xfe80 || v.to_ipv4_mapped().is_some_and(|v|private_ip(v.into())),
 	}
 }
 
-async fn fetch_index(state: &AppState, url: &Url) -> Result<(String, ParsedIndex), String> {
-	let raw = fetch_capped(&state.http, url, INDEX_MAX).await?;
-	let parsed = parse_index(&raw, url)?;
-	Ok((String::from_utf8_lossy(&raw).into_owned(), parsed))
+/// Bound bodies/time/redirects, pin checked DNS answers, never send credentials.
+/// A user-supplied loopback/LAN index may reach its own origin; a public index
+/// cannot redirect or point package downloads into a private network.
+async fn fetch_capped(root: &Url, url: &Url, max: u64) -> Result<(Vec<u8>,Url), String> {
+	if root.scheme()=="https" && url.scheme()!="https" { return Err("HTTPS package downgrade rejected".into()); }
+	let private_root = root.host_str().is_some_and(|h|h=="localhost" || h.parse::<std::net::IpAddr>().is_ok_and(private_ip));
+	let fetch = async {
+		let mut target=url.clone();
+		for hop in 0..=3 {
+			let host=target.host_str().ok_or("missing host")?;
+			let addresses: Vec<_> = tokio::net::lookup_host((host,target.port_or_known_default().ok_or("missing port")?)).await.map_err(|_|"DNS failed")?.collect();
+			if addresses.is_empty() || addresses.iter().any(|a|private_ip(a.ip())) && !(private_root && target.origin()==root.origin()) { return Err("private network target rejected".to_string()); }
+			let client=reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).resolve_to_addrs(host,&addresses).build().map_err(|_|"client failed")?;
+			let mut response=client.get(target.clone()).send().await.map_err(|_|"request failed")?;
+			if response.status().is_redirection() {
+				if hop==3 { return Err("too many redirects".into()); }
+				let next=target.join(response.headers().get("location").and_then(|v|v.to_str().ok()).ok_or("redirect missing location")?).map_err(|_|"invalid redirect")?;
+				parse_repo_url(next.as_str()).map_err(|_|"invalid redirect")?;
+				if target.scheme()=="https" && next.scheme()!="https" { return Err("HTTPS downgrade rejected".into()); }
+				target=next; continue;
+			}
+			if !response.status().is_success() { return Err("unsuccessful response".into()); }
+			if response.content_length().is_some_and(|n|n>max) { return Err("body too large".into()); }
+			let mut out=Vec::new();
+			while let Some(chunk)=response.chunk().await.map_err(|_|"body failed")? {
+				if out.len() as u64+chunk.len() as u64>max { return Err("body too large".into()); }
+				out.extend_from_slice(&chunk);
+			}
+			return Ok((out,target));
+		}
+		Err("redirect limit".into())
+	};
+	tokio::time::timeout(FETCH_TIMEOUT,fetch).await.map_err(|_|"request timed out".to_string())?
+}
+
+async fn fetch_index(_state: &AppState, url: &Url) -> Result<(String, ParsedIndex), String> {
+	let (raw,final_url) = fetch_capped(url,url,INDEX_MAX).await?;
+	if final_url!=*url { return Err("use the final published index URL".into()); }
+	let parsed=parse_index(&raw,&final_url)?;
+	Ok((String::from_utf8_lossy(&raw).into_owned(),parsed))
+}
+
+/// Bounded discovery only: no repository clone, script execution or package build.
+pub fn index_candidates(input: &Url) -> ApiResult<Vec<Url>> {
+	if input.host_str()!=Some("github.com") { return Ok(vec![input.clone()]); }
+	let parts: Vec<_>=input.path().trim_matches('/').split('/').collect();
+	if parts.len()!=2 || parts.iter().any(|v|v.is_empty() || !v.chars().all(|c|c.is_ascii_alphanumeric() || "-_.".contains(c))) {
+		return Err(ApiError::bad_request("paste a GitHub owner/repository URL or the published index URL"));
+	}
+	let owner=parts[0]; let repo=parts[1].trim_end_matches(".git");
+	let mut urls=vec![];
+	for file in ["index.min.json","index.json"] { urls.push(Url::parse(&format!("https://{owner}.github.io/{repo}/{file}")).map_err(|_|ApiError::bad_request("invalid GitHub repository"))?); }
+	for branch in ["gh-pages","sources","main","master"] {
+		for file in ["index.min.json","index.json"] { urls.push(Url::parse(&format!("https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{file}")).map_err(|_|ApiError::bad_request("invalid GitHub repository"))?); }
+	}
+	Ok(urls)
+}
+
+pub async fn discover(state:&AppState,input:Url) -> ApiResult<Url> {
+	if input.host_str()!=Some("github.com") { return Ok(input); }
+	let deadline=tokio::time::Instant::now()+std::time::Duration::from_secs(45);
+	for url in index_candidates(&input)? {
+		match tokio::time::timeout_at(deadline,fetch_index(state,&url)).await {
+			Ok(Ok(_))=>return Ok(url),
+			Err(_)=>break,
+			_=>{},
+		}
+	}
+	Err(ApiError::bad_request("No compatible published Aidoku index found. Paste its exact published index URL; repository code is never executed."))
 }
 
 pub async fn repo_row(pool: &SqlitePool, id: i64) -> ApiResult<SourceRepoRow> {
@@ -219,7 +277,7 @@ pub async fn refresh_repo(state: &Arc<AppState>, id: i64) -> ApiResult<SourceRep
 	match fetch_index(state, &url).await {
 		Ok((raw, parsed)) => {
 			sqlx::query(
-				"UPDATE source_repo SET name = ?, index_json = ?, fetch_error = NULL, fetched_at = ? WHERE id = ?",
+				"UPDATE source_repo SET name = COALESCE(name, ?), index_json = ?, fetch_error = NULL, fetched_at = ? WHERE id = ?",
 			)
 			.bind(&parsed.name)
 			.bind(&raw)
@@ -346,7 +404,7 @@ pub struct BrowseItem {
 
 /// Cross-repo browsing: reads the cache only, so an unreachable repo does not affect results; filter conventions match the installed-source list
 pub async fn browse_sources(pool: &SqlitePool, filter: &BrowseFilter) -> ApiResult<Vec<BrowseItem>> {
-	let installed: Vec<(i64, String, i64)> = sqlx::query_as("SELECT id, key, version FROM source")
+	let installed: Vec<(i64, String, i64)> = sqlx::query_as("SELECT id, key, version FROM source WHERE kind='aidoku' AND wasm_path!=''")
 		.fetch_all(pool)
 		.await?;
 	let installed: HashMap<String, (i64, i64)> =
@@ -398,15 +456,28 @@ pub async fn install_from_repo(state: &Arc<AppState>, repo_id: i64, key: &str) -
 		return Err(ApiError::bad_gateway(PACKAGE_FETCH_MSG));
 	};
 	let url = parse_repo_url(download_url)?;
-	let bytes = fetch_capped(&state.http, &url, WASM_PAYLOAD_MAX)
+	let (bytes, _) = fetch_capped(&parse_repo_url(&row.url)?, &url, WASM_PAYLOAD_MAX)
 		.await
 		.map_err(|detail| {
 			tracing::warn!(url = %url, "download package failed: {detail}");
 			ApiError::bad_gateway(PACKAGE_FETCH_MSG)
 		})?;
 
+	// Validate identity/version and every required ZIP payload before landing or
+	// registering anything. A mismatch must not mutate a different source row.
+	let doc=crate::source::read_aix_manifest(&bytes).map_err(|_|ApiError::bad_gateway(PACKAGE_FETCH_MSG))?;
+	if crate::source::manifest_key(&doc).ok().as_deref()!=Some(key) || doc["info"]["version"].as_i64()!=Some(entry.version) { return Err(ApiError::bad_gateway("source package ID/version does not match the published index")); }
+	{
+		let mut archive=zip::ZipArchive::new(std::io::Cursor::new(&bytes)).map_err(|_|ApiError::bad_gateway(PACKAGE_FETCH_MSG))?;
+		let wasm=aidoku_wasm::package::read_zip_entry(&mut archive,aidoku_wasm::package::WASM_ENTRY,WASM_PAYLOAD_MAX).map_err(|_|ApiError::bad_gateway(PACKAGE_FETCH_MSG))?;
+		if !wasm.starts_with(b"\0asm\x01\0\0\0") { return Err(ApiError::bad_gateway("source package contains an invalid WASM payload")); }
+	}
+
+	let reinstall: Option<String> = sqlx::query_scalar("SELECT wasm_path FROM source WHERE key=?").bind(key).fetch_optional(&state.pool).await?;
+	let reinstall = reinstall.is_some_and(|path|path.is_empty());
 	let path = state.config.sources_dir().join(format!("{key}.aix"));
-	let tmp = state.config.sources_dir().join(format!(".{key}.aix.tmp"));
+	let tmp = state.config.sources_dir().join(format!(".{key}.{:016x}.aix.tmp", rand_core::RngCore::next_u64(&mut rand_core::OsRng)));
+	let previous = tokio::fs::read(&path).await.ok();
 	tokio::fs::write(&tmp, &bytes)
 		.await
 		.map_err(|e| ApiError::from(sqlx::Error::Io(e)))?;
@@ -423,7 +494,8 @@ pub async fn install_from_repo(state: &Arc<AppState>, repo_id: i64, key: &str) -
 			return Err(ApiError::bad_gateway(PACKAGE_FETCH_MSG));
 		}
 		Err(reason) => {
-			let _ = tokio::fs::remove_file(&path).await;
+			if let Some(previous)=previous { let _=tokio::fs::write(&path,previous).await; }
+			else { let _ = tokio::fs::remove_file(&path).await; }
 			let _ = tokio::fs::remove_file(path.with_extension("png")).await;
 			tracing::warn!(key, "install package failed: {reason}");
 			return Err(ApiError::bad_gateway(PACKAGE_FETCH_MSG));
@@ -431,8 +503,9 @@ pub async fn install_from_repo(state: &Arc<AppState>, repo_id: i64, key: &str) -
 	}
 
 	// Marks the repo this install came from (directory-scan sideloads stay NULL), feeding the missingFromRepos check
-	sqlx::query("UPDATE source SET repo_id = ? WHERE key = ?")
+	sqlx::query("UPDATE source SET repo_id = ?, enabled = CASE WHEN ? THEN 1 ELSE enabled END WHERE key = ?")
 		.bind(repo_id)
+		.bind(reinstall)
 		.bind(key)
 		.execute(&state.pool)
 		.await?;

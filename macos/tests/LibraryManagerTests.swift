@@ -17,7 +17,7 @@ final class DisposableService: LibraryService {
         guard !loaded() else { return }
         let doc = try PropertyListSerialization.propertyList(from: Data(contentsOf: plist), format: nil) as! [String: Any]
         let args = doc["ProgramArguments"] as! [String]
-        config = URL(fileURLWithPath: args.last!)
+        config = URL(fileURLWithPath: args[2])
         try launch()
         if failAfterStart {
             for _ in 0..<100 {

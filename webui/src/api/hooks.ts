@@ -539,8 +539,8 @@ export function useRegisterInternalSource() {
 export function useDeleteSource() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (sourceId: number) => api(`/sources/${sourceId}`, { method: 'DELETE' }),
-		onSuccess: () => void qc.invalidateQueries({ queryKey: qk.sources })
+		mutationFn: (sourceId: number) => api(`/sources/${sourceId}?keepData=true`, { method: 'DELETE' }),
+		onSuccess: () => { void qc.invalidateQueries({ queryKey: qk.sources }); void qc.invalidateQueries({ queryKey: qk.repoSources }); }
 	});
 }
 
@@ -737,8 +737,8 @@ function invalidateSourceViews(qc: QueryClient) {
 export function useAddSourceRepo() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (url: string) =>
-			api<SourceRepo>('/source-repos', { method: 'POST', body: { url } }),
+		mutationFn: (input: string | { url: string; name?: string }) =>
+			api<SourceRepo>('/source-repos', { method: 'POST', body: typeof input === 'string' ? { url: input } : input }),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: qk.sourceRepos });
 			void qc.invalidateQueries({ queryKey: qk.repoSources });
@@ -746,11 +746,18 @@ export function useAddSourceRepo() {
 	});
 }
 
+export function useRenameSourceRepo() {
+	const qc = useQueryClient();
+	return useMutation({ mutationFn: ({ id, name }: { id: number; name: string }) => api<SourceRepo>(`/source-repos/${id}`, { method: 'PUT', body: { name } }),
+		onSuccess: () => { void qc.invalidateQueries({ queryKey: qk.sourceRepos }); void qc.invalidateQueries({ queryKey: qk.repoSources }); } });
+}
+
 export function useDeleteSourceRepo() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (repoId: number) => api(`/source-repos/${repoId}`, { method: 'DELETE' }),
+		mutationFn: (input: number | { id: number; uninstallSources: boolean }) => api(`/source-repos/${typeof input === 'number' ? input : input.id}?uninstallSources=${typeof input === 'number' ? false : input.uninstallSources}`, { method: 'DELETE' }),
 		onSuccess: () => {
+			void qc.invalidateQueries({ queryKey: qk.sources });
 			void qc.invalidateQueries({ queryKey: qk.sourceRepos });
 			void qc.invalidateQueries({ queryKey: qk.repoSources });
 		}
@@ -763,6 +770,7 @@ export function useRefreshSourceRepo() {
 		mutationFn: (repoId: number) =>
 			api<SourceRepo>(`/source-repos/${repoId}/refresh`, { method: 'POST' }),
 		onSettled: () => {
+			void qc.invalidateQueries({ queryKey: qk.sources });
 			void qc.invalidateQueries({ queryKey: qk.sourceRepos });
 			void qc.invalidateQueries({ queryKey: qk.repoSources });
 		}

@@ -77,6 +77,10 @@ Command-R checks/reloads, Command-W closes the active window, and Command-Q quit
 Standard macOS menus, the existing icon, native file pickers, and upload/download
 panels remain available. The chosen folder and owner state survive client updates.
 
+## Source integrations
+
+The current feature build uses the separately named [source integrations fork](SOURCE_INTEGRATIONS.md). Follow that guide to build and activate Built-in Sources and Settings → Source Lists. The official-only commands below remain available for the base upstream client. Native Settings → Source Lists opens the single repository manager inside the application window.
+
 ## Runtime and build
 
 The small runtime descriptor at `~/Library/Application Support/Sumidoku/desktop-library.json`
@@ -84,7 +88,7 @@ stores only folder paths. The same support directory retains the pinned binary a
 runner under `bin/`; the LaunchAgent remains `app.sumidoku.server`. New configurations
 bind exclusively to `127.0.0.1:3000`. The runner clears inherited server environment
 overrides and forwards termination as SIGINT for graceful shutdown. There is no Docker,
-new package dependency, server rebuild, frontend rebuild, or server reinstall per launch.
+server rebuild, frontend rebuild, or server reinstall per launch. Build-time dependencies are documented in the source integrations guide.
 
 On Apple Silicon with Xcode and Python available, cache the pinned official server
 binary once if needed, then build the client:

@@ -8,6 +8,7 @@ pub mod filter_groups;
 pub mod filters;
 pub mod import_merge;
 pub mod internal_source;
+pub mod integrations;
 pub mod key_realign;
 pub mod library;
 pub mod listings;
@@ -76,6 +77,9 @@ pub fn router(state: Arc<AppState>) -> Router {
 				.route_layer(axum::extract::DefaultBodyLimit::max(source_import::IMPORT_BODY_MAX)),
 		)
 		.route("/api/v1/sources/internal", post(internal_source::register_internal_source))
+		.route("/api/v1/integrations", post(integrations::create))
+		.route("/api/v1/integrations/test", post(integrations::test))
+		.route("/api/v1/integrations/{id}", get(integrations::get).put(integrations::update))
 		.route("/api/v1/sources/reorder-pinned", post(pins::reorder_pinned))
 		.route("/api/v1/sources/{id}", delete(delete_source).patch(pins::patch_source))
 		.route("/api/v1/sources/{id}/update", post(repo::update_source))
@@ -92,7 +96,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 			"/api/v1/source-repos",
 			get(repo::list_repos).post(repo::add_repo),
 		)
-		.route("/api/v1/source-repos/{id}", delete(repo::delete_repo))
+		.route("/api/v1/source-repos/{id}", delete(repo::delete_repo).put(repo::rename_repo))
 		.route("/api/v1/source-repos/{id}/refresh", post(repo::refresh_repo))
 		.route("/api/v1/source-repos/sources", get(repo::browse_sources))
 		.route("/api/v1/source-repos/install", post(repo::install_source))
@@ -256,7 +260,7 @@ async fn health() -> Json<Value> {
 }
 
 async fn version() -> Json<Value> {
-	Json(json!({"version": env!("CARGO_PKG_VERSION")}))
+	Json(json!({"version": env!("CARGO_PKG_VERSION"), "variant":"sumidokuapp-source-integrations"}))
 }
 
 pub(crate) async fn source_row(state: &AppState, id: i64) -> ApiResult<SourceRow> {
@@ -281,6 +285,7 @@ async fn list_sources(State(state): State<Arc<AppState>>) -> ApiResult<Json<Valu
 	let pinned = pins::pinned_map(&state.pool).await?;
 	let sources: Vec<Value> = rows
 		.iter()
+		.filter(|row|row.kind!="aidoku" || !row.wasm_path.is_empty())
 		.map(|row| repo::source_json(row, &latest, &pinned))
 		.collect();
 	Ok(Json(json!(sources)))
@@ -291,7 +296,11 @@ async fn scan_sources(State(state): State<Arc<AppState>>) -> ApiResult<Json<Valu
 	Ok(Json(serde_json::to_value(outcome)?))
 }
 
-async fn delete_source(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> ApiResult<StatusCode> {
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase")]
+struct SourceDeleteQuery { #[serde(default)] keep_data:bool }
+async fn delete_source(State(state): State<Arc<AppState>>, Path(id): Path<i64>, Query(options):Query<SourceDeleteQuery>) -> ApiResult<StatusCode> {
+	if options.keep_data { repo::uninstall_preserving_data(&state,id).await?; return Ok(StatusCode::NO_CONTENT); }
 	let row = source_row(&state, id).await?;
 	// The default local instance while the deployment config explicitly names local roots would be
 	// recreated empty on the next boot, so deleting it is refused until the config stops defining it

@@ -5,3 +5,6 @@
 
 pub mod local;
 pub mod opds_source;
+
+pub mod integration;
+pub mod suwayomi;

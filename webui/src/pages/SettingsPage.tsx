@@ -95,6 +95,8 @@ import { SettingsLayout, SETTINGS_GROUPS } from './settings/SettingsLayout';
 import { SkippedItems } from './settings/SkippedItems';
 import { TrackersPanel } from './settings/TrackersPanel';
 import './settings.css';
+import { SourceLists } from './settings/SourceLists';
+import { AidokuSourceRecovery } from './settings/AidokuSourceRecovery';
 
 function Section({
 	title,
@@ -1726,7 +1728,7 @@ function aidokuSkippedLabel(t: TFunction, s: AidokuSkipped): string {
 				? t('settings.trackerEntry')
 				: t('settings.progressEntry');
 	const chapter = s.chapterKey ? t('settings.chapterSuffix', { key: s.chapterKey }) : '';
-	return `${what} ${s.sourceKey}/${s.mangaKey}${chapter}`;
+	return `${what} ${s.sourceKey}/${s.mangaKey}${chapter}: ${s.reason}`;
 }
 
 function AidokuImportResultView({ result }: { result: AidokuImportResponse }) {
@@ -1746,7 +1748,7 @@ function AidokuImportResultView({ result }: { result: AidokuImportResponse }) {
 			) : (
 				<SkippedItems
 					label={t('settings.skippedItemsCount', { count: result.skipped.length })}
-					description={t('settings.skippedNoSource')}
+					description="Entries below were skipped for the reported reasons."
 					items={result.skipped.map((s) => aidokuSkippedLabel(t, s))}
 				/>
 			)}
@@ -1836,6 +1838,9 @@ function SuwayomiImportResultView({ result }: { result: SuwayomiImportResponse }
 }
 
 function BackupSection() {
+	const navigate = useNavigate();
+	const [aibPaused, setAibPaused] = useState(false);
+	const [acceptSkips, setAcceptSkips] = useState(false);
 	const { t } = useTranslation();
 	const restore = useRestoreBackup();
 	const fileRef = useRef<HTMLInputElement>(null);
@@ -1899,6 +1904,7 @@ function BackupSection() {
 		try {
 			const dryPreview = await importAidoku.mutateAsync({ file, dryRun: true });
 			setAib({ file, preview: dryPreview });
+			setAibPaused(false); setAcceptSkips(false);
 			setAibResult(null);
 		} catch {
 			// api() already popped an error toast
@@ -1906,7 +1912,7 @@ function BackupSection() {
 	}
 
 	async function confirmAibImport() {
-		if (!aib) return;
+		if (!aib || (aib.preview.skipped.length > 0 && !acceptSkips)) return;
 		try {
 			const res = await importAidoku.mutateAsync({ file: aib.file, dryRun: false });
 			setAibResult(res);
@@ -1987,6 +1993,7 @@ function BackupSection() {
 					hidden
 					onChange={(e) => void onFile(e)}
 				/>
+				{aibPaused && aib && <Button onClick={() => { setAibPaused(false); setAcceptSkips(false); void importAidoku.mutateAsync({ file: aib.file, dryRun: true }).then((preview) => { setAib({ file: aib.file, preview }); setAcceptSkips(false); }).catch(() => {}); }}>Resume Aidoku Import</Button>}
 				<Button loading={importAidoku.isPending && !aib} onClick={() => aibFileRef.current?.click()}>
 					<FileUp size={15} />
 					{t('settings.importAidoku')}
@@ -2076,7 +2083,7 @@ function BackupSection() {
 			</Modal>
 
 			<Modal
-				open={aib !== null}
+				open={!aibPaused && aib !== null}
 				title={t('settings.importAidoku')}
 				onClose={closeAibModal}
 				footer={
@@ -2087,7 +2094,7 @@ function BackupSection() {
 					) : (
 						<>
 							<Button onClick={closeAibModal}>{t('common.cancel')}</Button>
-							<Button variant="primary" loading={importAidoku.isPending} onClick={() => void confirmAibImport()}>
+							<Button variant="primary" loading={importAidoku.isPending} disabled={!!aib?.preview.skipped.length && !acceptSkips} onClick={() => void confirmAibImport()}>
 								{t('settings.confirmImport')}
 							</Button>
 						</>
@@ -2107,9 +2114,11 @@ function BackupSection() {
 									trackers: aib.preview.imported.trackers
 								})}
 							</p>
+						<AidokuSourceRecovery file={aib.file} preview={aib.preview} onPreview={(preview) => { setAib({ file: aib.file, preview }); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/settings?section=source-lists'); }} />
+						{aib.preview.skipped.length > 0 && <label><input type="checkbox" checked={acceptSkips} onChange={(event) => setAcceptSkips(event.currentTarget.checked)} /> I understand the exact entries and reasons below will be skipped. My original backup is retained.</label>}
 							<SkippedItems
 								label={t('settings.willSkipItemsCount', { count: aib.preview.skipped.length })}
-								description={t('settings.willSkipNoSource')}
+								description="Every skipped entry is listed with its exact reason. Keep the original backup."
 								items={aib.preview.skipped.map((s) => aidokuSkippedLabel(t, s))}
 							/>
 							<p className="settings-backup__warn">
@@ -2557,6 +2566,7 @@ export default function SettingsPage() {
 							<ScheduledBackupSection />
 						</>
 					),
+					'source-lists': <SourceLists />,
 					system: (
 						<>
 							<SecuritySection />

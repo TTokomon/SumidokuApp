@@ -31,6 +31,14 @@ the database's hash. WebKit receives the server's HttpOnly cookie; no secret is
 stored in preferences or the descriptor. Native backup controls open the existing
 web backup workflow. See [native operations and verification](NATIVE_APP.md).
 
+The explicit fork build bundles `server-build.json` and selects a separately named
+`sumidoku-server-fork` cache. The runner accepts the selected binary as its second
+argument; legacy official-only agent layouts remain supported. Backup-first activation
+retains the official executable and cold-copies the existing configuration before
+changing the same job. The origin-checked main-frame WebKit message bridge presents
+a native multiple-folder picker for Local Files. Native Settings links to the single
+web Source Lists manager. See [source contracts](SOURCE_INTEGRATIONS.md).
+
 ## Server (`crates/server`)
 
 axum 0.8, SQLite via sqlx. Entry `main.rs`; app wiring `lib.rs:build_app`.
@@ -346,6 +354,25 @@ no alias is derived from migration text.
   NULL), and `repo::source_json` reports `missingFromRepos` when a
   repo-installed source's key is absent from every cached index — Aidoku's
   "missing source list" warning, the deprecation signal for external sources.
+- Built-in setup (`api/integrations.rs`, `internal/integration.rs`) always exposes
+  Local Files, Komga, Kavita and Suwayomi independently of repositories. Local and
+  OPDS persistence/readers are reused; `internal/suwayomi.rs` adapts live GraphQL
+  saved-library/search/chapter/page calls into the OPDS pipeline without download
+  queue operations. Credentials/private endpoints are encrypted under a private
+  config-root key, excluded from runtime defaults, and public metadata uses stable
+  opaque locators cached in `server_state`. A full cold copy must include the key;
+  portable exports cannot decrypt these connections on a different installation.
+- Source Lists is the only subscription manager. GitHub discovery probes published
+  index candidates without executing repository code. Rename persists through
+  refresh; cached browse entries survive offline errors. Validated package identity
+  and payload precede any registration/replacement. Explicit package-only uninstall
+  retains the source row (empty `wasm_path`, disabled), preventing FK cascades from
+  deleting library/progress; scans skip this retained identity until explicit
+  reinstall. List removal defaults to keeping installed packages. The web interface
+  uses `keepData=true`; legacy destructive API behavior remains opt-in by omission.
+  Aidoku preview treats retained uninstalled IDs as missing; exact-ID list matches
+  can be installed then re-previewed before a separate import confirmation. See
+  [contracts, security and update process](SOURCE_INTEGRATIONS.md).
 - Local `.aix` import (`api/source_import.rs`): `POST /api/v1/sources/import`
   (admin, multipart with a single file field) is the third install path, for
   sideloading a package file through the web UI. The route's body cap derives
