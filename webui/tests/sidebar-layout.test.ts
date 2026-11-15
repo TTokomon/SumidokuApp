@@ -54,34 +54,26 @@ test('expanded sidebar keeps visible labels and collapse control', async () => {
 	assert.match(markup, /aria-expanded="true"/);
 });
 
-test('frequent destinations stay outside collapsible groups', async () => {
+test('sidebar exposes five collection links and one Settings destination', async () => {
 	const markup = await renderSidebar(false);
-	const topLevel = markup.slice(markup.indexOf('<nav'), markup.indexOf('data-nav-group='));
+	const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
 	assert.deepEqual(
-		[...topLevel.matchAll(/href="([^"]+)"/g)].map((match) => match[1]),
-		['/library', '/browse', '/updates']
+		[...navigation.matchAll(/href="([^"]+)"/g)].map((match) => match[1]),
+		['/library', '/browse', '/history', '/downloads', '/updates', '/settings']
 	);
+	assert.match(navigation, /Collection/);
+	assert.match(navigation, /Preferences/);
+	assert.doesNotMatch(navigation, /data-nav-group/);
 });
 
-test('sidebar groups start collapsed outside their routes', async () => {
-	const markup = await renderSidebar(false);
-	assert.equal(markup.match(/class="side-nav__children" hidden="" style="display:none"/g)?.length, 2);
-	for (const group of ['common.nav.activity', 'common.nav.settings']) {
-		assert.match(markup, new RegExp(`data-nav-group="${group}"[^>]*aria-expanded="false"`));
+test('legacy settings section deep links select the single Settings destination', async () => {
+	for (const route of ['/settings?section=downloads', '/settings?section=source-lists', '/settings?section=system']) {
+		const markup = await renderSidebar(false, route);
+		const activeHrefs = [...markup.matchAll(/<a\\b[^>]*>/g)]
+			.filter(([anchor]) => anchor.includes('side-nav__item--active'))
+			.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
+		assert.deepEqual(activeHrefs, ['/settings'], route);
 	}
-});
-
-test('settings deep link opens only the settings group and exposes section links', async () => {
-	const markup = await renderSidebar(false, '/settings?section=downloads');
-	assert.equal(markup.match(/class="side-nav__children" hidden="" style="display:none"/g)?.length, 1);
-	assert.match(markup, /data-nav-group="common.nav.settings"[^>]*aria-expanded="true"/);
-	assert.match(markup, /data-nav-group="common.nav.activity"[^>]*aria-expanded="false"/);
-	assert.match(markup, /href="\/settings\?section=downloads"/);
-	assert.match(markup, /href="\/settings\?section=trackers"/);
-	const activeHrefs = [...markup.matchAll(/<a\b[^>]*>/g)]
-		.filter(([anchor]) => anchor.includes('side-nav__item--active'))
-		.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
-	assert.deepEqual(activeHrefs, ['/settings?section=downloads']);
 });
 
 test('sidebar preference round-trips and rejects unknown values', () => {
@@ -126,9 +118,19 @@ test('collapsing keeps the sidebar toggle at the same spot', async () => {
 });
 
 
-test('desktop Settings exposes the dedicated Source Lists destination', async () => {
-	const markup = await renderSidebar(false, '/settings?section=source-lists');
-	assert.match(markup, /href="\/settings\?section=source-lists"/);
-	assert.match(markup, /side-nav__item--active[^>]*href="\/settings\?section=source-lists"/);
-	assert.match(markup, />Source Lists</);
+test('five Settings categories preserve every historical deep link', async () => {
+	const vite = await createServer({
+		root: fileURLToPath(new URL('../', import.meta.url)),
+		configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true }
+	});
+	try {
+		const { SETTINGS_GROUPS, SETTINGS_CATEGORIES, settingsCategoryFor } =
+			await vite.ssrLoadModule('/src/pages/settings/SettingsLayout.tsx');
+		assert.equal(SETTINGS_CATEGORIES.length, 5);
+		const all = SETTINGS_CATEGORIES.flatMap((group: { sections: string[] }) => group.sections);
+		assert.deepEqual(new Set(all), new Set(SETTINGS_GROUPS.map(([id]: [string]) => id)));
+		assert.equal(settingsCategoryFor('source-lists').id, 'sources');
+		assert.equal(settingsCategoryFor('trackers').id, 'sources');
+		assert.equal(settingsCategoryFor('system').id, 'server');
+	} finally { await vite.close(); }
 });
