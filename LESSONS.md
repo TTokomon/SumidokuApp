@@ -1950,3 +1950,13 @@ sign-out independent of the server lifecycle.
   teardown released it; custom credentials, restart, recovery and unload/reload then
   passed with the real temporary job. Failure injection after actual server readiness
   also verified that rollback removes only newly owned setup files.
+
+**Verify native compositing with actual own-window captures, not cached view bitmaps.**
+A cached NSView display can omit layer-backed SwiftUI and embedded WebKit content.
+Treat blank or partial captures as failed visual evidence. Capture only the
+application's own window through supported system APIs and inspect the result;
+keep personal libraries out of public screenshots.
+- Evidence: 2026-11-15, initial view-cache renders omitted native sidebar/library
+  content. Own-window system captures showed the complete shell and exposed a
+  reader-to-settings navigation defect; the final fixture pass covers light/dark,
+  reader/settings navigation and four native material/accessibility variants.
