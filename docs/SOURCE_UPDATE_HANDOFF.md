@@ -1,8 +1,10 @@
 # Source-list refresh: independent handoff
 
-This work lives on `feat/community-source-refresh`, branched from PR #1's
-`526702bc889cb05eff3e9fa987ac1a109b3d1105`. It has **not** been merged,
-built, or installed on the user's Mac by this change.
+Draft PR #2 was reviewed and integrated with the latest native desktop work in
+`feat/native-macos-setup`, together with draft PR #3. See
+[final integration review](INTEGRATION_REVIEW.md) for verified results and remaining
+release gates. Neither this integration nor these instructions merge PR #1 into
+`main` or publish a release.
 
 ## Default community subscription
 
@@ -20,13 +22,12 @@ does **not** silently re-add it at the next sign-in. Without the marker,
 offline failures retry on a future authenticated local connection.
 The subscription does **not** install any source packages or chapters.
 
-Important UX limitation: the list may appear moments after sign-in,
-because discovery/index downloading is asynchronous. The redesigned
-Source Lists UI should surface this state and refresh its queries after
-subscription. An existing authenticated WebKit session that bypasses
-native Sign In will not trigger the bootstrap immediately; it will run
-at the next explicit native sign-in. Consider adding an authenticated
-one-time client check on launch if this gap matters.
+A restored authenticated WebKit session also schedules bootstrap. Initialization
+is serialized per manager, while the scheduling lock stays independent of network
+work. Failure leaves the marker absent and retries at most once a minute while
+signed in. A desktop event invalidates repository queries without replacing the
+web document or losing a selected import file. Source Lists reports deferred setup
+when the list is unavailable.
 
 ## Source-list refresh and optional package updates
 
@@ -49,8 +50,10 @@ Example request:
 ```
 
 When users explicitly enable automatic source-package updates, the
-server conservatively updates only external packages with **zero**
-registered manga rows. Any source referenced by manga is left intact
+server conservatively updates only enabled external packages from their original
+repository, with **zero** registered manga rows and no breaking change. It checks
+module validity without executing candidate code, retains stored settings, and
+rechecks opt-in, version, origin and references in the metadata write transaction. Any source referenced by manga is left intact
 for the existing manually approved update/migration flow. The UI must
 explain this distinction; automatic catalog refresh may show an update
 even when package installation requires manual approval. There is
@@ -58,9 +61,9 @@ no automatic manga-chapter download.
 
 These preferences live in the local settings database and are distinct
 from application self-updates. The existing per-list refresh endpoints
-and manual source Update All route remain in place. The redesigned UI
-should connect separate toggles to the preferences endpoint, a manual
-Check for Source Updates action to repo refresh, and Update All to the
+and manual source Update All route remain in place. The integrated UI
+connects separate toggles to the preferences endpoint, a manual
+Check for Source Updates action to repo refresh, and confirmed Update All to the
 existing explicit route, showing individual failures and migration warnings.
 
 ## Integration and review gates
@@ -88,14 +91,15 @@ Also check:
 - Full library data, downloads, settings, and credentials are unchanged
 - OpenAPI/API contract and generated schema compatibility for the new preferences endpoint
 
-**Testing limitation:** This branch was edited through GitHub. No Rust,
-Xcode or runtime test suite was executed in this environment; the
-regression test is committed but needs to run on the user's Mac.
+The original GitHub-only draft had not been run. Integration testing now covers
+preference contracts, offline cache retention, used-source protection, rejected
+packages and deterministic reference/opt-out races. The integration fixed its
+missing OpenAPI entry, malformed-body response, authenticated-session gap,
+origin selection and source-update controls. Exact suite and native verification
+results are recorded in the linked integration review.
 
 ## Merge sequencing
 
-Codex should keep native visual/toolbar/Sparkle changes on its own branch
-based on the current PR #1. After both branches pass their tests,
-integrate them in sequence, resolving `LibraryManager.swift` only if
-Codex changed onboarding. Do not merge into `main`, publish releases,
-or alter the installed macOS app without user approval.
+The reviewed PR heads are merged into the native feature branch. Follow-up fixes
+and validation belong to that branch. PR #1 remains the approval boundary for
+`main`; release publication and unsigned automatic app installation remain blocked.

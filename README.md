@@ -63,3 +63,5 @@ For the original server's features, Docker and Rust development instructions, se
 **Sumidoku Desktop** is built on [Sumidoku](https://github.com/Sumidoku/Sumidoku), an open-source self-hosted manga server. The original Sumidoku project and its authors retain credit for the underlying server and web interface. This project is independently maintained and is not endorsed by the upstream maintainers.
 
 The repository's code is governed by its applicable existing licenses; see [LICENSE](LICENSE) and any bundled third-party license notices.
+
+Final native integration results and remaining distribution gates: [Desktop integration review](docs/INTEGRATION_REVIEW.md).

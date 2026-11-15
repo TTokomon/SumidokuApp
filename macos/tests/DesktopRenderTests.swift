@@ -22,13 +22,24 @@ struct DesktopRenderTests {
         }
         throw UpdateFailure("UI fixture timed out: " + expression)
     }
+    var capturesEnabled: Bool { !CommandLine.arguments.contains("--no-capture") }
     func capture(_ name: String) async throws {
+        guard capturesEnabled else { return }
         try await Task.sleep(nanoseconds:700_000_000)
         guard let window = NSApp.windows.first(where: { $0.isVisible && !$0.isSheet }) else { throw UpdateFailure("Preview window missing") }
+        if controller.nativePanel == nil {
+            let view = controller.webView
+            guard view.window === window, view.bounds.width > 500, view.bounds.height > 400 else { throw UpdateFailure("Embedded web view has no visible layout: \(view.bounds)") }
+            let snapshot = try await view.takeSnapshot(configuration: nil)
+            if let tiff = snapshot.tiffRepresentation, let png = NSBitmapImageRep(data:tiff)?.representation(using:.png,properties:[:]) {
+                try png.write(to:output.appendingPathComponent(name+"-webview.png"))
+            }
+        }
         try await OwnWindowCapture.save(window,webView:controller.nativePanel == nil ? controller.webView : nil,to:output.appendingPathComponent(name+".png"))
     }
 
     func captureAccessibility() async throws {
+        guard capturesEnabled else { return }
         for (name, reduced, contrast, fallback) in [("native-glass",false,false,false),("native-material-fallback",false,false,true),("reduced-transparency",true,false,false),("increased-contrast",false,true,false)] {
             let sample = VStack(alignment: .leading, spacing: 22) {
                 Text("Native control surfaces").font(.title2.bold())
@@ -75,8 +86,8 @@ struct DesktopRenderTests {
                                 try await wait("Array.from(document.querySelectorAll('button')).some(b => b.textContent === 'Enable automatic source updates')")
                                 _ = try await controller.webView.evaluateJavaScript("Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Enable automatic source updates').click()")
                                 try await wait("document.querySelector('input[aria-label=\"Automatically install source updates\"]').checked")
-                                _ = try await controller.webView.evaluateJavaScript("location.reload()")
-                                try await wait("document.querySelector('input[aria-label=\"Automatically install source updates\"]')?.checked === true")
+                                _ = try await controller.webView.evaluateJavaScript("window.__fixtureReloadMarker='old';location.reload()")
+                                try await wait("window.__fixtureReloadMarker === undefined && document.querySelector('input[aria-label=\"Automatically install source updates\"]')?.checked === true")
                                 _ = try await controller.webView.evaluateJavaScript("document.querySelector('input[aria-label=\"Automatically install source updates\"]').click()")
                                 try await wait("document.querySelector('input[aria-label=\"Automatically install source updates\"]').checked === false")
                                 _ = try await controller.webView.evaluateJavaScript("document.querySelector('input[aria-label=\"Automatically refresh source lists\"]').click()")
@@ -89,7 +100,7 @@ struct DesktopRenderTests {
                         controller.nativePanel = "updates";try await capture("application-updates")
                         controller.nativePanel = "server";try await capture("native-server-settings")
                         try await captureAccessibility()
-                        try JSONSerialization.data(withJSONObject:["success":true]).write(to:root.appendingPathComponent("render-result.json"))
+                        try JSONSerialization.data(withJSONObject:["success":true,"nativeWindowCaptures":capturesEnabled]).write(to:root.appendingPathComponent("render-result.json"))
                         print("PASS: native shell and embedded library/detail/sources/history/backups/reader/update/settings rendered; disposable fixtures only")
                         exit(0)
         } catch {

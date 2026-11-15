@@ -47,6 +47,13 @@ struct CommunitySourceTests {
         entries = [] // Deliberate subscription removal, not package/library removal.
         try manager.ensureCommunitySourceList(library, cookie: "fixture-session")
         expect(requests == previousRequests && entries.isEmpty, "intentional removal survives reconnect without recreation")
+        var reopenedRequests = 0
+        let reopened = LibraryManager(home: root, binary: root.appendingPathComponent("unused"), runner: root.appendingPathComponent("unused"), service: UnusedService(), sourceListRequest: { _, _, _ in
+            reopenedRequests += 1
+            return Data("[]".utf8)
+        })
+        try reopened.ensureCommunitySourceList(library, cookie: "fixture-session")
+        expect(reopenedRequests == 0, "deliberate removal survives manager recreation from persisted storage")
         try files.removeItem(at: marker)
         entries = [["url": "https://aidoku-community.github.io/sources/index.json"]]
         try manager.ensureCommunitySourceList(library, cookie: "fixture-session")

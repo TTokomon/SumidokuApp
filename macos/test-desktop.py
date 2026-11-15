@@ -62,10 +62,12 @@ with tempfile.TemporaryDirectory(prefix='sumidoku-native-ui-fixture-') as tempor
             (root/'preview.json').write_text(json.dumps(first))
             output=Path(tempfile.mkdtemp(prefix='sumidoku-native-desktop-renders-'))
             subprocess.run(['/usr/bin/codesign','--force','--sign','-',str(app)],check=True)
-            subprocess.run(['/usr/bin/open','-n','-W',str(app),'--args',str(root),str(output)],env=env,check=True,timeout=150)
+            arguments=['/usr/bin/open','-n','-W',str(app),'--args',str(root),str(output)]
+            if os.environ.get('SUMIDOKU_TEST_NO_CAPTURE')=='1': arguments.append('--no-capture')
+            subprocess.run(arguments,env=env,check=True,timeout=150)
             result=json.loads((root/'render-result.json').read_text())
             if not result['success']:raise RuntimeError(json.dumps(result))
-            print('Native fixture renders:',output)
+            print('Native fixture renders:' if result.get('nativeWindowCaptures') else 'Native behavior checks passed; visual capture explicitly NOT performed:',output)
         finally:
             server.send_signal(signal.SIGINT)
             try:server.wait(timeout=20)

@@ -45,10 +45,12 @@ supported. Its bundled **Sumidoku logo and red accent remain unchanged**.
 A lightweight regression suite:
 `python3 -m unittest macos/tests/test_aidoku_symbols.py`
 
-The complete native build and on-device rendering still require testing
-on macOS with Xcode. No installed user application, data, or backup has
-been modified from this branch.
+Integration review resolved all 15 preferred identifiers through AppKit on the
+current Mac, and tests force two older-system fallback cases. `NativeSymbol.resolve`
+checks the running system before rendering; unsupported update symbols use
+`clock.arrow.circlepath`, with a generic system glyph for other missing names.
+Actual older macOS hardware remains a separate certification step.
 
-Before merging: run Python maintenance tests and the native rendering
-fixtures. Check all SF Symbols resolve on the oldest supported deployment
-target, and inspect the updated sidebar in the actual installed app.
+The integrated native build and own-window inspection results are recorded in
+[final integration review](INTEGRATION_REVIEW.md). Original Sumidoku icon assets
+and red theme are retained; no SF Symbol artwork is exported for the web.

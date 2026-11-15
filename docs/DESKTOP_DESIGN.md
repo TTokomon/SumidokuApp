@@ -1,9 +1,9 @@
 # Native desktop design and application updates
 
-This change deliberately excludes default repository subscriptions and source-package
-refresh/update policy. Their existing APIs and behavior remain intact. Application
-updates have their own model, controls and status, separate from source and chapter
-updates.
+PRs #2 and #3 are integrated into the native feature branch. Community source
+subscriptions and independent source-refresh preferences are documented in
+[the final integration review](INTEGRATION_REVIEW.md). Application updates retain
+their own model and controls, separate from source and chapter updates.
 
 ## Design references and licensing
 
@@ -164,28 +164,30 @@ server, account or backup information. Public examples must use disposable fixtu
 
 ## Verified development results
 
-- Rust workspace: 1,272 passed, 2 skipped; strict all-target workspace clippy passed.
+- Rust workspace: 1,278 passed, 2 skipped; strict all-target workspace clippy passed.
 - Frontend: 377 passed; TypeScript check and production build passed.
 - Native updater/material policies: 37 assertions; navigation: 12 cases.
-- Python maintenance/paired-update fixtures: 22 tests.
+- Python maintenance/paired-update fixtures: 25 tests.
 - Onboarding: 32 assertions for each direct-process and temporary LaunchAgent driver.
 - Welcome/create/sign-in native rendering passed without creating a real account.
 - Full native fixture-window rendering passed for light/dark library, manga details,
   Sources, Source Lists, history, backups, reader, Updates and server settings, plus
   actual glass, forced material fallback, reduced transparency and increased contrast.
-  System compositor captures were inspected; fixture data is disposable and original.
+  Native compositor captures and separate embedded-view snapshots were inspected;
+  fixture data is disposable and original.
 - Older macOS hardware, public Developer ID/notarization, signed feeds and live
   Sparkle paired installation are not certified by these local checks.
 
 ### Native-window examples
 
-These are system captures of the running native application shell with disposable
-comic fixtures, resized for documentation. No personal library data is included.
+These are native compositor captures and separately labeled WKWebView snapshots
+from disposable fixtures, resized for documentation. The current-process compositor
+capture omits WebKit child surfaces on this system. No personal library data is included.
 
-![Light library](images/desktop/library-light.png)
-![Dark library](images/desktop/library-dark.png)
-![Sources](images/desktop/sources.png)
-![Reader](images/desktop/reader.png)
+![Light library](images/desktop/library-light-webview.png)
+![Dark library](images/desktop/library-dark-webview.png)
+![Sources](images/desktop/sources-webview.png)
+![Reader](images/desktop/reader-webview.png)
 ![Native glass](images/desktop/native-glass.png)
 ![Forced native system material fallback](images/desktop/native-material-fallback.png)
 
@@ -201,10 +203,11 @@ replacement is shipped.
 
 ## Final installed verification
 
-Native client **1.3.0 (5)** with the original Sumidoku logo and red theme was
+Native client **1.3.0 (6)** with the original Sumidoku logo and red theme was
 installed and strictly signature-verified, including the embedded framework.
-The installed application's own Sources window was captured and inspected after
-a normal restart. It remained configured, authenticated and connected to the
+The installed application reported an authenticated Source Lists route after
+a normal restart. Native compositor captures and separate WKWebView snapshots
+were inspected; this system's current-process capture omits WebKit child surfaces. It remained configured, authenticated and connected to the
 existing local server. Quitting the client left the background server healthy.
 
 Database integrity and ten protected-table fingerprints matched the pre-update
