@@ -167,7 +167,7 @@ server, account or backup information. Public examples must use disposable fixtu
 - Rust workspace: 1,272 passed, 2 skipped; strict all-target workspace clippy passed.
 - Frontend: 377 passed; TypeScript check and production build passed.
 - Native updater/material policies: 37 assertions; navigation: 12 cases.
-- Python maintenance/paired-update fixtures: 18 tests.
+- Python maintenance/paired-update fixtures: 19 tests.
 - Onboarding: 32 assertions for each direct-process and temporary LaunchAgent driver.
 - Welcome/create/sign-in native rendering passed without creating a real account.
 - Full native fixture-window rendering passed for light/dark library, manga details,
