@@ -69,7 +69,7 @@ test('sidebar exposes five collection links and one Settings destination', async
 test('legacy settings section deep links select the single Settings destination', async () => {
 	for (const route of ['/settings?section=downloads', '/settings?section=source-lists', '/settings?section=system']) {
 		const markup = await renderSidebar(false, route);
-		const activeHrefs = [...markup.matchAll(/<a\\b[^>]*>/g)]
+		const activeHrefs = [...markup.matchAll(/<a\b[^>]*>/g)]
 			.filter(([anchor]) => anchor.includes('side-nav__item--active'))
 			.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
 		assert.deepEqual(activeHrefs, ['/settings'], route);
