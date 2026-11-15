@@ -35,3 +35,13 @@ export function DesktopUpdatesSection() {
 		<Button onClick={() => void desktopHost()?.postMessage({ action: 'checkUpdates' })}>Check Now…</Button>
 	</section>;
 }
+
+/** Server management stays native; the web Settings page links to the existing safe shell. */
+export function DesktopServerSection() {
+	if (!desktopHost()) return null;
+	return <section className="card settings-section" aria-label="Native Server & Account">
+		<h2>Server & Account</h2>
+		<p>Manage the local server, library folder, account credentials and diagnostics in the native desktop controls.</p>
+		<Button onClick={() => void desktopHost()?.postMessage({ action: 'server' })}>Open Server & Account…</Button>
+	</section>;
+}
