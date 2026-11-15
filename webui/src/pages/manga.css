@@ -14,7 +14,6 @@
 	background-color: var(--bg-elev);
 	background-size: cover;
 	background-position: center;
-	filter: blur(44px) saturate(1.4) brightness(0.74);
 }
 
 .manga-hero__scrim {
@@ -42,7 +41,6 @@
 	border: 1px solid rgba(255, 255, 255, 0.22);
 	border-radius: 50%;
 	background: rgba(12, 14, 18, 0.48);
-	backdrop-filter: blur(8px);
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 	color: #f7f8fa;
 }
@@ -243,8 +241,6 @@
 	background: rgba(23, 24, 32, 0.55);
 	border-color: rgba(255, 255, 255, 0.16);
 	color: #eef0f5;
-	backdrop-filter: blur(10px);
-	-webkit-backdrop-filter: blur(10px);
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
@@ -284,7 +280,6 @@
 
 /* Light-theme hero goes lighter: blurred cover base + white translucent scrim, foreground falls back to page tokens */
 [data-theme='light'] .manga-hero__bg {
-	filter: blur(44px) saturate(1.2) brightness(1.08);
 }
 
 [data-theme='light'] .manga-hero__title {

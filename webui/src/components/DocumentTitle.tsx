@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DesktopNavigationBridge } from '../native/DesktopBridge';
 import { Outlet, useLocation, useMatches } from 'react-router-dom';
 
 type TitleOverride = { pathname: string; title: string | null };
@@ -21,7 +22,7 @@ export function DocumentTitleProvider() {
 		document.title = title ? `${title} · Sumidoku` : 'Sumidoku';
 	}, [title]);
 
-	return <TitleOverrideContext.Provider value={setOverride}><Outlet /></TitleOverrideContext.Provider>;
+	return <TitleOverrideContext.Provider value={setOverride}><DesktopNavigationBridge /><Outlet /></TitleOverrideContext.Provider>;
 }
 
 export function useDocumentTitle(title: string | null | undefined) {

@@ -65,6 +65,14 @@ pub(crate) async fn get<'e, E: Executor<'e, Database = Sqlite>>(db: E, key: &str
 		.await
 }
 
+/// Retain the first random sealed locator for a keyed target digest.
+/// Concurrent catalog fetches must receive the same durable opaque identity.
+pub(crate) async fn integration_locator(pool: &SqlitePool, key: &str, sealed: &str) -> ApiResult<String> {
+	sqlx::query("INSERT OR IGNORE INTO server_state (key, value) VALUES (?, ?)")
+		.bind(key).bind(sealed).execute(pool).await?;
+	get(pool,key).await?.ok_or_else(|| crate::error::ApiError::internal("integration locator missing"))
+}
+
 pub(crate) async fn clear<'e, E: Executor<'e, Database = Sqlite>>(db: E, key: &str) -> ApiResult<()> {
 	sqlx::query("DELETE FROM server_state WHERE key = ?")
 		.bind(key)

@@ -4,6 +4,59 @@ One page for the whole system, verified against the linked source. Update
 the owning section in the same PR when a change alters a contract described
 here. Link to symbols rather than copying details that drift.
 
+## macOS native client (`macos/App`)
+
+`SumidokuApp.swift` hosts the existing web UI in WKWebView and presents native
+first-run owner creation, sign-in, storage selection, status and account controls.
+`LibraryManager.swift` owns one localhost installation and its path-only descriptor.
+An explicit Create action reserves a new empty root, seeds the user-chosen owner
+once, starts the existing pinned executable, verifies authentication and metadata-only
+settings, removes active credential overrides, and only then publishes the descriptor.
+Failure stops/unloads its own newly created service and rolls back owned setup files;
+if stopping fails, it retains partial state for recovery rather than deleting live data.
+Connect validates an existing config/database and the matching LaunchAgent before
+reusing them. Conflicting folders or services are rejected without replacement.
+
+The chosen primary folder separates Server (database/settings/source packages,
+metadata/progress and page caches), Downloads, and Backups. Upstream config-root
+constraints are preserved. One user LaunchAgent invokes the graceful runner with
+that config directory. The runner clears inherited server environment overrides.
+Before explicit service or credential controls, the app replaces its web document
+with a blank one to release SSE connections that would delay graceful shutdown.
+It leaves the background process running on quit/sign-out. Native credential
+changes first stop and cold-copy existing state, remove startup overrides, and use
+the server password endpoint; confirmed local recovery uses a temporary explicit
+seed without deleting a library or disabling authentication. Subsequent boots use
+the database's hash. WebKit receives the server's HttpOnly cookie; no secret is
+stored in preferences or the descriptor. Native backup controls open the existing
+web backup workflow. See [native operations and verification](NATIVE_APP.md).
+
+The explicit fork build bundles `server-build.json` and selects a separately named
+`sumidoku-server-fork` cache. The runner accepts the selected binary as its second
+argument; legacy official-only agent layouts remain supported. Backup-first activation
+retains the official executable and cold-copies the existing configuration before
+changing the same job. The origin-checked main-frame WebKit message bridge presents
+a native multiple-folder picker for Local Files. Native Settings links to the single
+web Source Lists manager. See [source contracts](SOURCE_INTEGRATIONS.md).
+
+After authentication, including a restored WebKit session, the native client
+subscribes once to the official community index if absent. The private per-library
+marker recognizes both published index aliases and preserves deliberate removal.
+Offline failures leave no marker and retry at most once a minute while authenticated.
+Subscription creates no packages or chapters. A desktop event invalidates Source
+Lists queries without replacing the document or losing an import preview.
+
+`DesktopShell.swift` now owns native NavigationSplitView, toolbar/menu routing and
+application update status. The WebKit document retains existing library/source/reader
+logic; an origin-checked desktop bridge routes local paths and appearance. Actual
+SwiftUI Liquid Glass is guarded at macOS 26; older systems use native materials and
+accessibility modes can request opaque controls. `AppUpdates.swift` checks explicitly
+published desktop releases with cached daily polling and separate native states.
+Sparkle 2 is pinned/embedded, but installation remains hard-gated pending signing,
+feed infrastructure and a certified paired-server handoff. The separately tested
+transaction stage retains cold recovery snapshots and never automatically downgrades
+a migrated database. See [design boundaries, release contract and checks](DESKTOP_DESIGN.md).
+
 ## Server (`crates/server`)
 
 axum 0.8, SQLite via sqlx. Entry `main.rs`; app wiring `lib.rs:build_app`.
@@ -309,7 +362,7 @@ no alias is derived from migration text.
   unreachable repo never breaks the installed-source list. Refreshing is the
   only way the cache moves: the API's manual per-repo refresh, plus an
   optional periodic sweep of every repo when `repo_refresh_interval_hours`
-  (config file/env `SUMIDOKU_REPO_REFRESH_INTERVAL_HOURS`, default 0 = off)
+  (config file/env `SUMIDOKU_REPO_REFRESH_INTERVAL_HOURS`, default 1 hour; explicit 0 = off)
   is non-zero; a failed refresh keeps the old cache and records
   `fetch_error`. Install downloads
   the `.aix` (http/https only, 64 MiB cap) into `sources/` and registers it
@@ -319,6 +372,34 @@ no alias is derived from migration text.
   NULL), and `repo::source_json` reports `missingFromRepos` when a
   repo-installed source's key is absent from every cached index — Aidoku's
   "missing source list" warning, the deprecation signal for external sources.
+  The protected `/source-repos/preferences` API separates catalog refresh (default
+  on) from automatic package replacement (default off). Their scheduler switches
+  are independent. Automatic packages must remain enabled, unused by any manga,
+  nonbreaking and from their original repository. Candidate bytes use immutable
+  paths under `sources/.automatic-updates`; a typed-settings read and conditional
+  source update in one write transaction recheck opt-in/version/origin/references.
+  Candidate metadata inspection executes no package code, and stored source
+  settings remain unchanged. Directory scans ignore the reserved cache and reject
+  older packages, so retained versions cannot silently downgrade a source.
+- Built-in setup (`api/integrations.rs`, `internal/integration.rs`) always exposes
+  Local Files, Komga, Kavita and Suwayomi independently of repositories. Local and
+  OPDS persistence/readers are reused; `internal/suwayomi.rs` adapts live GraphQL
+  saved-library/search/chapter/page calls into the OPDS pipeline without download
+  queue operations. Credentials/private endpoints are encrypted under a private
+  config-root key, excluded from runtime defaults, and public metadata uses stable
+  opaque locators cached in `server_state`. A full cold copy must include the key;
+  portable exports cannot decrypt these connections on a different installation.
+- Source Lists is the only subscription manager. GitHub discovery probes published
+  index candidates without executing repository code. Rename persists through
+  refresh; cached browse entries survive offline errors. Validated package identity
+  and payload precede any registration/replacement. Explicit package-only uninstall
+  retains the source row (empty `wasm_path`, disabled), preventing FK cascades from
+  deleting library/progress; scans skip this retained identity until explicit
+  reinstall. List removal defaults to keeping installed packages. The web interface
+  uses `keepData=true`; legacy destructive API behavior remains opt-in by omission.
+  Aidoku preview treats retained uninstalled IDs as missing; exact-ID list matches
+  can be installed then re-previewed before a separate import confirmation. See
+  [contracts, security and update process](SOURCE_INTEGRATIONS.md).
 - Local `.aix` import (`api/source_import.rs`): `POST /api/v1/sources/import`
   (admin, multipart with a single file field) is the third install path, for
   sideloading a package file through the web UI. The route's body cap derives
@@ -2084,7 +2165,7 @@ This provides installation and an application shell, not
 offline chapters or offline reading progress.
 Typography uses system stacks through `--font-sans`, `--font-display`,
 `--font-brand` and `--font-mono`; brand marks use the rounded brand stack,
-page-header titles use display serif, and content names and controls stay sans.
+the desktop presentation uses system sans typography for page titles, content names and controls. `src/styles/desktop.css` applies restrained neutral opaque surfaces and a Sumidoku red accent after the upstream tokens; CSS does not simulate native Liquid Glass.
 Colors, radii, shadows and motion come from `src/styles/tokens.css`: three
 surface levels (`--bg`, `--bg-elev`, `--bg-raise` for floating layers), one
 set of easing/duration variables, and `--accent-grad` for primary fills.

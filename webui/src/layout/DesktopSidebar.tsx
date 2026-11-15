@@ -28,6 +28,7 @@ const SETTINGS_NAV: readonly NavItemData[] = [
 	{ to: '/settings?section=trackers', labelKey: 'settings.groupTrackers', icon: Link2 },
 	{ to: '/settings?section=downloads', labelKey: 'settings.groupDownloads', icon: Download },
 	{ to: '/settings?section=backups', labelKey: 'settings.groupBackups', icon: Database },
+	{ to: '/settings?section=source-lists', labelKey: 'settings.groupSourceLists', icon: Link2 },
 	{ to: '/settings?section=system', labelKey: 'settings.groupSystem', icon: Info }
 ];
 

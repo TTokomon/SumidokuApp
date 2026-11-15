@@ -18,6 +18,13 @@ struct MockRepo {
 struct MockRepoState {
 	index: Vec<u8>,
 	files: HashMap<String, Vec<u8>>,
+	pause: Option<Arc<DownloadPause>>,
+}
+
+#[derive(Default)]
+struct DownloadPause {
+	requested: tokio::sync::Notify,
+	resume: tokio::sync::Notify,
 }
 
 impl MockRepo {
@@ -49,13 +56,15 @@ async fn file_handler(
 	AxumState(mock): AxumState<MockRepo>,
 	AxumPath(path): AxumPath<String>,
 ) -> Result<Vec<u8>, StatusCode> {
-	mock.state
-		.read()
-		.unwrap()
-		.files
-		.get(&path)
-		.cloned()
-		.ok_or(StatusCode::NOT_FOUND)
+	let (bytes, pause) = {
+		let state = mock.state.read().unwrap();
+		(state.files.get(&path).cloned().ok_or(StatusCode::NOT_FOUND)?, state.pause.clone())
+	};
+	if let Some(pause) = pause {
+		pause.requested.notify_one();
+		pause.resume.notified().await;
+	}
+	Ok(bytes)
 }
 
 async fn serve_repo() -> RepoServer {
@@ -184,6 +193,34 @@ async fn source_by_key(app: &axum::Router, key: &str) -> Value {
 		.find(|s| s["key"] == key)
 		.cloned()
 		.unwrap_or_else(|| panic!("source {key} installed: {body}"))
+}
+
+#[tokio::test]
+async fn source_update_preferences_default_off_for_package_install_and_roundtrip() {
+	let app = test_app().await;
+	let (status, initial) = request(&app.app, "GET", "/api/v1/source-repos/preferences", None).await;
+	assert_eq!(status, StatusCode::OK, "{initial}");
+	assert_eq!(initial["autoRefreshLists"], true);
+	assert_eq!(initial["autoUpdatePackages"], false);
+
+	let (status, saved) = request(
+		&app.app, "PUT", "/api/v1/source-repos/preferences",
+		Some(json!({"autoRefreshLists": false, "autoUpdatePackages": true})),
+	).await;
+	assert_eq!(status, StatusCode::OK, "{saved}");
+	assert_eq!(saved["autoRefreshLists"], false);
+	assert_eq!(saved["autoUpdatePackages"], true);
+	let (status, persisted) = request(&app.app, "GET", "/api/v1/source-repos/preferences", None).await;
+	assert_eq!(status, StatusCode::OK, "{persisted}");
+	assert_eq!(persisted["autoRefreshLists"], false);
+	assert_eq!(persisted["autoUpdatePackages"], true);
+
+	// Reject malformed payloads instead of guessing or enabling downloads.
+	let (status, _) = request(
+		&app.app, "PUT", "/api/v1/source-repos/preferences",
+		Some(json!({"autoRefreshLists": "yes", "autoUpdatePackages": false})),
+	).await;
+	assert!(status.is_client_error(), "invalid preference must not be accepted");
 }
 
 #[tokio::test]
@@ -679,5 +716,186 @@ async fn legacy_index_fields_resolve() {
 	assert_eq!(status, StatusCode::OK, "legacy file resolves under sources/: {body}");
 	assert_eq!(body["version"], 7);
 
+	repo.serve.abort();
+}
+
+#[tokio::test]
+async fn source_list_rename_survives_refresh_and_package_mismatch_preserves_installed_bytes() {
+	let t=test_app().await;let repo=serve_repo().await;stage_repo(&repo,1,3);
+	let (_,row)=add_repo(&t.app,&repo.url).await;let id=row["id"].as_i64().unwrap();
+	assert_eq!(request(&t.app,"PUT",&format!("/api/v1/source-repos/{id}"),Some(json!({"name":"My chosen list name"}))).await.0,StatusCode::OK);
+	assert_eq!(request(&t.app,"POST",&format!("/api/v1/source-repos/{id}/refresh"),None).await.1["name"],"My chosen list name");
+	let payload=json!({"repoId":id,"sourceKey":"en.repo-source"});
+	assert_eq!(request(&t.app,"POST","/api/v1/source-repos/install",Some(payload.clone())).await.0,StatusCode::OK);
+	let path=t.tmp.path().join("sources/en.repo-source.aix");let original=std::fs::read(&path).unwrap();
+	stage_repo(&repo,2,3);
+	repo.mock.set_file("files/en.repo-source-v2.aix",aix_bytes("en.wrong-identity","Wrong identity",2,&["en"],0));
+	assert_eq!(request(&t.app,"POST",&format!("/api/v1/source-repos/{id}/refresh"),None).await.0,StatusCode::OK);
+	assert_eq!(request(&t.app,"POST","/api/v1/source-repos/install",Some(payload)).await.0,StatusCode::BAD_GATEWAY);
+	assert!(path.exists(),"installed package must survive a mismatched update");
+	assert_eq!(std::fs::read(path).unwrap(),original);
+	assert_eq!(source_by_key(&t.app,"en.repo-source").await["version"],1);
+	let all=request(&t.app,"GET","/api/v1/sources",None).await.1;
+	assert!(!all.as_array().unwrap().iter().any(|row|row["key"]=="en.wrong-identity"));
+}
+
+#[tokio::test]
+async fn list_removal_choices_preserve_aidoku_library_and_exact_id_recovery() {
+	let t=test_app().await;let repo=serve_repo().await;
+	repo.mock.set_index(json!([repo_entry("en.example-source","Exact fixture source",1,&["en"],0)]));
+	repo.mock.set_file("files/en.example-source-v1.aix",aix_bytes("en.example-source","Exact fixture source",1,&["en"],0));
+	assert_eq!(request(&t.app,"POST","/api/v1/sources/scan",None).await.0,StatusCode::OK);
+	let original=include_bytes!("fixtures/example.aib").to_vec();
+	let (status,_,_)=request_bytes(&t.app,"POST","/api/v1/backups/import/aidoku",original.clone(),"application/octet-stream").await;assert_eq!(status,StatusCode::OK);
+	let baseline=request(&t.app,"GET","/api/v1/backups/document",None).await.1;
+	assert!(!baseline["library"].as_array().unwrap().is_empty());assert!(!baseline["progress"].as_array().unwrap().is_empty());
+	for uninstall in [false,true] {
+		let (_,row)=add_repo(&t.app,&repo.url).await;let id=row["id"].as_i64().unwrap();
+		let install=json!({"repoId":id,"sourceKey":"en.example-source"});
+		let (status,source)=request(&t.app,"POST","/api/v1/source-repos/install",Some(install.clone())).await;assert_eq!(status,StatusCode::OK,"{source}");
+		let source_id=source["id"].clone();
+		assert_eq!(request(&t.app,"DELETE",&format!("/api/v1/source-repos/{id}?uninstallSources={uninstall}"),None).await.0,StatusCode::NO_CONTENT);
+		let exported=request(&t.app,"GET","/api/v1/backups/document",None).await.1;
+		for section in ["library","progress","categories"] { assert_eq!(exported[section],baseline[section],"{section} must survive subscription removal"); }
+		assert_eq!(t.tmp.path().join("sources/en.example-source.aix").exists(),!uninstall);
+		if uninstall {
+			assert_eq!(request(&t.app,"POST","/api/v1/sources/scan",None).await.0,StatusCode::OK);
+			let installed=request(&t.app,"GET","/api/v1/sources",None).await.1;
+			assert!(!installed.as_array().unwrap().iter().any(|item|item["key"]=="en.example-source"),"scan must not resurrect an uninstalled package");
+			let (status,_,bytes)=request_bytes(&t.app,"POST","/api/v1/backups/import/aidoku?dryRun=true",original.clone(),"application/octet-stream").await;assert_eq!(status,StatusCode::OK);
+			let preview:Value=serde_json::from_slice(&bytes).unwrap();
+			assert!(preview["skipped"].as_array().unwrap().iter().any(|item|item["sourceKey"]=="en.example-source" && item["reason"]=="source not installed"));
+			let (_,row)=add_repo(&t.app,&repo.url).await;let new_id=row["id"].as_i64().unwrap();
+			let (status,reinstalled)=request(&t.app,"POST","/api/v1/source-repos/install",Some(json!({"repoId":new_id,"sourceKey":"en.example-source"}))).await;
+			assert_eq!(status,StatusCode::OK,"{reinstalled}");assert_eq!(reinstalled["id"],source_id);assert_eq!(reinstalled["enabled"],true);
+			let (_,_,bytes)=request_bytes(&t.app,"POST","/api/v1/backups/import/aidoku?dryRun=true",original.clone(),"application/octet-stream").await;
+			let preview:Value=serde_json::from_slice(&bytes).unwrap();assert_eq!(preview["imported"]["library"],2);
+			let exported=request(&t.app,"GET","/api/v1/backups/document",None).await.1;
+			assert_eq!(exported["progress"],baseline["progress"]);
+		}
+	}
+	assert_eq!(original.as_slice(),include_bytes!("fixtures/example.aib"));
+	assert_eq!(request(&t.app,"GET","/api/v1/downloads",None).await.1,json!([]));
+}
+
+#[test]
+fn github_discovery_is_bounded_and_rejects_non_repositories_and_reserved_manifests() {
+	use sumidoku_server::source::repo::{parse_repo_url,index_candidates,parse_index};
+	let url=parse_repo_url("https://github.com/Aidoku-Community/sources").unwrap();
+	let candidates=index_candidates(&url).unwrap();assert_eq!(candidates.len(),10);
+	assert_eq!(candidates[0].as_str(),"https://Aidoku-Community.github.io/sources/index.min.json".to_lowercase());
+	assert!(index_candidates(&parse_repo_url("https://github.com/owner/repo/issues").unwrap()).is_err());
+	assert!(parse_repo_url("https://password@github.com/owner/repo").is_err());
+	for key in ["local.local","opds.fake","suwayomi.fake","komga.fake","kavita.fake"] {
+		assert!(parse_index(json!({"sources":[{"id":key,"version":1}]}).to_string().as_bytes(),&url).is_err());
+	}
+	assert!(parse_index(br#"{"sources":[{"id":"en.example","version":1,"downloadURL":"file:///etc/passwd"}]}"#,&url).is_err());
+}
+
+
+async fn automatic_fixture() -> (TestApp, RepoServer, i64, i64, Arc<sumidoku_server::state::AppState>) {
+	let app = test_app().await;
+	let repo = serve_repo().await;
+	stage_repo(&repo, 1, 1);
+	let (status, added) = request(&app.app, "POST", "/api/v1/source-repos", Some(json!({"url":repo.url}))).await;
+	assert_eq!(status, StatusCode::OK, "{added}");
+	let repo_id = added["id"].as_i64().unwrap();
+	let (status, installed) = request(&app.app, "POST", "/api/v1/source-repos/install", Some(json!({"repoId":repo_id,"sourceKey":"en.repo-source"}))).await;
+	assert_eq!(status, StatusCode::OK, "{installed}");
+	let source_id = installed["id"].as_i64().unwrap();
+	let pool = sqlx::SqlitePool::connect(&base_config(&app.tmp).database_url).await.unwrap();
+	let (defaults, _) = tokio::sync::mpsc::unbounded_channel();
+	let (cookies, _) = tokio::sync::mpsc::unbounded_channel();
+	let state = sumidoku_server::state::AppState::new(pool, base_config(&app.tmp), defaults, cookies);
+	(app, repo, repo_id, source_id, state)
+}
+
+async fn publish_automatic_update(app: &TestApp, repo: &RepoServer, repo_id: i64) {
+	stage_repo(repo, 2, 1);
+	let (status, result) = request(&app.app, "POST", &format!("/api/v1/source-repos/{repo_id}/refresh"), None).await;
+	assert_eq!(status, StatusCode::OK, "{result}");
+}
+
+async fn allow_automatic_updates(app: &TestApp, enabled: bool) {
+	let (status, result) = request(&app.app, "PUT", "/api/v1/source-repos/preferences", Some(json!({"autoRefreshLists":false,"autoUpdatePackages":enabled}))).await;
+	assert_eq!(status, StatusCode::OK, "{result}");
+}
+
+#[tokio::test]
+async fn automatic_source_updates_are_opt_in_and_preserve_origin_settings_and_scans() {
+	let (app, repo, repo_id, source_id, state) = automatic_fixture().await;
+	publish_automatic_update(&app, &repo, repo_id).await;
+	let competitor = serve_repo().await;
+	stage_repo(&competitor, 9, 1);
+	request(&app.app,"POST","/api/v1/source-repos",Some(json!({"url":competitor.url}))).await;
+	sqlx::query("INSERT INTO source_setting(source_id,key,value) VALUES(?,'fixture.preference','keep-user-value')").bind(source_id).execute(&state.pool).await.unwrap();
+	sumidoku_server::source::repo::auto_update_unused_packages(&state).await.unwrap();
+	assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],1,"default is no package replacement");
+	allow_automatic_updates(&app,true).await;
+	sumidoku_server::source::repo::auto_update_unused_packages(&state).await.unwrap();
+	assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],2,"use original repository, not competitor version 9");
+	let origin:i64=sqlx::query_scalar("SELECT repo_id FROM source WHERE id=?").bind(source_id).fetch_one(&state.pool).await.unwrap();
+	assert_eq!(origin,repo_id);
+	let value:String=sqlx::query_scalar("SELECT value FROM source_setting WHERE source_id=? AND key='fixture.preference'").bind(source_id).fetch_one(&state.pool).await.unwrap();
+	assert_eq!(value,"keep-user-value");
+	request(&app.app,"POST","/api/v1/sources/scan",None).await;
+	assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],2,"old retained package cannot downgrade on scan");
+	let chapters:i64=sqlx::query_scalar("SELECT COUNT(*) FROM chapter").fetch_one(&state.pool).await.unwrap();
+	assert_eq!(chapters,0,"updating a package never downloads or registers manga chapters");
+	repo.serve.abort();competitor.serve.abort();
+}
+
+#[tokio::test]
+async fn automatic_source_updates_preserve_registered_manga_and_package_bytes() {
+	let (app,repo,repo_id,source_id,state)=automatic_fixture().await;
+	publish_automatic_update(&app,&repo,repo_id).await;allow_automatic_updates(&app,true).await;
+	let before=tokio::fs::read(app.tmp.path().join("sources/en.repo-source.aix")).await.unwrap();
+	let manga_id=sqlx::query("INSERT INTO manga(source_id,key,title) VALUES(?,'saved-manga','Saved manga')").bind(source_id).execute(&state.pool).await.unwrap().last_insert_rowid();
+	request(&app.app,"POST","/api/v1/library",Some(json!({"mangaId":manga_id}))).await;
+	sumidoku_server::source::repo::auto_update_unused_packages(&state).await.unwrap();
+	assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],1);
+	assert_eq!(tokio::fs::read(app.tmp.path().join("sources/en.repo-source.aix")).await.unwrap(),before);
+	let saved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM manga_user WHERE manga_id=? AND in_library=1)").bind(manga_id).fetch_one(&state.pool).await.unwrap();assert!(saved);
+	repo.serve.abort();
+}
+
+#[tokio::test]
+async fn automatic_source_update_rechecks_manga_references_after_download() {
+	let (app,repo,repo_id,source_id,state)=automatic_fixture().await;
+	publish_automatic_update(&app,&repo,repo_id).await;allow_automatic_updates(&app,true).await;
+	let pause=Arc::new(DownloadPause::default());repo.mock.state.write().unwrap().pause=Some(pause.clone());
+	let (updated,())=tokio::join!(sumidoku_server::source::repo::auto_update_unused_packages(&state),async {
+		tokio::time::timeout(std::time::Duration::from_secs(10), pause.requested.notified()).await.expect("updater requested fixture package");
+		sqlx::query("INSERT INTO manga(source_id,key,title) VALUES(?,'arrived-during-download','Preserve')").bind(source_id).execute(&state.pool).await.unwrap();
+		pause.resume.notify_one();
+	});updated.unwrap();
+	assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],1,"commit must recheck references, not only the scheduler's preflight");
+	let bytes=tokio::fs::read(app.tmp.path().join("sources/en.repo-source.aix")).await.unwrap();assert_eq!(bytes,aix_bytes("en.repo-source","Repo Source",1,&["en"],0));
+	repo.serve.abort();
+}
+
+#[tokio::test]
+async fn automatic_source_update_respects_opt_out_during_download() {
+	let (app,repo,repo_id,_,state)=automatic_fixture().await;
+	publish_automatic_update(&app,&repo,repo_id).await;allow_automatic_updates(&app,true).await;
+	let pause=Arc::new(DownloadPause::default());repo.mock.state.write().unwrap().pause=Some(pause.clone());
+	let (updated,())=tokio::join!(sumidoku_server::source::repo::auto_update_unused_packages(&state),async {
+		tokio::time::timeout(std::time::Duration::from_secs(10), pause.requested.notified()).await.expect("updater requested fixture package");allow_automatic_updates(&app,false).await;pause.resume.notify_one();
+	});updated.unwrap();
+	assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],1);
+	repo.serve.abort();
+}
+
+#[tokio::test]
+async fn automatic_source_updates_skip_disabled_breaking_and_invalid_packages() {
+	let (app,repo,repo_id,source_id,state)=automatic_fixture().await;
+	publish_automatic_update(&app,&repo,repo_id).await;allow_automatic_updates(&app,true).await;
+	sqlx::query("UPDATE source SET enabled=0 WHERE id=?").bind(source_id).execute(&state.pool).await.unwrap();
+	sumidoku_server::source::repo::auto_update_unused_packages(&state).await.unwrap();assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],1);
+	sqlx::query("UPDATE source SET enabled=1 WHERE id=?").bind(source_id).execute(&state.pool).await.unwrap();
+	repo.mock.set_file("files/en.repo-source-v2.aix",aix_bytes_with_config("en.repo-source","Repo Source",2,&["en"],0,r#"{"breakingChangeVersion":2}"#));
+	sumidoku_server::source::repo::auto_update_unused_packages(&state).await.unwrap();assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],1,"breaking update requires confirmation");
+	repo.mock.set_file("files/en.repo-source-v2.aix",b"invalid archive".to_vec());
+	sumidoku_server::source::repo::auto_update_unused_packages(&state).await.unwrap();assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],1,"invalid package leaves installed version intact");
 	repo.serve.abort();
 }

@@ -6,6 +6,24 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Uninstall a package without deleting its persistent source identity.**
+Foreign-key deletion of a source can cascade into manga, categories and reading
+progress. A package-only uninstall must disable runtime capability while retaining
+the source row, and directory scans must respect that retained uninstalled state.
+Validate replacement package ID/version before registration can create another row.
+- Evidence: 2026-11-15, `source_repo` fixtures retain imported Aidoku manga,
+  categories and chapter progress through list/package removal, reject a mismatched
+  update before replacing bytes, skip stale sideload resurrection and reconnect the
+  same records after exact-ID reinstall.
+
+**Protected catalog locators must keep stable identities across refreshes.**
+Encrypting each private OPDS link with a fresh random nonce hides credentials but
+changes otherwise identical navigation/reader locators. Cache the random sealed
+locator by a keyed digest of its target; never make nonce reuse deterministic.
+- Evidence: 2026-11-15, built-in OPDS fixtures assert stable search entries across
+  repeated fetches, successful page streaming and absence of private endpoint keys
+  from source metadata and portable exports.
+
 **A crossfade keeps its target fully opaque; only the outgoing layer fades.**
 Fading the target in underneath the outgoing layer does not sum the two
 opacities: the outgoing layer masks the target, so the canvas shows through
@@ -1896,3 +1914,72 @@ otherwise-green suite as infrastructure flake, not a regression.
   failed twice in `source-card-mobile.test.ts` and another SSR test with
   errno -4094 reading i18n locale modules; the three files passed alone
   (15/15) and the unchanged full suite then passed 340/340.
+
+**Exercise service controls from the desktop client, not just a terminal.**
+A KeepAlive job can be restarted by signaling its runner gracefully and
+waiting for a different healthy runner, without unregistering the job.
+Test that contract at the helper boundary and in the native application.
+- Evidence: 2026-11-14, the desktop client exposed a failing GUI
+  `bootout`/`bootstrap` restart path despite the terminal check passing.
+  The retained-job signal path returned the native Settings status to
+  Running and reloaded the embedded interface. The regression
+  `test_restart_signals_existing_job_without_unregistering_it` fails
+  when the unregister/rebootstrap path is restored and passes after the
+  committed helper is restored; the test never controls a real job.
+
+**An owner password seeded from configuration is a startup override, not a one-time registration API.**
+Use an explicit user-chosen seed only during local owner creation or confirmed
+recovery. Verify authentication, remove the seed from the active config, and
+keep subsequent password changes in the server's hashed database state.
+Before changing credentials on an existing library, stop gracefully and retain
+a private cold recovery snapshot. Never turn authentication off to implement
+password recovery.
+- Evidence: 2026-11-14, `auth::init` reapplies configured credentials on every
+  boot, while `change_password` updates only the database. Disposable desktop
+  lifecycle tests verify custom owner creation, seed removal, password changes
+  across restart, old-password rejection, and explicit recovery preserving
+  reading progress, including a temporary launchd job unload/reload.
+
+**Close the embedded web document before graceful desktop server maintenance.**
+Stopping a WKWebView's navigation alone does not close an established EventSource.
+Replace the document and wait for blank navigation before stopping/restarting the
+server or taking a cold credential-recovery snapshot. Leave ordinary app quit and
+sign-out independent of the server lifecycle.
+- Evidence: 2026-11-14, the signed-in WKWebView lifecycle test kept an SSE connection
+  alive and delayed a disposable launchd job's graceful exit. Shared native document
+  teardown released it; custom credentials, restart, recovery and unload/reload then
+  passed with the real temporary job. Failure injection after actual server readiness
+  also verified that rollback removes only newly owned setup files.
+
+**Verify native compositing with actual own-window captures, not cached view bitmaps.**
+A cached NSView display can omit layer-backed SwiftUI and embedded WebKit content.
+Treat blank or partial captures as failed visual evidence. Capture only the
+application's own window through supported system APIs and inspect the result;
+keep personal libraries out of public screenshots.
+- Evidence: 2026-11-15, initial view-cache renders omitted native sidebar/library
+  content. Own-window system captures showed the complete shell and exposed a
+  reader-to-settings navigation defect; the final fixture pass covers light/dark,
+  reader/settings navigation and four native material/accessibility variants.
+
+**A rebuilt ad-hoc executable can need fresh macOS folder authorization.**
+A healthy previous build does not establish Documents access for a new code
+identity. Preserve private cold recovery copies, keep the same managed service,
+and allow time for the system prompt rather than repeatedly replacing a runtime
+or altering privacy settings. Distinguish authorization failure from database
+corruption; no database rollback is implied.
+- Evidence: 2026-11-15, the privacy log reported a failed code-requirement match
+  for Documents and a pending authorization request during desktop activation.
+  Explicit system approval restored startup. Final native login, normal service
+  restart and ten protected-table fingerprints passed without replacing the database.
+
+**Recheck automatic-update eligibility at the metadata write, through the owning settings API.**
+A scheduler's initial reference count can become stale while a package downloads.
+Keep candidate bytes separate from the active package, then check source version,
+origin, enabled state, current opt-in and manga references at the guarded write.
+Use typed settings access inside that write transaction rather than reading its
+table from an unrelated module. Do not execute candidate package code before
+eligibility is accepted.
+- Evidence: 2026-11-15, integration review added deterministic download gates that
+  register manga or disable updates mid-flight. Both cases retained the old package.
+  The ownership regression caught a direct settings-table read; typed access within
+  the source metadata transaction passed the complete workspace suite.

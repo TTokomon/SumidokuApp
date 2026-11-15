@@ -597,7 +597,17 @@
           "default": {
             "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "keepData",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ]
       }
     },
     "/api/v1/sources/{id}/update": {
@@ -4734,7 +4744,65 @@
           "default": {
             "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "uninstallSources",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "repos"
+        ],
+        "operationId": "renameSourceList",
+        "summary": "renameSourceList",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRepoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRepo"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
       }
     },
     "/api/v1/source-repos/{id}/refresh": {
@@ -5409,6 +5477,236 @@
           },
           "default": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations": {
+      "post": {
+        "tags": [
+          "repos"
+        ],
+        "operationId": "createIntegration",
+        "summary": "createIntegration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationSetup"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/test": {
+      "post": {
+        "tags": [
+          "repos"
+        ],
+        "operationId": "testIntegration",
+        "summary": "testIntegration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationSetup"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationTest"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/{id}": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "operationId": "getIntegration",
+        "summary": "getIntegration",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "repos"
+        ],
+        "operationId": "updateIntegration",
+        "summary": "updateIntegration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationSetup"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/source-repos/preferences": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "operationId": "getSourceRefreshPreferences",
+        "summary": "Get source refresh preferences",
+        "responses": {
+          "200": {
+            "description": "Source refresh preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRefreshPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "repos"
+        ],
+        "operationId": "putSourceRefreshPreferences",
+        "summary": "Put source refresh preferences",
+        "responses": {
+          "200": {
+            "description": "Source refresh preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRefreshPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRefreshPreferences"
+              }
+            }
           }
         }
       }
@@ -6611,6 +6909,10 @@
           "pinOrder": {
             "type": "integer",
             "format": "int64",
+            "nullable": true
+          },
+          "repoId": {
+            "type": "integer",
             "nullable": true
           }
         }
@@ -10661,6 +10963,10 @@
           "url": {
             "type": "string",
             "format": "uri"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -12053,6 +12359,129 @@
             "maximum": 9223372036854775807,
             "default": 2147483648,
             "description": "Cache budget in bytes. Zero bypasses chapter image caches; required page data remains protected while active or recently used, then is reclaimed by the always-running LRU."
+          }
+        }
+      },
+      "IntegrationSetup": {
+        "type": "object",
+        "required": [
+          "provider",
+          "name"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "local",
+              "komga",
+              "kavita",
+              "suwayomi"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "keepCredentials": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "integer",
+            "nullable": true
+          }
+        }
+      },
+      "IntegrationSaved": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "provider",
+          "url",
+          "paths",
+          "hasCredentials"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "hasCredentials": {
+            "type": "boolean"
+          }
+        }
+      },
+      "IntegrationTest": {
+        "type": "object",
+        "required": [
+          "ok",
+          "message"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "RenameRepoRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceRefreshPreferences": {
+        "type": "object",
+        "required": [
+          "autoRefreshLists",
+          "autoUpdatePackages"
+        ],
+        "properties": {
+          "autoRefreshLists": {
+            "type": "boolean",
+            "default": true
+          },
+          "autoUpdatePackages": {
+            "type": "boolean",
+            "default": false
           }
         }
       }

@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use super::import_merge::{
 	ChapterMeta, ImportCounts, MangaMeta, ensure_category, ensure_chapter_row, ensure_manga_row,
-	mark_in_library, merge_chapter_progress, source_id_by_key,
+	mark_in_library, merge_chapter_progress,
 };
 
 #[derive(Debug, Deserialize)]
@@ -153,6 +153,10 @@ fn date_to_unix(date: plist::Date) -> i64 {
 	time.duration_since(std::time::UNIX_EPOCH)
 		.map(|d| d.as_secs() as i64)
 		.unwrap_or(0)
+}
+
+async fn source_id_by_key(tx: &mut Transaction<'_, Sqlite>, key: &str) -> ApiResult<Option<i64>> {
+	Ok(sqlx::query_scalar("SELECT id FROM source WHERE key=? AND (kind!='aidoku' OR wasm_path!='')").bind(key).fetch_optional(&mut **tx).await?)
 }
 
 /// Aidoku stores contentRating.rawValue - 1 (when >0); 0 conflates unknown/safe, treated as unknown

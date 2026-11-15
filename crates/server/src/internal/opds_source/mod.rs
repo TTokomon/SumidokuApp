@@ -53,6 +53,8 @@ const PAGE_MAX_COUNT: usize = 10_000;
 pub struct Catalog {
 	base_url: String,
 	auth: Option<(String, String)>,
+	connection: Option<super::integration::Connection>,
+	suwayomi: bool,
 }
 
 impl Catalog {
@@ -71,14 +73,22 @@ impl Catalog {
 		if !enabled {
 			return Err(ApiError::source_disabled(&key));
 		}
-		let base_url = base_url
+		let mut base_url = base_url
 			.filter(|u| !u.is_empty())
 			.ok_or_else(|| ApiError::internal("opds source missing catalog url"))?;
 		let defaults = load_defaults(&state.pool, source_id).await?;
 		let username = string_default(&defaults, "username");
 		let password = string_default(&defaults, "password").unwrap_or_default();
-		let auth = username.filter(|u| !u.is_empty()).map(|u| (u, password));
-		Ok(Self { base_url, auth })
+		let mut auth = username.filter(|u| !u.is_empty()).map(|u| (u, password));
+		let connection = super::integration::load(state, source_id).await?;
+		if let Some(connection) = &connection {
+			base_url = super::integration::protect_url(state,&connection.url).await?;
+			auth = (!connection.username.is_empty()).then(|| (connection.username.clone(), connection.password.clone()));
+		}
+		let config: Option<String> = sqlx::query_scalar("SELECT config FROM source WHERE id = ?").bind(source_id).fetch_one(&state.pool).await?;
+		let suwayomi = config.and_then(|v| serde_json::from_str::<Value>(&v).ok()).is_some_and(|v| v["integration"] == "suwayomi");
+		if suwayomi { base_url=connection.as_ref().map(|c|c.url.clone()).unwrap_or(base_url); }
+		Ok(Self { base_url, auth, connection, suwayomi })
 	}
 
 	fn request(&self, state: &AppState, url: &str) -> ApiResult<reqwest::RequestBuilder> {
@@ -105,6 +115,20 @@ impl Catalog {
 
 	/// Bounded authed GET; non-2xx surfaces the status code (401 is the visible face of wrong credentials)
 	pub async fn get_bytes(&self, state: &AppState, url: &str, max: u64) -> ApiResult<(Vec<u8>, Option<String>)> {
+		if let Some(connection) = &self.connection {
+			if self.suwayomi && let Some(bytes) = super::suwayomi::manifest(connection, url).await? { return Ok((bytes, Some("application/webpub+json".into()))); }
+			let target=super::integration::reveal_url(state,url)?;
+			let (mut bytes,mime)=super::integration::request(connection,&target,None,max).await?;
+			if !self.suwayomi && let Ok(mut doc)=serde_json::from_slice::<Value>(&bytes)
+				&& let Some(order)=doc.get_mut("readingOrder").and_then(Value::as_array_mut) {
+					for page in order { if let Some(href)=page["href"].as_str() {
+						let url=target.join(href).map_err(|_|ApiError::bad_gateway("invalid publication URL"))?;
+						page["href"]=json!(super::integration::protect_url(state,url.as_str()).await?);
+					} }
+					bytes=serde_json::to_vec(&doc)?;
+			}
+			return Ok((bytes,mime));
+		}
 		let response = self
 			.request(state, url)?
 			.send()
@@ -126,13 +150,41 @@ impl Catalog {
 	}
 
 	pub async fn get_feed(&self, state: &AppState, url: &str) -> ApiResult<Feed> {
+		if self.suwayomi { return super::suwayomi::feed(self.connection.as_ref().ok_or_else(|| ApiError::internal("Suwayomi connection missing"))?, url).await; }
 		let max = state.config.net_body_max_mb * 1024 * 1024;
 		let (bytes, mime) = self.get_bytes(state, url, max).await?;
-		if is_json_feed(mime.as_deref(), &bytes) {
-			return parse_feed_json(&bytes).map_err(|e| ApiError::bad_gateway(format!("invalid catalog feed: {e}")));
+		let mut feed=if is_json_feed(mime.as_deref(), &bytes) { parse_feed_json(&bytes) } else { parse_feed(&bytes) }
+			.map_err(|_|ApiError::bad_gateway("invalid catalog feed"))?;
+		if self.connection.is_some() {
+			let base=super::integration::reveal_url(state,url)?;
+			for entry in &mut feed.entries { protect_entry(state,&base,entry).await?; }
+			for entry in &mut feed.navigation { protect_entry(state,&base,entry).await?; }
+			for entry in &mut feed.publications { protect_entry(state,&base,entry).await?; }
+			for group in &mut feed.groups {
+				for entry in &mut group.navigation { protect_entry(state,&base,entry).await?; }
+				for entry in &mut group.publications { protect_entry(state,&base,entry).await?; }
+			}
+			for link in &mut feed.links { protect_link(state,&base,link).await?; }
 		}
-		parse_feed(&bytes).map_err(|e| ApiError::bad_gateway(format!("invalid catalog feed: {e}")))
+		Ok(feed)
 	}
+}
+
+async fn protect_entry(state:&AppState,base:&reqwest::Url,entry:&mut FeedEntry) -> ApiResult<()> {
+	use sha2::{Digest as _,Sha256};
+	let identity=if entry.id.is_empty() { entry.links.first().and_then(|l|base.join(&l.href).ok()).map(|v|v.to_string()).unwrap_or_default() } else { entry.id.clone() };
+	entry.id=format!("opaque:{}",base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(identity.as_bytes())));
+	for link in &mut entry.links { protect_link(state,base,link).await?; }
+	Ok(())
+}
+
+async fn protect_link(state:&AppState,base:&reqwest::Url,link:&mut EntryLink) -> ApiResult<()> {
+	let template=link.href.contains("{pageNumber}");
+	let href=link.href.replace("{?query}","?query=SUMIDOKU_SEARCH_TOKEN").replace("{?search}","?search=SUMIDOKU_SEARCH_TOKEN").replace("{searchTerms}","SUMIDOKU_SEARCH_TOKEN").replace("{query}","SUMIDOKU_SEARCH_TOKEN");
+	let resolved=base.join(&href.replace("{pageNumber}","SUMIDOKU_PAGE_TOKEN")).map_err(|_|ApiError::bad_gateway("invalid catalog link"))?;
+	let raw=if template { resolved.to_string().replace("SUMIDOKU_PAGE_TOKEN","{pageNumber}") } else { resolved.to_string() };
+	link.href=super::integration::protect_url(state,&raw).await?;
+	Ok(())
 }
 
 /// Per-response wire format detection: any +json Content-Type picks the OPDS 2.0 parser; a mislabeled body still
@@ -962,7 +1014,7 @@ async fn validate_navigation_target(catalog: &Catalog, state: &AppState, parent_
 		let feed = match catalog.get_feed(state, &current).await {
 			Ok(feed) => feed,
 			Err(error) if page > 0 => {
-				tracing::warn!(parent_url, "opds navigation validation stopped at an unavailable later page: {}", error.message());
+				tracing::warn!( "opds navigation validation stopped at an unavailable later page: {}", error.message());
 				return Ok(false);
 			}
 			Err(error) => return Err(error),
@@ -1179,6 +1231,14 @@ pub async fn search(
 ) -> ApiResult<SearchOutcome> {
 	let catalog = Catalog::load(state, source_id).await?;
 	let root_url = catalog.base_url.clone();
+	if catalog.suwayomi {
+		let mut target = super::integration::url(&root_url)?;
+		target.query_pairs_mut().append_pair("sumidoku-offset", &((page-1).max(0) as u32 * 100).to_string());
+		if let Some(query) = query.filter(|q| !q.trim().is_empty()) { target.query_pairs_mut().append_pair("sumidoku-query", query); }
+		let feed = catalog.get_feed(state, target.as_str()).await?;
+		let has_next_page = feed.next_link().is_some();
+		return Ok(SearchOutcome { entries: browse_entries(&feed.publications,target.as_str()), degraded:false, has_next_page });
+	}
 	let root = catalog.get_feed(state, &root_url).await?;
 	let query = query.map(str::trim).filter(|q| !q.is_empty());
 	if let Some(query) = query {
@@ -1279,7 +1339,7 @@ async fn traverse(
 		let feed = match catalog.get_feed(state, &feed_url).await {
 			Ok(feed) => feed,
 			Err(e) => {
-				tracing::warn!(feed_url, "opds traverse skip unreadable feed: {}", e.message());
+				tracing::warn!( "opds traverse skip unreadable feed: {}", e.message());
 				continue;
 			}
 		};
@@ -1517,7 +1577,7 @@ async fn fetch_feed_pages_until_entry(
 	let mut pages = 1;
 	while let Some(href) = next {
 		if pages >= max_pages {
-			tracing::warn!(feed_url, "opds feed pagination capped");
+			tracing::warn!( "opds feed pagination capped");
 			break;
 		}
 		let url = Catalog::resolve(&current_url, &href)?;
@@ -1729,14 +1789,14 @@ pub async fn chapter_page_rows(state: &Arc<AppState>, manga: &MangaRow, chapter:
 		let pages = match catalog.get_bytes(state, &manifest_url, max).await {
 			Ok((bytes, _)) => parse_reading_order(&bytes).ok().and_then(|order| manifest_page_rows(&manifest_url, &order).ok()),
 			Err(e) => {
-				tracing::warn!(manifest_url, "opds manifest fetch failed, falling back to acquisition: {}", e.message());
+				tracing::warn!( "opds manifest fetch failed, falling back to acquisition: {}", e.message());
 				None
 			}
 		};
 		if let Some(pages) = pages {
 			return Ok(pages);
 		}
-		tracing::warn!(manifest_url, "opds manifest has no usable readingOrder, falling back to acquisition");
+		tracing::warn!( "opds manifest has no usable readingOrder, falling back to acquisition");
 	}
 	let href = entry.acquisition().map(|link| Catalog::resolve(&feed_url, &link.href)).transpose()?;
 	let Some(href) = href.or_else(|| legacy_archive.map(str::to_string)) else {

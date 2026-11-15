@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
 	ArrowLeftRight,
 	CircleArrowUp,
-	FolderSearch,
 	GripVertical,
 	House,
 	PackageOpen,
@@ -11,7 +10,6 @@ import {
 	Pin,
 	PinOff,
 	Play,
-	Plus,
 	ScanSearch,
 	Settings,
 	Trash,
@@ -23,14 +21,11 @@ import { sourceIconUrl } from '../api/client';
 import {
 	useDeleteSource,
 	useImportSource,
-	useLocalScanActive,
 	usePinSource,
-	useReorderPinned,
-	useScanLocal,
 	useScanSources,
 	useSetSourceEnabled,
 	useSources,
-	useUpdateAllSources,
+	useSourceRepos,
 	useUpdateSource
 } from '../api/hooks';
 import type { Source } from '../api/types';
@@ -45,13 +40,14 @@ import {
 	PageHeader,
 	SegmentedControl,
 	Skeleton,
+	Input,
 	pushToast
 } from '../components';
 import ReposPanel from './browse/ReposPanel';
 import { SearchPanel } from './browse/SearchPanel';
 import { TrashPanel } from './browse/TrashPanel';
-import { InternalSourceModal } from './browse/InternalSourceModal';
-import { AddRepoModal } from './browse/AddRepoModal';
+import { BuiltInSources } from './browse/BuiltInSources';
+
 import { SourceSettingsButton, SourceSettingsDialog } from './browse/SourceSettingsModal';
 import { iconColor } from './browse/iconColor';
 
@@ -335,332 +331,52 @@ export function SourceCard({
 
 export default function BrowsePage() {
 	const { t } = useTranslation();
-	const sources = useSources();
-	const scan = useScanSources();
-	const del = useDeleteSource();
-	const updateAll = useUpdateAllSources();
-	const pin = usePinSource();
-	const setEnabled = useSetSourceEnabled();
-	const reorderPinned = useReorderPinned();
+	const sources = useSources(); const repos = useSourceRepos();
 	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const searching = searchParams.get('view') === 'search';
+	const [tab, setTab] = useState<'installed' | 'available' | 'trash'>('installed');
+	const [query, setQuery] = useState(''); const [language, setLanguage] = useState('');
 	const [pendingDelete, setPendingDelete] = useState<Source | null>(null);
-	const [registeringInternal, setRegisteringInternal] = useState(false);
-	const [addRepoOpen, setAddRepoOpen] = useState(false);
-	const [tab, setTab] = useState<'installed' | 'repos' | 'trash'>('installed');
-	const [dragIndex, setDragIndex] = useState<number | null>(null);
-	const [overIndex, setOverIndex] = useState<number | null>(null);
-	const scanLocal = useScanLocal();
-	// SSE task events own the running state (AppLayout subscription invalidates qk.tasks); the button only reads it
-	const localScanning = useLocalScanActive();
-
-	// Installed sources sort alphabetically by name; the pinned section sorts separately by pinOrder
-	const all = useMemo(() => [...(sources.data ?? [])].sort(compareSourceName), [sources.data]);
-	// Internal sources (local/opds instances) group into their own section; pinning stays an opt-in on top
-	const internalSources = all.filter((s) => s.kind !== 'aidoku');
-	const hasLocal = all.some((s) => s.kind === 'local');
-	// Aidoku-style separate section: updatable sources grouped together, below the pinned section and above the full list
-	const updateSources = all.filter((s) => s.updateVersion !== null);
-	const updateCount = updateSources.length;
-	const pinnedSources = all
-		.filter((s) => s.pinned)
-		.sort((a, b) => (a.pinOrder ?? 0) - (b.pinOrder ?? 0));
-
-	async function onScan() {
-		try {
-			const r = await scan.mutateAsync();
-			pushToast(
-				t('browse.scanDone', {
-					installed: r.installed.length,
-					updated: r.updated.length,
-					skipped: r.skipped.length
-				}),
-				'info'
-			);
-			for (const s of r.skipped.slice(0, 3)) {
-				pushToast(t('browse.scanSkipped', { dir: s.dir, reason: s.reason }), 'info');
-			}
-		} catch {
-			// client already popped an error toast
-		}
-	}
-
-	async function onScanLocal() {
-		try {
-			await scanLocal.mutateAsync(null);
-			pushToast(t('browse.scanLocalQueued'), 'info');
-		} catch {
-			// client already popped an error toast
-		}
-	}
-
-	async function onUpdateAll() {
-		try {
-			const r = await updateAll.mutateAsync();
-			pushToast(
-				t('browse.updateAllDone', { updated: r.updated.length, failed: r.failed.length }),
-				'info'
-			);
-			for (const f of r.failed.slice(0, 3)) {
-				pushToast(t('browse.updateFailed', { key: f.key, reason: f.reason }), 'info');
-			}
-			for (const w of r.migrationWarnings.slice(0, 3)) {
-				pushToast(t('browse.migrationWarning', { key: w.key, message: w.message }), 'info');
-			}
-			if (r.migrationRequired.length > 0) {
-				pushToast(
-					t('browse.migrationRequiredMany', {
-						names: r.migrationRequired.join(t('browse.listSeparator'))
-					}),
-					'info'
-				);
-				navigate('/migrate');
-			}
-		} catch {
-			// client already popped an error toast
-		}
-	}
-
-	async function togglePin(s: Source) {
-		try {
-			await pin.mutateAsync({ id: s.id, pinned: !s.pinned });
-			pushToast(
-				s.pinned ? t('browse.unpinned', { name: s.name }) : t('browse.pinned', { name: s.name }),
-				'info'
-			);
-		} catch {
-			// client already popped an error toast
-		}
-	}
-
-	async function toggleEnabled(s: Source) {
-		try {
-			await setEnabled.mutateAsync({ id: s.id, enabled: !s.enabled });
-			pushToast(
-				s.enabled ? t('browse.disabledToast', { name: s.name }) : t('browse.enabledToast', { name: s.name }),
-				'info'
-			);
-		} catch {
-			// client already popped an error toast
-		}
-	}
-
-	function onDropPinned(target: number) {
-		const from = dragIndex;
-		setDragIndex(null);
-		setOverIndex(null);
-		if (from === null || from === target) return;
-		const keys = pinnedSources.map((s) => s.key);
-		const [moved] = keys.splice(from, 1);
-		keys.splice(target, 0, moved);
-		reorderPinned.mutate(keys);
-	}
-
+	const del = useDeleteSource(); const pin = usePinSource(); const setEnabled = useSetSourceEnabled();
+	const scan = useScanSources();
+	const all = useMemo(() => [...(sources.data ?? [])].filter((source) => source.kind === 'aidoku').sort((a, b) => Number(b.pinned) - Number(a.pinned) || compareSourceName(a, b)), [sources.data]);
+	const visible = all.filter((source) => (!query || `${source.name} ${source.key}`.toLowerCase().includes(query.toLowerCase())) && (!language || source.languages.includes(language)));
 	async function confirmDelete() {
 		if (!pendingDelete) return;
-		try {
-			await del.mutateAsync(pendingDelete.id);
-			pushToast(t('browse.uninstalled', { name: pendingDelete.name }), 'info');
-			setPendingDelete(null);
-		} catch {
-			// client already popped an error toast
-		}
+		try { await del.mutateAsync(pendingDelete.id); setPendingDelete(null); } catch { /* error toast */ }
 	}
-
-	return (
-		<div className="page container">
-			<PageHeader
-				title={t('common.nav.browse')}
-				actions={
-					!searching && tab === 'installed' ? (
-							<>
-								<Button onClick={() => navigate('/migrate')}>
-									<ArrowLeftRight size={15} />
-									{t('browse.migrate')}
-								</Button>
-								{updateCount > 0 && (
-									<Button loading={updateAll.isPending} onClick={() => void onUpdateAll()}>
-										<CircleArrowUp size={15} />
-										{t('browse.updateAll', { count: updateCount })}
-									</Button>
-								)}
-								<Button onClick={() => setRegisteringInternal(true)}>
-									<Plus size={15} />
-									{t('browse.addInternal')}
-								</Button>
-								<ImportAixButton />
-								{hasLocal && (
-									<Button
-										loading={scanLocal.isPending || localScanning}
-										onClick={() => void onScanLocal()}
-									>
-										<FolderSearch size={15} />
-										{t('browse.scanLocal')}
-									</Button>
-								)}
-								<Button variant="primary" loading={scan.isPending} onClick={() => void onScan()}>
-									<ScanSearch size={15} />
-									{t('browse.scan')}
-								</Button>
-							</>
-						) : !searching && tab === 'repos' ? (
-							<Button variant="primary" onClick={() => setAddRepoOpen(true)}>
-								<Plus size={15} />
-								{t('reposPanel.addRepo')}
-							</Button>
-						)
-					: undefined
-				}
-			/>
-
-			<SearchPanel
-				active={searching}
-				initialQuery={searchParams.get('q') ?? ''}
-				onActiveChange={(active, query) => {
-					if (active === searching && query === (searchParams.get('q') ?? '')) return;
-					// replace, not push: drilling into a result and back must restore the search, not walk old submissions
-					setSearchParams(active ? (query ? { view: 'search', q: query } : { view: 'search' }) : {}, {
-						replace: true
-					});
-				}}
-			/>
-
-			{!searching && (
-				<div className="browse__tabs">
-					<SegmentedControl
-						options={[
-							{ value: 'installed', label: t('browse.tabInstalled') },
-							{ value: 'repos', label: t('browse.tabRepos') },
-							{ value: 'trash', label: t('browse.tabTrash') }
-						]}
-						value={tab}
-						onChange={setTab}
-					/>
-				</div>
-			)}
-
-			{!searching && (tab === 'trash' ? (
-				<TrashPanel />
-			) : tab === 'repos' ? (
-				<ReposPanel />
-			) : sources.isPending ? (
-				<div className="source-list">
-					{Array.from({ length: 4 }, (_, i) => (
-						<Skeleton key={i} height={82} style={{ borderRadius: 'var(--r-md)' }} />
-					))}
-				</div>
-			) : all.length === 0 ? (
-				<EmptyState
-					icon={PackageOpen}
-					title={t('browse.emptyTitle')}
-					hint={t('browse.emptyHintAdmin')}
-				/>
-			) : (
-				<>
-					{pinnedSources.length > 0 && (
-						<>
-							<h2 className="browse__section">{t('browse.sectionPinned')}</h2>
-							<div className="source-list">
-								{pinnedSources.map((s, i) => (
-									<SourceCard
-										key={s.id}
-										source={s}
-										dnd={{
-											dragging: dragIndex === i,
-											dragOver: overIndex === i && dragIndex !== null && dragIndex !== i,
-											onDragStart: (e) => {
-												e.dataTransfer.setData('text/plain', s.key);
-												e.dataTransfer.effectAllowed = 'move';
-												setDragIndex(i);
-											},
-											onDragOver: (e) => {
-												e.preventDefault();
-												setOverIndex(i);
-											},
-											onDrop: () => onDropPinned(i),
-											onDragEnd: () => {
-												setDragIndex(null);
-												setOverIndex(null);
-											}
-										}}
-										onTogglePin={(s) => void togglePin(s)}
-										onToggleEnabled={(s) => void toggleEnabled(s)}
-										onDelete={setPendingDelete}
-									/>
-								))}
-							</div>
-						</>
-					)}
-					{internalSources.length > 0 && (
-						<>
-							<h2 className="browse__section">{t('browse.sectionInternal')}</h2>
-							<div className="source-list">
-								{internalSources.map((s) => (
-									<SourceCard
-										key={s.id}
-										source={s}
-										onTogglePin={(s) => void togglePin(s)}
-										onToggleEnabled={(s) => void toggleEnabled(s)}
-										onDelete={setPendingDelete}
-									/>
-								))}
-							</div>
-						</>
-					)}
-					{updateSources.length > 0 && (
-						<>
-							<h2 className="browse__section">
-								{t('browse.sectionUpdates', { count: updateSources.length })}
-							</h2>
-							<div className="source-list">
-								{updateSources.map((s) => (
-									<SourceCard
-										key={s.id}
-										source={s}
-										onTogglePin={(s) => void togglePin(s)}
-										onToggleEnabled={(s) => void toggleEnabled(s)}
-										onDelete={setPendingDelete}
-									/>
-								))}
-							</div>
-						</>
-					)}
-					{(pinnedSources.length > 0 || internalSources.length > 0 || updateSources.length > 0) && (
-						// when any section appears above, the full list needs an "All" heading to set it apart
-						<h2 className="browse__section">{t('browse.sectionAll')}</h2>
-					)}
-					<div className="source-list">
-						{all.map((s) => (
-							<SourceCard
-								key={s.id}
-								source={s}
-								onTogglePin={(s) => void togglePin(s)}
-								onToggleEnabled={(s) => void toggleEnabled(s)}
-								onDelete={setPendingDelete}
-							/>
-						))}
+	return <div className="page container">
+		<PageHeader title="Sources" actions={<>
+			<Button onClick={() => navigate('/migrate')}><ArrowLeftRight size={15} />{t('browse.migrate')}</Button>
+			<ImportAixButton />
+			<Button loading={scan.isPending} onClick={() => scan.mutate()}><ScanSearch size={15} />{t('browse.scan')}</Button>
+		</>} />
+		{!searching && <BuiltInSources />}
+		<section aria-label="External Sources">
+			<h2 className="browse__section">External Sources</h2>
+			<p className="muted">Aidoku-compatible packages from your subscribed source lists.</p>
+			<Button onClick={() => navigate('/settings?section=source-lists')}>Settings → Source Lists</Button>
+			<SearchPanel active={searching} initialQuery={searchParams.get('q') ?? ''} onActiveChange={(active, q) => setSearchParams(active ? { view: 'search', ...(q ? { q } : {}) } : {}, { replace: true })} />
+			{!searching && <>
+				<div className="browse__tabs"><SegmentedControl options={[
+					{ value: 'installed', label: 'Installed sources' }, { value: 'available', label: 'Browse available sources' }, { value: 'trash', label: t('browse.tabTrash') }
+				]} value={tab} onChange={setTab} /></div>
+				{tab === 'available' ? <ReposPanel manage={false} /> : tab === 'trash' ? <TrashPanel /> : <>
+					<div className="repos__filters">
+						<Input type="search" aria-label="Search installed external sources" placeholder="Search installed sources by name or ID" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
+						<select aria-label="Filter installed source language" value={language} onChange={(e) => setLanguage(e.currentTarget.value)}><option value="">All languages</option>{[...new Set(all.flatMap((s) => s.languages))].sort().map((lang) => <option key={lang} value={lang}>{languageLabel(lang)}</option>)}</select>
 					</div>
-				</>
-			))}
-
-			<Modal
-				open={pendingDelete !== null}
-				title={t('browse.uninstallTitle', { name: pendingDelete?.name ?? '' })}
-				onClose={() => setPendingDelete(null)}
-				footer={
-					<>
-						<Button onClick={() => setPendingDelete(null)}>{t('common.cancel')}</Button>
-						<Button variant="danger" loading={del.isPending} onClick={() => void confirmDelete()}>
-							{t('browse.uninstallConfirm')}
-						</Button>
-					</>
-				}
-			>
-				<p className="muted">{t('browse.deleteHint')}</p>
-			</Modal>
-			<InternalSourceModal open={registeringInternal} onClose={() => setRegisteringInternal(false)} />
-			<AddRepoModal open={addRepoOpen} onClose={() => setAddRepoOpen(false)} />
-		</div>
-	);
+					{sources.isError && <p role="alert">Installed sources could not be loaded. Try again when the server is available.</p>}
+					{sources.isPending ? <Skeleton height={82} /> : !visible.length ? <EmptyState icon={PackageOpen} title="No matching installed external sources" hint="Browse available sources or add a list in Settings → Source Lists." /> : <div className="source-list">{visible.map((source) => <div key={source.id}>
+						<SourceCard source={source} onTogglePin={(s) => pin.mutate({ id: s.id, pinned: !s.pinned })} onToggleEnabled={(s) => setEnabled.mutate({ id: s.id, enabled: !s.enabled })} onDelete={setPendingDelete} />
+						<p className="muted source-origin">Origin: {repos.data?.find((repo) => repo.id === source.repoId)?.name ?? (source.repoId != null ? 'Subscribed Source List' : 'Sideloaded or unsubscribed list')} · {repos.data?.find((repo) => repo.id === source.repoId)?.url ?? source.key}</p>
+					</div>)}</div>}
+				</>}
+			</>}
+		</section>
+		<Modal open={pendingDelete !== null} title={`Uninstall ${pendingDelete?.name ?? 'source'}?`} onClose={() => setPendingDelete(null)} footer={<>
+			<Button onClick={() => setPendingDelete(null)}>Cancel</Button><Button variant="danger" loading={del.isPending} onClick={() => void confirmDelete()}>Uninstall Package</Button>
+		</>}><p>The source package will be removed. Saved library entries, categories and reading progress stay in your database for an exact-ID reinstall. Existing downloaded files are not removed.</p></Modal>
+	</div>;
 }

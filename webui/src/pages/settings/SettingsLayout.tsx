@@ -8,6 +8,7 @@ export const SETTINGS_GROUPS = [
 	['trackers', 'settings.groupTrackers'],
 	['downloads', 'settings.groupDownloads'],
 	['backups', 'settings.groupBackups'],
+	['source-lists', 'settings.groupSourceLists'],
 	['system', 'settings.groupSystem']
 ] as const;
 

@@ -4,7 +4,7 @@
 
 Sumidoku Desktop is an independent macOS application project built around the open-source Sumidoku server and its existing manga-reading interface. It aims to make local setup, library management, sources, and backups feel like using a regular Mac app—without Docker or a browser tab.
 
-> **Development status:** The native app and first-run setup are implemented in [draft PR #1](https://github.com/TTokomon/SumidokuApp/pull/1), **not yet merged into `main` or published as a signed release**. This default branch still contains the upstream Sumidoku server. Work on GitHub Source Lists and additional integrations is ongoing. This is a community derivative, not an official Sumidoku release.
+> **Development status:** The native app and first-run setup are implemented in [draft PR #1](https://github.com/TTokomon/SumidokuApp/pull/1), **not yet merged into `main` or published as a signed release**. This default branch still contains the upstream Sumidoku server. Built-in Sources, live Suwayomi library connectivity and Settings → Source Lists are implemented on the draft branch; fixture and native WebKit verification are documented below. This is a community derivative, not an official Sumidoku release.
 
 ## What we're building
 
@@ -16,18 +16,20 @@ Sumidoku Desktop is an independent macOS application project built around the op
 
 ## Sources
 
-Our intended experience separates **Built-in Sources** from **External Sources**:
+The draft application separates **Built-in Sources** from **External Sources**:
 
 | Source | Support and status |
 | --- | --- |
-| **Local Files** | Supported by upstream Sumidoku for local folders and supported archives |
-| **Komga** | Supported by upstream through OPDS catalogs |
-| **Kavita** | Supported by upstream through OPDS catalogs |
-| **Suwayomi** | Live server integration is being investigated; upstream currently supports Suwayomi/Mihon **backup import**, which is not the same as a live connection |
+| **Local Files** | Setup/test/edit forms reuse upstream local folders and supported archives |
+| **Komga** | Setup/test/edit forms reuse upstream OPDS catalogs |
+| **Kavita** | Setup/test/edit forms reuse upstream OPDS catalogs |
+| **Suwayomi** | Implemented live GraphQL saved-library browsing and reading, with public/HTTP Basic access; separate from backup import. Extension management, JWT/OIDC and remote progress sync are not implemented |
 | **External Aidoku sources** | Supported by upstream through compatible repository indexes and `.aix` packages |
-| **Settings → Source Lists** | Planned experience for managing GitHub-hosted Aidoku-compatible repositories; in development, not yet a released feature |
+| **Settings → Source Lists** | Implemented GitHub/published-index discovery, naming, browse/filter, confirmed install, refresh/update and explicit subscription/package removal choices; remains in the draft PR |
 
 Not every GitHub repository is an installable manga source. A compatible source index or package is required. An Aidoku backup may reference source IDs that must be installed before its manga and progress can be imported.
+
+See the [native design and application update status](docs/DESKTOP_DESIGN.md) for genuine system Liquid Glass, web/native boundaries and the signing gates that keep unattended app/server installation disabled in development.
 
 ## macOS development and installation
 
@@ -35,6 +37,7 @@ The desktop implementation and its verified local setup are documented on the ac
 
 - [Native macOS app, onboarding, build, and verification](https://github.com/TTokomon/SumidokuApp/blob/feat/native-macos-setup/docs/NATIVE_APP.md)
 - [Local server setup, data, backups, and Aidoku import limitations](https://github.com/TTokomon/SumidokuApp/blob/feat/native-macos-setup/docs/MACOS_SETUP.md)
+- [Source integration contracts, fork build/update process and tests](docs/SOURCE_INTEGRATIONS.md)
 - [Draft PR #1: development progress](https://github.com/TTokomon/SumidokuApp/pull/1)
 
 The current local build targets Apple Silicon macOS. It uses **ad-hoc code signing** for development and is **not notarized for public distribution**. There is no public downloadable macOS installer yet.
@@ -60,3 +63,5 @@ For the original server's features, Docker and Rust development instructions, se
 **Sumidoku Desktop** is built on [Sumidoku](https://github.com/Sumidoku/Sumidoku), an open-source self-hosted manga server. The original Sumidoku project and its authors retain credit for the underlying server and web interface. This project is independently maintained and is not endorsed by the upstream maintainers.
 
 The repository's code is governed by its applicable existing licenses; see [LICENSE](LICENSE) and any bundled third-party license notices.
+
+Final native integration results and remaining distribution gates: [Desktop integration review](docs/INTEGRATION_REVIEW.md).

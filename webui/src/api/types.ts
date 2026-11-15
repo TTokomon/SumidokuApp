@@ -2,6 +2,7 @@
 
 export type AddRepoRequest = {
 	url: string;
+	name?: string | null;
 };
 
 export type AddToLibraryRequest = {
@@ -533,6 +534,31 @@ export type InstallSourceRequest = {
 	sourceKey: string;
 };
 
+export type IntegrationSaved = {
+	id: number;
+	name: string;
+	provider: string;
+	url: string | null;
+	paths: Array<string> | null;
+	hasCredentials: boolean;
+};
+
+export type IntegrationSetup = {
+	provider: "local" | "komga" | "kavita" | "suwayomi";
+	name: string;
+	url?: string;
+	username?: string;
+	password?: string;
+	paths?: Array<string>;
+	keepCredentials?: boolean;
+	sourceId?: number | null;
+};
+
+export type IntegrationTest = {
+	ok: boolean;
+	message: string;
+};
+
 export type JsonValue = unknown;
 
 export type LibraryEntry = Manga & {
@@ -886,6 +912,10 @@ export type RemoteState = {
 	finishReadDate?: string | null;
 };
 
+export type RenameRepoRequest = {
+	name: string;
+};
+
 export type ReorderPinnedRequest = {
 	ids: Array<string>;
 };
@@ -1095,6 +1125,7 @@ export type Source = {
 	hasHome: boolean | null;
 	pinned: boolean;
 	pinOrder: number | null;
+	repoId?: number | null;
 };
 
 export type SourceChapter = {
@@ -1174,6 +1205,11 @@ export type SourceManga = {
 export type SourcePatch = {
 	pinned?: boolean;
 	enabled?: boolean;
+};
+
+export type SourceRefreshPreferences = {
+	autoRefreshLists: boolean;
+	autoUpdatePackages: boolean;
 };
 
 export type SourceRepo = {
