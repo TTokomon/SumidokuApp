@@ -20,19 +20,20 @@ const SUBSECTION_LABELS: Record<SettingsGroupKey, string> =
 /** Five visible categories; keep all eight legacy deep-link section IDs intact. */
 export const SETTINGS_CATEGORIES: ReadonlyArray<{
 	id: string;
-	label: string;
+	labelKey: string;
+	fallbackLabel: string;
 	sections: readonly SettingsGroupKey[];
 }> = [
-	{ id: 'reading', label: 'Reading & Library', sections: ['reader', 'library'] },
-	{ id: 'sources', label: 'Sources & Tracking', sections: ['source-lists', 'trackers'] },
-	{ id: 'storage', label: 'Downloads & Backups', sections: ['downloads', 'backups'] },
-	{ id: 'appearance', label: 'Appearance & Updates', sections: ['general'] },
-	{ id: 'server', label: 'Server & Account', sections: ['system'] }
+	{ id: 'reading', labelKey: 'settings.categoryReadingLibrary', fallbackLabel: 'Reading & Library', sections: ['reader', 'library'] },
+	{ id: 'sources', labelKey: 'settings.categorySourcesTracking', fallbackLabel: 'Sources & Tracking', sections: ['source-lists', 'trackers'] },
+	{ id: 'storage', labelKey: 'settings.categoryDownloadsBackups', fallbackLabel: 'Downloads & Backups', sections: ['downloads', 'backups'] },
+	{ id: 'appearance', labelKey: 'settings.categoryAppearanceUpdates', fallbackLabel: 'Appearance & Updates', sections: ['general'] },
+	{ id: 'server', labelKey: 'settings.categoryServerAccount', fallbackLabel: 'Server & Account', sections: ['system'] }
 ];
 
 /** The old section query parameter continues to determine both category and subsection. */
 export function settingsCategoryFor(section: SettingsGroupKey) {
-	return SETTINGS_CATEGORIES.find((category) => category.sections.includes(section)) ?? SETTINGS_CATEGORIES[3];
+	return SETTINGS_CATEGORIES.find((category) => category.sections.includes(section)) ?? SETTINGS_CATEGORIES[3]!;
 }
 
 interface SettingsLayoutProps {
@@ -55,8 +56,8 @@ export function SettingsLayout({ current, onSelect, panels }: SettingsLayoutProp
 						data-settings-category={item.id}
 						className={category.id === item.id ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'}
 						aria-pressed={category.id === item.id}
-						onClick={() => onSelect(item.sections[0])}
-					>{item.label}</button>
+						onClick={() => onSelect(item.sections[0]!)}
+					>{t(item.labelKey, { defaultValue: item.fallbackLabel })}</button>
 				))}
 			</nav>
 			<div className="settings-panel">
