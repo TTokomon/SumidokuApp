@@ -37,6 +37,18 @@ struct DesktopShell: View {
     @ObservedObject var updates: AppUpdates
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visibility: NavigationSplitViewVisibility = .all
+    private var footerUpdateLabel: String {
+        switch updates.state {
+        case .notChecked: return "Not checked"
+        case .checking: return "Checking"
+        case .current: return "Up to date"
+        case .available: return "Available"
+        case .offline: return "Offline"
+        case .error: return "Error"
+        case .unavailable: return "Unverified"
+        }
+    }
+
     var selection: Binding<String?> {
         Binding(
             get: {
@@ -94,19 +106,19 @@ struct DesktopShell: View {
                                 Text("App Updates").font(.callout)
                                 Spacer(minLength: 4)
                                 Circle().fill(updates.color).frame(width: 8, height: 8)
-                                Text(updates.label).font(.caption).foregroundStyle(.secondary)
+                                Text(footerUpdateLabel).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }.contentShape(Rectangle())
                         }.buttonStyle(.plain)
                             .accessibilityLabel("App Updates: \(updates.label). Open update settings.")
                         Button { controller.nativePanel = "server" } label: {
                             HStack(spacing: 9) {
-                                Image(systemName: "server.rack").foregroundStyle(.secondary)
+                                Image(systemName: NativeSymbol.resolve("server.rack")).foregroundStyle(.secondary)
                                     .frame(width: 20)
                                 Text("Local Server").font(.callout)
                                 Spacer(minLength: 4)
-                                Circle().fill(controller.available ? Color.green : Color.orange)
+                                Circle().fill(controller.checking ? Color.gray : controller.available ? Color.green : Color.orange)
                                     .frame(width: 8, height: 8)
-                                Text(controller.available ? "Running" : "Unavailable")
+                                Text(controller.checking ? "Checking" : controller.available ? "Running" : "Offline")
                                     .font(.caption).foregroundStyle(.secondary)
                             }.contentShape(Rectangle())
                         }.buttonStyle(.plain)
