@@ -57,7 +57,7 @@ case "${1:-status}" in
   stop) stop_server ;;
   restart) restart_server ;;
   status) launchctl print "$domain/$label" ;;
-  open) open -a Safari http://localhost:3000 ;;
+  open) open /Applications/Sumidoku.app ;;
   disable) stop_server; launchctl disable "$domain/$label" ;;
   enable) launchctl enable "$domain/$label"; start_server ;;
   *) echo 'Usage: service.sh start|stop|restart|status|open|disable|enable' >&2; exit 1 ;;

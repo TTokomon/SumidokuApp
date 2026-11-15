@@ -62,6 +62,8 @@ Run these from the checkout:
 ./macos/service.sh enable
 ```
 
+`open` launches the installed native application. Build/install it using [the native app instructions](NATIVE_APP.md) first. It does not open a browser or control the backend.
+
 `stop` unloads the job for the current login; the plist remains for the next login. `disable` additionally disables its launchd label across logins. `enable` reverses that and starts it. Repeated `start` calls reuse the loaded job. Start waits for the health endpoint. Restart gracefully signals the retained LaunchAgent and waits for a new healthy runner; stop waits for the previous runner to exit. Do not launch a second server manually on the same data directory.
 
 The runner forwards termination to the server as **SIGINT**, which the shipped server handles for graceful shutdown. `KeepAlive` restarts an unexpected exit; `ThrottleInterval` limits restart loops. The job runs in the current user's GUI launchd domain and uses no root daemon. Inspect logs with:

@@ -39,12 +39,18 @@ state_file.write_text(json.dumps(state))
             curl = root / 'curl'
             curl.write_text('#!/bin/sh\nexit 0\n')
             curl.chmod(0o700)
+            opener = root / 'open'
+            opener.write_text(f'#!{sys.executable}\n' + 'import os, sys\nfrom pathlib import Path\nPath(os.environ["TEST_EVENTS"]).write_text("open " + " ".join(sys.argv[1:]) + "\\n")\n')
+            opener.chmod(0o700)
             environment = {**os.environ, 'HOME': str(root), 'PATH': str(root) + ':' + os.environ['PATH'],
                            'TEST_STATE': str(state), 'TEST_EVENTS': str(events)}
             result = subprocess.run(['/bin/bash', str(HELPER), action], env=environment,
                                     capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             return events.read_text().splitlines()
+
+    def test_open_launches_native_app_without_browser_or_server_control(self):
+        self.assertEqual(self.run_helper('open'), ['open /Applications/Sumidoku.app'])
 
     def test_restart_signals_existing_job_without_unregistering_it(self):
         events = self.run_helper('restart')
