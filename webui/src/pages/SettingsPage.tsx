@@ -1,4 +1,4 @@
-import { DesktopUpdatesSection } from '../native/DesktopBridge';
+import { DesktopUpdatesSection, DesktopServerSection } from '../native/DesktopBridge';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -2571,6 +2571,7 @@ export default function SettingsPage() {
 					'source-lists': <SourceLists />,
 					system: (
 						<>
+							<DesktopServerSection />
 							<SecuritySection />
 							<ApiKeysSection />
 							<CoverCacheSection />
