@@ -19,3 +19,10 @@ test('web surfaces remain opaque and accessibility modes preserve readable conte
 	assert.match(css,/prefers-reduced-motion/);assert.match(css,/prefers-contrast/);assert.match(css,/prefers-reduced-transparency/);
 	assert.match(css,/data-native-shell/);assert.match(css,/--font-display: var\(--font-sans\)/);
 });
+
+test('native shell keeps internal Settings categories visible after sidebar consolidation', () => {
+	const css = readFileSync(new URL('../src/styles/desktop.css', import.meta.url), 'utf8');
+	const settingsRule = css.match(/\[data-native-shell='true'\] \.settings-nav\s*\{([^}]*)\}/)?.[1] ?? '';
+	assert.match(settingsRule, /display:\s*flex/);
+	assert.match(css, /\[data-native-shell='true'\] \.app__sidebar/);
+});
