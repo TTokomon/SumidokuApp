@@ -167,7 +167,7 @@ server, account or backup information. Public examples must use disposable fixtu
 - Rust workspace: 1,272 passed, 2 skipped; strict all-target workspace clippy passed.
 - Frontend: 377 passed; TypeScript check and production build passed.
 - Native updater/material policies: 37 assertions; navigation: 12 cases.
-- Python maintenance/paired-update fixtures: 19 tests.
+- Python maintenance/paired-update fixtures: 22 tests.
 - Onboarding: 32 assertions for each direct-process and temporary LaunchAgent driver.
 - Welcome/create/sign-in native rendering passed without creating a real account.
 - Full native fixture-window rendering passed for light/dark library, manga details,
@@ -198,3 +198,35 @@ A single-file restore returned all 37 assertions to green.
 Branding uses the existing Sumidoku logo and original red theme tokens in both
 light and dark content. Native controls use the same brand red. No custom app-icon
 replacement is shipped.
+
+## Final installed verification
+
+Native client **1.3.0 (5)** with the original Sumidoku logo and red theme was
+installed and strictly signature-verified, including the embedded framework.
+The installed application's own Sources window was captured and inspected after
+a normal restart. It remained configured, authenticated and connected to the
+existing local server. Quitting the client left the background server healthy.
+
+Database integrity and ten protected-table fingerprints matched the pre-update
+baseline. The persistent-library descriptor and pinned official executable were
+byte-identical. The selected fork matched its packaged manifest; one application,
+one managed LaunchAgent and one localhost listener remained. Cold recovery copies,
+original backups, configuration, sources, downloads and reading data were retained.
+
+An intermediate activation encountered macOS Documents authorization for a changed
+ad-hoc code identity. Explicit approval through the system prompt restored startup;
+no privacy policy was bypassed and no database was restored or downgraded. The
+local activator now handles diagnostic client arguments, atomically replaces
+executables, restores matching prior runtime artifacts and allows a loaded service
+time to complete legitimate folder approval. The inode-replacement regression
+failed under deliberate in-place copying and passed after a single-file restore.
+
+The local bundle remains ad-hoc signed and not notarized. Gatekeeper distribution
+assessment rejects it; ordinary local launch was verified. Public signed Sparkle
+installation remains disabled as described above.
+
+Cleanup removed the two custom icon assets, approximately 15 GiB of task-owned
+Rust debug/test build cache and two superseded temporary build-4 app stages.
+Release artifacts, useful test sources, original application assets and every
+private recovery/original backup were retained. No additional Sumidoku application
+or duplicate service was found in the checked installation locations.
