@@ -40,6 +40,13 @@ Self-hosted manga server: Aidoku WASM and OPDS sources, REST API, shipped as a s
   retention, and imports from Aidoku (`.aib`) and Suwayomi/Mihon
   (`.tachibk`, `.proto.gz`).
 
+## macOS application
+
+Open Sumidoku.app to **Create New Library** with your own local owner credentials
+and storage folder, or **Sign In** to an existing library. Native Settings manages
+the server and account; the existing manga interface remains embedded in its own
+window. See [native installation and onboarding](docs/NATIVE_APP.md).
+
 ## Quick start
 
 ```sh

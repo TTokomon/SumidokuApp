@@ -4,6 +4,33 @@ One page for the whole system, verified against the linked source. Update
 the owning section in the same PR when a change alters a contract described
 here. Link to symbols rather than copying details that drift.
 
+## macOS native client (`macos/App`)
+
+`SumidokuApp.swift` hosts the existing web UI in WKWebView and presents native
+first-run owner creation, sign-in, storage selection, status and account controls.
+`LibraryManager.swift` owns one localhost installation and its path-only descriptor.
+An explicit Create action reserves a new empty root, seeds the user-chosen owner
+once, starts the existing pinned executable, verifies authentication and metadata-only
+settings, removes active credential overrides, and only then publishes the descriptor.
+Failure stops/unloads its own newly created service and rolls back owned setup files;
+if stopping fails, it retains partial state for recovery rather than deleting live data.
+Connect validates an existing config/database and the matching LaunchAgent before
+reusing them. Conflicting folders or services are rejected without replacement.
+
+The chosen primary folder separates Server (database/settings/source packages,
+metadata/progress and page caches), Downloads, and Backups. Upstream config-root
+constraints are preserved. One user LaunchAgent invokes the graceful runner with
+that config directory. The runner clears inherited server environment overrides.
+Before explicit service or credential controls, the app replaces its web document
+with a blank one to release SSE connections that would delay graceful shutdown.
+It leaves the background process running on quit/sign-out. Native credential
+changes first stop and cold-copy existing state, remove startup overrides, and use
+the server password endpoint; confirmed local recovery uses a temporary explicit
+seed without deleting a library or disabling authentication. Subsequent boots use
+the database's hash. WebKit receives the server's HttpOnly cookie; no secret is
+stored in preferences or the descriptor. Native backup controls open the existing
+web backup workflow. See [native operations and verification](NATIVE_APP.md).
+
 ## Server (`crates/server`)
 
 axum 0.8, SQLite via sqlx. Entry `main.rs`; app wiring `lib.rs:build_app`.

@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Apply metadata-only settings through the running local server, then verify readback."""
 import json
-from pathlib import Path
-import tomllib
+import getpass
 import urllib.request
 
 
 def configure():
-    config = tomllib.loads((Path.home() / 'Library/Application Support/Sumidoku/config.toml').read_text())
+    credentials = {'username': input('Local owner username: '), 'password': getpass.getpass('Password: ')}
     base = 'http://127.0.0.1:3000'
     def request(route, value=None, token=None):
         headers = {'Content-Type': 'application/json'}
@@ -19,7 +18,8 @@ def configure():
             req.method = 'PUT'
         with urllib.request.urlopen(req, timeout=20) as response:
             return json.load(response)
-    token = request('/api/v1/auth/login', config['auth'])['token']
+    token = request('/api/v1/auth/login', credentials)['token']
+    credentials.clear()
     request('/api/v1/settings', {
         'auto_download_new_chapters': False,
         'auto_download_limit': 0,

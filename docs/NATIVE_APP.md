@@ -1,130 +1,168 @@
 # Sumidoku.app for macOS
 
-The desktop client is a genuine SwiftUI application with an embedded WKWebView, installed at `/Applications/Sumidoku.app`. It is not a Safari web app, shortcut, PWA, or browser launcher. It displays the existing Sumidoku interface at `http://127.0.0.1:3000` and does not rebuild the frontend.
+Sumidoku.app is a SwiftUI application containing WKWebView. It reuses the released
+server and existing web interface, with one owner, one localhost server, one user
+LaunchAgent, and a persistent library outside the application bundle.
 
-## Use the app
+## First launch
 
-Open **Sumidoku** from the Dock or Applications. The installed bundle is registered with LaunchServices for Finder and application discovery; Spotlight indexing may take a moment.
+Open Sumidoku from Applications, Finder, Spotlight, or the Dock. A clean installation
+shows **Create New Library** and **Sign In**. Launching the app does not install a
+service, create an account, or start a second database.
 
-Sign in once with the existing admin login. The client never reads the private server config or admin password. WebKit has its own persistent cookie/site-data store, so Safari's existing session is not copied into the app. Login continues to be handled by the existing Sumidoku server and web interface.
+**Create New Library** asks for your username, password and confirmation, and a
+storage folder. The default is `~/Documents/Sumidoku Library/`; **Choose Storage
+Folder** opens the native folder picker. Choose a new or empty folder. A folder
+containing files is rejected without overwriting it; use Sign In to reconnect an
+existing library. The account belongs to this local server, not an internet service.
+There is one owner, with no invented multi-user registration.
 
-- **Command-comma:** native Settings, with status, Start Server, Restart Server, Open Data Folder, Open Logs, and Open Backups.
-- **Command-R:** check the server and reload the interface.
-- **Command-W:** close the active window.
-- **Command-Q:** quit the client. The background server and scheduled backups continue running.
-- The standard app, File, Edit, View, Server, Window, and Help menus provide native commands. Edit actions use the web view's responder chain.
+The chosen primary folder contains:
 
-If the server is unavailable, a native error screen provides **Start Server** and **Check Again**. Start loads the existing user LaunchAgent; it does not install a server or make another Sumidoku database. Restart signals the registered job gracefully and waits for its new runner and health endpoint. The app checks local health periodically while its main window is open and reloads after recovery. Closing the main window and reopening the app brings its window back.
+- `Server/`: configuration, database, source packages, cover/page caches, and related
+  server state. Source repositories, library membership, categories and reading
+  progress live in the database. These share a config root as upstream requires.
+- `Downloads/`: intentional offline chapter downloads only.
+- `Backups/`: daily JSON snapshots (30-file retention), and private `Recovery-*`
+  cold snapshots created before native credential changes. Recovery folders are
+  outside the scheduler's filename-based pruning and are never deleted by the app.
 
-The existing web interface retains its own import/export controls. File uploads use a native Open panel, and exports use a native Save panel through WebKit's download delegate. Choose a new filename for exports; WebKit can reject an existing destination. No personal backup is imported or exported automatically. Intentional external links open in the default browser; the core library interface stays in the native app. External OAuth/provider flows have not been verified inside this client.
+Saving a title stores metadata; automatic chapter downloads and download-ahead
+start disabled. Reading can cache individual pages under Server. Cached reader
+pages are distinct from intentionally downloaded offline chapters. Manual downloads
+remain available in the existing interface.
 
-## Existing server and data
+**Sign In** detects the saved installation or lets you select an existing library
+folder. It authenticates with your username/password and reuses the database and
+settings. It may load the matching existing LaunchAgent, or reconstruct a missing
+agent for a validated existing library; it never creates another database. A
+conflicting service, occupied port, unsupported configuration, wrong password or
+unavailable server produces an error. Existing configurations must explicitly
+specify quoted localhost address, download path and backup path; unsupported TOML
+is rejected safely rather than guessed. A missing/disconnected library is retained.
 
-The client uses only the previously installed Sumidoku server and `app.sumidoku.server` LaunchAgent. It does not bundle or launch a second server executable, change the listener, alter authentication, or write library/source/download/backup settings. The server remains bound to loopback. Settings' folder buttons open the existing data, logs, and backup folders.
+## Account and server controls
 
-The desktop client is not App Sandbox restricted, because its native controls must call the existing user LaunchAgent and open the existing folders. No privileged helper or root daemon is installed. The control subprocess gets an explicit minimal HOME/PATH environment rather than inheriting GUI launch variables. The client does not stop the server on application termination.
+Command-comma opens native Settings: status, account username, storage path, Open
+Library Folder, Open Logs, Open Backups, Start/Restart, Change Password, Backup and
+Restore, and Sign Out. Backup and Restore opens the upstream backup section in the
+native window, retaining its upload, dry-run preview and section selection.
 
-## Build and install
+Change Password verifies the current password, briefly stops the server for a
+private recovery snapshot, removes startup credential overrides, and changes the
+server's stored password hash. **Forgot Password** on Sign In offers explicit local
+owner recovery, with a confirmation toggle. It stops and snapshots the existing
+library, seeds the user-chosen replacement credentials once, verifies login, and
+removes the active seed. It retains all library data. This is a local macOS owner's
+recovery action; filesystem access to the library is already privileged access.
+Close other connected clients before maintenance if their live streams prevent
+a clean shutdown. The native app tears down its own document/event stream before
+server or credential controls and reloads afterward. No workflow disables authentication or deletes a database to recover access.
 
-Requirements: Apple Silicon, macOS 13 or later, full Xcode with command-line tools, and Python 3 for generating the bundle metadata. This client was built with Xcode 27.1 on macOS 26.6.2; older supported macOS versions have not been runtime-tested.
+Passwords exist transiently in secure fields and a private mode-600 bootstrap
+config while the server creates its hash. On successful setup/recovery the active
+config contains no password override. The server database owns the persistent hash,
+so later native or web password changes remain effective after restart. Failed
+recovery retains a private cold copy; if startup fails before seed cleanup, inspect
+and recover that protected installation before retrying. No password/token goes in
+UserDefaults, the descriptor, Git, command arguments, or logs. WebKit stores the
+server's HttpOnly session cookie; Safari sessions are not copied.
 
-From the repository root:
+Signing out revokes the current session and removes the app's session cookie. It
+leaves the service, data and backups intact. Quitting also leaves the service running.
+The app never starts a service until explicit create/connect/start/recovery action.
+When an existing server is unavailable, the native error screen offers Start Server.
+
+Command-R checks/reloads, Command-W closes the active window, and Command-Q quits.
+Standard macOS menus, the existing icon, native file pickers, and upload/download
+panels remain available. The chosen folder and owner state survive client updates.
+
+## Runtime and build
+
+The small runtime descriptor at `~/Library/Application Support/Sumidoku/desktop-library.json`
+stores only folder paths. The same support directory retains the pinned binary and
+runner under `bin/`; the LaunchAgent remains `app.sumidoku.server`. New configurations
+bind exclusively to `127.0.0.1:3000`. The runner clears inherited server environment
+overrides and forwards termination as SIGINT for graceful shutdown. There is no Docker,
+new package dependency, server rebuild, frontend rebuild, or server reinstall per launch.
+
+On Apple Silicon with Xcode and Python available, cache the pinned official server
+binary once if needed, then build the client:
 
 ```sh
-./macos/build-app.sh
-# For a first installation, when /Applications/Sumidoku.app does not exist:
+python3 macos/install.py
 ./macos/build-app.sh --install
 ```
 
-Output: `dist/native/Sumidoku.app`, a native arm64 executable with an application icon derived from the existing Sumidoku artwork. `dist/` is ignored by Git. No Cargo/npm frontend or server build runs.
+The binary-only cache command creates no account, configuration, database or service.
+The build packages the verified official binary for first-time explicit setup; an
+existing installed binary is reused. Nothing downloads during normal app launch.
 
-`--install` refuses to replace an existing application. For a client update, quit Sumidoku first, build it, and replace only its application bundle:
+For an existing client, quit it and update only its application bundle:
 
 ```sh
 ./macos/build-app.sh
 ditto --norsrc --noextattr dist/native/Sumidoku.app /Applications/Sumidoku.app
-# Remove only Finder/resource-fork metadata on this generated app, if present.
 xattr -dr com.apple.FinderInfo /Applications/Sumidoku.app 2>/dev/null || true
 xattr -dr com.apple.ResourceFork /Applications/Sumidoku.app 2>/dev/null || true
 codesign --verify --strict /Applications/Sumidoku.app
 open /Applications/Sumidoku.app
 ```
 
-Do not remove the application-support data folder when updating the client. The server may stay running throughout an app-only update. The installer requires write permission to Applications; no sudo was needed in the verified installation.
+Signing is ad-hoc for local development. Strict signature verification passes, but
+this build has no Developer ID identity or notarization and Gatekeeper distribution
+assessment rejects it. A downloaded distribution needs appropriate signing/notarization.
+Gatekeeper is never disabled. Signing stages outside file-provider directories to
+avoid Finder metadata invalidating the seal. Client updates preserve all server data.
 
-The build defaults to **ad-hoc signing** (`codesign --sign -`). Local code-signature verification passes and the application launched locally. It has no Developer ID team identity and is **not notarized**: `spctl --assess` rejects this build for trusted distribution. This does not mean its local signature check failed. A downloaded copy may trigger Gatekeeper; production distribution requires a Developer ID signature and notarization. A developer may pass `SIGNING_IDENTITY` to use an existing signing identity; notarization is not automated here. No signing certificate or team identifier is committed.
+## Verification and limitations
 
-The scripts remove only FinderInfo/ResourceFork metadata from generated app bundles, which otherwise prevents code signing after copies from a file-provider-managed directory. They do not disable Gatekeeper or clear quarantine globally. See the specific-app approval guidance in [macOS setup](MACOS_SETUP.md).
+`./macos/test-onboarding.sh` runs actual pinned-server lifecycle checks against
+disposable directories on a separate loopback port. `--launchagent` repeats them
+using a unique temporary macOS launchd label and the real graceful runner. No test
+uses the permanent database or chosen personal credentials. The jobs and fixture
+directories are removed after the checks.
 
-## Verification
+Passed: 32 lifecycle assertions using the real temporary LaunchAgent, 12 navigation
+policy cases, and seven Python installer/service/checkpoint tests. Native welcome,
+create and sign-in views were rendered by an isolated AppKit/SwiftUI test app without
+creating an owner or service. The lifecycle test also authenticates an actual
+WKWebView with the native login cookie, clears it on sign-out, and tears down its
+live document before graceful service shutdown.
 
-Verified 2026-11-14:
+Covered: clean descriptor state; owner/password validation; custom storage; server
+startup and existing HTML; authentication/sign-out/sign-in; descriptor recreation;
+password change and old-password rejection after restart; explicit credential
+recovery after service unload/reload; preservation of synthetic source files,
+category/library rows and reading progress; recovery snapshots; download defaults;
+existing-folder byte-for-byte protection; reconnect; and injected startup failure
+leaving no new database, descriptor or LaunchAgent. Existing Swift navigation,
+Python checkpoint/service and fixture import/export tests remain available.
 
-- Native arm64 SwiftUI/WKWebView executable compiled and installed in Applications; bundle metadata and strict code signature verified.
-- Dedicated Sumidoku application window rendered the existing sign-in interface at the required loopback URL, independently of Safari.
-- Native Settings opened with Command-comma and reported the server status and expected controls.
-- With the server stopped, the app showed its native unavailable screen and Start Server button. Clicking it loaded the existing LaunchAgent and returned to the sign-in interface.
-- Clicking native Restart Server returned to Running, and the embedded interface loaded afterward. The retained LaunchAgent restart avoids a GUI unload/bootstrap race.
-- Command-Q exited the client; the existing server remained healthy with the **same server process ID**. The app was reopened afterward.
-- One native Sumidoku Dock entry was added while preserving other Dock entries. The application was registered with LaunchServices.
-- Twelve Swift navigation-policy cases passed, rejecting nonlocal/lookalike hosts, wrong schemes/ports, file URLs, and embedded credentials.
-- Python service/checkpoint regression tests and shell syntax checks passed. The restart regression was also checked red with the unregister/rebootstrap path and green after restoring the retained-job signal path.
+The reset of the original generated installation was authorized only after checking
+it contained no manga, chapters, categories, source repositories or download files.
+The job was stopped, a private cold recovery copy was integrity-checked, and only
+its active generated config, empty database/sidecars and obsolete LaunchAgent were
+retired. Its cached binary, original scheduled backup and recovery copy were retained.
+No replacement account was created. The installed client is left at first-run setup;
+removal of the recovery copy requires explicit owner confirmation after the new
+library works.
 
-Not performed: entry of the existing admin password, validation of a real logged-in session across app relaunch, personal library/backup operations, native file upload/export dialogs with personal data, external provider OAuth, older-macOS runtime tests, Developer ID signing/notarization, or a real logout/login cycle. No server/frontend source was changed, so Cargo and frontend build suites were not rerun. The prior disposable server import/restore smoke checks remain documented in [macOS setup](MACOS_SETUP.md).
+Interactive completion of the new native forms/folder picker, the final chosen
+credentials, a persistent WebKit session across an actual app relaunch, a full Mac
+logout/login or reboot, and elapsed backup scheduling/retention remain manual checks.
+The lifecycle suite exercises real service unload/reload, not a complete macOS login.
+No personal Aidoku backup was opened or imported. Server/frontend source is unchanged;
+Cargo and frontend build suites were not rerun.
 
-Run focused checks:
+## Earlier disposable-component cleanup
 
-```sh
-./macos/test-app.sh
-python3 -m unittest discover -s macos/tests -v
-bash -n macos/build-app.sh macos/service.sh macos/test-app.sh
-```
-
-## Redundant-component cleanup
-
-The post-install audit found one native client, one user LaunchAgent, and one
-backend listener bound to loopback. No Sumidoku Safari web app was found in
-the system or user Applications folders, and no duplicate Sumidoku service
-plist was found in the user/system LaunchAgents or system LaunchDaemons.
-No service configuration or persistent storage needed modification.
-
-The obsolete Safari action in `macos/service.sh open` now launches the installed
-native app. Its bundled copy was updated and the client re-signed and reopened.
-The backend kept the same PID and remained healthy throughout. No dependency
-was installed solely for the abandoned browser-app method, so none was removed.
-
-Removed only confirmed disposable development artifacts (about 292 MiB):
-
-- Checkout `dist/native/`: generated app copy, Swift module cache, iconset,
-  and compiled navigation-test executable; then its empty `dist/` parent.
-- Python bytecode caches under `macos/` and `macos/tests/`.
-- Temporary `sumidoku-1.23.3-arm64.tar.gz`, `sumidoku-release-extract/`,
-  and `sumidoku-release.json`: verified installer download, extracted duplicate
-  server/README, and release metadata. The extracted server matched the installed
-  binary before removal.
-- Temporary `sumidoku-app-build.log`, `sumidoku-app-build-final.log`,
-  `sumidoku-restart-red.log`, `sumidoku-cleanup-red.log`, and
-  `sumidoku-server-before-quit.pid`: development build/test output and PID note.
-- Temporary `sumidoku-app-cleanup-rollback.app`: client-only rollback copy,
-  removed after installed signature, launch, helper equality, and health checks.
-- Temporary cleanup inventory/preservation JSON reports after verification.
-
-No disposable server database was found left over from the self-cleaning smoke
-tests. All test source and fixtures remain. WebKit runtime storage was retained.
-Configuration, LaunchAgent, server binary, and runner hashes were unchanged;
-all preexisting backup files remained present. The application-support data
-folder, downloads, source repositories, login credentials, backup schedule,
-Aidoku installations/backups, and unrelated projects were left intact.
-
-Desktop and Downloads could not be inspected because macOS denied directory
-access; nothing there was removed. Unknown shortcuts or user data were not
-classified as disposable. The cleanup audit therefore covers the accessible
-installation, service, checkout, and temporary-file locations, rather than
-claiming an exhaustive scan of protected folders.
-
-Validation: five isolated Python helper/checkpoint tests pass. The native-open
-regression fails with the old Safari command and passes after restoring the
-committed native command. Strict installed signature verification passes; the
-client runs independently, and the original loopback backend remains healthy.
-The earlier native-window, offline recovery, restart, and quit checks above
-remain applicable; this cleanup changed only the launcher helper and docs.
+The prior cleanup removed about 292 MiB: generated `dist/native/` builds/module
+cache/iconset/test executable and empty parent; Python bytecode; temporary official
+release archive/extracted duplicate binary/release metadata; development build and
+regression logs/PID note; a temporary client rollback copy and audit scratch reports.
+No Sumidoku Safari web app or duplicate service was found in accessible Applications
+and service locations. The old Safari launcher now opens the native application.
+No abandoned-method dependency required removal. Useful test sources/fixtures and
+WebKit runtime storage were retained. Desktop and Downloads were inaccessible and
+untouched. No Aidoku, Aidoku backups, AidokuBlue or unrelated project was modified.

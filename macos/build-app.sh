@@ -11,13 +11,23 @@ if [[ "$DEVELOPER_DIR" == /Library/Developer/CommandLineTools ]]; then
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
 OUT="$ROOT/dist/native"
-APP="$OUT/Sumidoku.app"
+STAGING=$(mktemp -d "${TMPDIR:-/tmp}/sumidoku-client-build.XXXXXX")
+trap 'rm -rf "$STAGING"' EXIT
+APP="$STAGING/Sumidoku.app"
 mkdir -p "$OUT/ModuleCache" "$APP/Contents/MacOS" "$APP/Contents/Resources"
 xcrun --sdk macosx swiftc -swift-version 5 -O -parse-as-library -target arm64-apple-macosx13.0 \
   -module-cache-path "$OUT/ModuleCache" -framework SwiftUI -framework WebKit -framework AppKit \
-  "$ROOT/macos/App/NavigationPolicy.swift" "$ROOT/macos/App/SumidokuApp.swift" \
+  "$ROOT/macos/App/WebSession.swift" "$ROOT/macos/App/LibraryManager.swift" "$ROOT/macos/App/NavigationPolicy.swift" "$ROOT/macos/App/SumidokuApp.swift" \
   -o "$APP/Contents/MacOS/Sumidoku"
 cp "$ROOT/macos/service.sh" "$APP/Contents/Resources/service.sh"
+cp "$ROOT/macos/run-server.sh" "$APP/Contents/Resources/run-server.sh"
+SERVER_BINARY=${SUMIDOKU_SERVER_BINARY:-"$HOME/Library/Application Support/Sumidoku/bin/sumidoku-server"}
+EXPECTED_SERVER_SHA=f00cb5a8de57fa828e23858d12cd10a988a7abc42695185864571d57fe1c5f1b
+if [[ $(shasum -a 256 "$SERVER_BINARY" | awk '{print $1}') != "$EXPECTED_SERVER_SHA" ]]; then
+  echo 'Pinned official server binary missing or checksum differs. Run the binary-only installer.' >&2
+  exit 1
+fi
+cp "$SERVER_BINARY" "$APP/Contents/Resources/sumidoku-server"
 python3 - "$APP" <<'PY'
 from pathlib import Path
 import plistlib, sys
@@ -25,7 +35,7 @@ app = Path(sys.argv[1])
 info = {
     'CFBundleName': 'Sumidoku', 'CFBundleDisplayName': 'Sumidoku',
     'CFBundleIdentifier': 'app.sumidoku.desktop', 'CFBundleExecutable': 'Sumidoku',
-    'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.0.0', 'CFBundleVersion': '1',
+    'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.1.0', 'CFBundleVersion': '2',
     'LSMinimumSystemVersion': '13.0', 'NSHighResolutionCapable': True,
     'CFBundleIconFile': 'AppIcon', 'NSPrincipalClass': 'NSApplication',
     'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
@@ -48,7 +58,11 @@ xattr -dr com.apple.ResourceFork "$APP" 2>/dev/null || true
 codesign --force --sign "${SIGNING_IDENTITY:--}" --identifier app.sumidoku.desktop "$APP"
 codesign --verify --strict --verbose=2 "$APP"
 plutil -lint "$APP/Contents/Info.plist"
-echo "Built: $APP"
+ditto --norsrc --noextattr "$APP" "$OUT/Sumidoku.app"
+xattr -dr com.apple.FinderInfo "$OUT/Sumidoku.app" 2>/dev/null || true
+xattr -dr com.apple.ResourceFork "$OUT/Sumidoku.app" 2>/dev/null || true
+codesign --verify --strict "$OUT/Sumidoku.app"
+echo "Built: $OUT/Sumidoku.app"
 if [[ ${1:-} == --install ]]; then
   if [[ -e /Applications/Sumidoku.app ]]; then
     echo 'Existing /Applications/Sumidoku.app preserved. Quit it and use the documented app update procedure.' >&2

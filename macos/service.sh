@@ -23,7 +23,18 @@ start_server() {
 stop_server() {
   if launchctl print "$domain/$label" >/dev/null 2>&1; then
     old_pid=$(launchctl print "$domain/$label" | awk '$1 == "pid" && $2 == "=" { print $3; exit }')
-    launchctl bootout "$domain/$label"
+    unloaded=false
+    # launchd can briefly reject bootout while a freshly bootstrapped job is
+    # spawning. Retry that same label; never remove files beneath a live job.
+    for attempt in {1..50}; do
+      if launchctl bootout "$domain/$label" 2>/dev/null; then unloaded=true; break; fi
+      if ! launchctl print "$domain/$label" >/dev/null 2>&1; then unloaded=true; break; fi
+      sleep 0.2
+    done
+    if [[ "$unloaded" != true ]]; then
+      echo 'The server job could not be unloaded. Its files were preserved.' >&2
+      return 1
+    fi
     # A GUI caller can return from bootout before the old runner exits. Wait
     # for that specific runner so its delayed cleanup cannot remove a new job.
     if [[ -n "$old_pid" ]]; then

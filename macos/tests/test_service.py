@@ -11,12 +11,12 @@ HELPER = Path(__file__).parents[1] / 'service.sh'
 
 
 class ServiceTests(unittest.TestCase):
-    def run_helper(self, action, loaded=True):
+    def run_helper(self, action, loaded=True, bootout_failures=0):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             state = root / 'state.json'
             events = root / 'events'
-            state.write_text(json.dumps({'loaded': loaded, 'pid': 99999999}))
+            state.write_text(json.dumps({'loaded': loaded, 'pid': 99999999, 'bootout_failures': bootout_failures}))
             stub = root / 'launchctl'
             stub.write_text(f'#!{sys.executable}\n' + '''import json, os, sys
 from pathlib import Path
@@ -30,7 +30,12 @@ if args[0] == 'print':
 elif args[0] == 'kill':
     assert args[1] == 'SIGTERM'
     state['pid'] -= 1
-elif args[0] == 'bootout': state['loaded'] = False
+elif args[0] == 'bootout':
+    if state.get('bootout_failures', 0):
+        state['bootout_failures'] -= 1
+        state_file.write_text(json.dumps(state))
+        sys.exit(5)
+    state['loaded'] = False
 elif args[0] == 'bootstrap': state['loaded'] = True
 else: sys.exit(2)
 state_file.write_text(json.dumps(state))
@@ -48,6 +53,10 @@ state_file.write_text(json.dumps(state))
                                     capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             return events.read_text().splitlines()
+
+    def test_stop_retries_transient_launchd_unload_failure(self):
+        events = self.run_helper('stop', bootout_failures=1)
+        self.assertEqual(sum(item.startswith('bootout ') for item in events), 2)
 
     def test_open_launches_native_app_without_browser_or_server_control(self):
         self.assertEqual(self.run_helper('open'), ['open /Applications/Sumidoku.app'])
