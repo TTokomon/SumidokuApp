@@ -17,23 +17,24 @@ export type SettingsGroupKey = (typeof SETTINGS_GROUPS)[number][0];
 const SUBSECTION_LABELS: Record<SettingsGroupKey, string> =
 	Object.fromEntries(SETTINGS_GROUPS) as Record<SettingsGroupKey, string>;
 
-/** Five visible categories; keep all eight legacy deep-link section IDs intact. */
+/** Six clear Preferences categories; preserve all eight legacy section IDs. */
 export const SETTINGS_CATEGORIES: ReadonlyArray<{
 	id: string;
 	labelKey: string;
 	fallbackLabel: string;
 	sections: readonly SettingsGroupKey[];
 }> = [
-	{ id: 'reading', labelKey: 'settings.categoryReadingLibrary', fallbackLabel: 'Reading & Library', sections: ['reader', 'library'] },
-	{ id: 'sources', labelKey: 'settings.categorySourcesTracking', fallbackLabel: 'Sources & Tracking', sections: ['source-lists', 'trackers'] },
+	{ id: 'general', labelKey: 'settings.groupGeneral', fallbackLabel: 'General', sections: ['general'] },
+	{ id: 'reader', labelKey: 'settings.groupReader', fallbackLabel: 'Reader', sections: ['reader'] },
+	{ id: 'library', labelKey: 'settings.groupLibrary', fallbackLabel: 'Library', sections: ['library'] },
+	{ id: 'sources', labelKey: 'common.nav.browse', fallbackLabel: 'Sources', sections: ['source-lists', 'trackers'] },
 	{ id: 'storage', labelKey: 'settings.categoryDownloadsBackups', fallbackLabel: 'Downloads & Backups', sections: ['downloads', 'backups'] },
-	{ id: 'appearance', labelKey: 'settings.categoryAppearanceUpdates', fallbackLabel: 'Appearance & Updates', sections: ['general'] },
 	{ id: 'server', labelKey: 'settings.categoryServerAccount', fallbackLabel: 'Server & Account', sections: ['system'] }
 ];
 
 /** The old section query parameter continues to determine both category and subsection. */
 export function settingsCategoryFor(section: SettingsGroupKey) {
-	return SETTINGS_CATEGORIES.find((category) => category.sections.includes(section)) ?? SETTINGS_CATEGORIES[3]!;
+	return SETTINGS_CATEGORIES.find((category) => category.sections.includes(section)) ?? SETTINGS_CATEGORIES[0]!;
 }
 
 interface SettingsLayoutProps {
