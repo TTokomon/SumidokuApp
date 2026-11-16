@@ -1993,3 +1993,11 @@ Rust compilers when concurrent debug/release builds cause memory pressure.
 - Evidence: 2026-11-15, the 1.3.1 verification driver was rejected with
   `input file ... was modified during the build`; subsequent validation freezes
   the native inputs and completes the cold Rust profiles sequentially.
+
+**Query-selected destinations must own their active accessibility state.**
+React Router NavLink matches the pathname, so multiple Settings links that differ
+only by query can all inherit aria-current. Use the existing query-aware selection
+with Link and assert exactly one current destination, including legacy aliases.
+- Evidence: 2026-11-15, reverting the sidebar link fix from committed green made
+  the focused Preferences regression report six current links instead of one;
+  restoring that single file returned the test to green.
