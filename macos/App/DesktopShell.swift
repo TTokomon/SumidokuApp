@@ -65,8 +65,7 @@ struct DesktopShell: View {
                 if controller.nativePanel == "server" { return "/settings?section=system" }
                 if controller.nativePanel == "updates" { return "/settings?section=general" }
                 if controller.route.hasPrefix("/settings") {
-                    let section = URLComponents(string: controller.route)?.queryItems?
-                        .first(where: { $0.name == "section" })?.value
+                    let section = URLComponents(string: controller.route)?.queryItems?.first(where: { $0.name == "section" })?.value
                     switch section {
                     case "reader", "library": return "/settings?section=reader"
                     case "source-lists", "trackers": return "/settings?section=source-lists"
