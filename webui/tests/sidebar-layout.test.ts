@@ -54,21 +54,22 @@ test('expanded sidebar keeps visible labels and collapse control', async () => {
 	assert.match(markup, /aria-expanded="true"/);
 });
 
-test('sidebar shows five Collection items and five useful Preferences shortcuts', async () => {
+test('sidebar shows five Collection items and six Preferences shortcuts', async () => {
 	const markup = await renderSidebar(false);
 	const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
 	assert.deepEqual(
 		[...navigation.matchAll(/href="([^"]+)"/g)].map((match) => match[1]),
 		[
 			'/library', '/browse', '/history', '/downloads', '/updates',
+			'/settings?section=general',
 			'/settings?section=reader',
+			'/settings?section=library',
 			'/settings?section=source-lists',
 			'/settings?section=downloads',
-			'/settings?section=general',
 			'/settings?section=system'
 		]
 	);
-	for (const heading of ['Collection', 'Preferences', 'Reading &amp; Library', 'Sources &amp; Tracking', 'Downloads &amp; Backups', 'Appearance &amp; Updates', 'Server &amp; Account']) {
+	for (const heading of ['Collection', 'Preferences', 'General', 'Reader', 'Library', 'Sources', 'Downloads &amp; Backups', 'Server &amp; Account']) {
 		assert.ok(navigation.includes(heading), heading);
 	}
 	assert.doesNotMatch(navigation, /data-nav-group/);
@@ -78,7 +79,7 @@ test('legacy Settings section links select the correct consolidated Preferences 
 	const sections: Record<string, string> = {
 		downloads: 'downloads', backups: 'downloads',
 		'source-lists': 'source-lists', trackers: 'source-lists',
-		reader: 'reader', library: 'reader',
+		reader: 'reader', library: 'library',
 		system: 'system', general: 'general'
 	};
 	for (const [section, destination] of Object.entries(sections)) {
@@ -143,7 +144,7 @@ test('Source Lists stays visible inside the grouped Settings page without losing
 		const markup = renderToStaticMarkup(createElement(SettingsLayout, {
 			current: 'source-lists', onSelect: () => {}, panels
 		}));
-		assert.equal((markup.match(/data-settings-category=/g) ?? []).length, 5);
+		assert.equal((markup.match(/data-settings-category=/g) ?? []).length, 6);
 		assert.match(markup, /data-settings-group="source-lists"[^>]*aria-current="page"/);
 		assert.match(markup, /data-settings-group="trackers"/);
 		assert.equal((markup.match(/data-settings-panel=/g) ?? []).length, 8);
@@ -151,7 +152,7 @@ test('Source Lists stays visible inside the grouped Settings page without losing
 	} finally { await vite.close(); }
 });
 
-test('five Settings categories preserve every historical deep link', async () => {
+test('six Settings categories preserve every historical deep link', async () => {
 	const vite = await createServer({
 		root: fileURLToPath(new URL('../', import.meta.url)),
 		configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true }
@@ -159,11 +160,14 @@ test('five Settings categories preserve every historical deep link', async () =>
 	try {
 		const { SETTINGS_GROUPS, SETTINGS_CATEGORIES, settingsCategoryFor } =
 			await vite.ssrLoadModule('/src/pages/settings/SettingsLayout.tsx');
-		assert.equal(SETTINGS_CATEGORIES.length, 5);
+		assert.equal(SETTINGS_CATEGORIES.length, 6);
 		const all = SETTINGS_CATEGORIES.flatMap((group: { sections: string[] }) => group.sections);
 		assert.deepEqual(new Set(all), new Set(SETTINGS_GROUPS.map(([id]: [string]) => id)));
 		assert.equal(settingsCategoryFor('source-lists').id, 'sources');
 		assert.equal(settingsCategoryFor('trackers').id, 'sources');
 		assert.equal(settingsCategoryFor('system').id, 'server');
+		assert.equal(settingsCategoryFor('general').id, 'general');
+		assert.equal(settingsCategoryFor('reader').id, 'reader');
+		assert.equal(settingsCategoryFor('library').id, 'library');
 	} finally { await vite.close(); }
 });
