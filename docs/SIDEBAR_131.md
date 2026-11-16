@@ -120,8 +120,12 @@ only the previous verified review app (`250c0c4`), two canonical screenshots,
 verification JSON and six obsolete verification logs with the new results; README
 and artifact manifest were refreshed. Exact paths/reasons are in the local
 `navigation-cleanup.json`. Historical selection-regression logs and folder metadata
-remain. No additional broad filesystem cleanup was performed. Finder metadata added
-to the generated app was removed before strict nested signature verification.
+remain. No additional broad filesystem cleanup was performed. Finder repeatedly
+reattached metadata to Sparkle sub-bundles in Documents after cleanup. The final
+review app was staged outside Documents and passes strict nested signature checks;
+the redundant Documents app copy was removed and recorded in the inventory.
+Screenshots and verification logs remain in the project review directory. No
+Gatekeeper policy or quarantine settings were changed.
 No personal data, installed sources, credentials, backups or installed app are removed.
 
 Full Rust/Clippy, the complete frontend suite and remote CI are not certified on
