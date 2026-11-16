@@ -15,10 +15,15 @@ struct DesktopDestination: Identifiable, Hashable {
         Self(id: "/downloads", title: "Downloads", symbol: "arrow.down.circle.fill"),
         Self(id: "/updates", title: "Chapter Updates", symbol: "clock.arrow.2.circlepath")
     ]
-    // Detailed settings live behind a single entry. Legacy web URLs remain
-    // valid and are selected inside the five-category settings page.
+    // Match the five consolidated Settings categories without restoring
+    // the original ten-entry preferences list. All historical section URLs
+    // still open the correct category via SettingsLayout.
     static let settings = [
-        Self(id: "/settings", title: "Settings", symbol: "gear")
+        Self(id: "/settings?section=reader", title: "Reading & Library", symbol: "book.fill"),
+        Self(id: "/settings?section=source-lists", title: "Sources & Tracking", symbol: "globe"),
+        Self(id: "/settings?section=downloads", title: "Downloads & Backups", symbol: "arrow.down.circle.fill"),
+        Self(id: "/settings?section=general", title: "Appearance & Updates", symbol: "slider.horizontal.3"),
+        Self(id: "/settings?section=system", title: "Server & Account", symbol: "gearshape.2.fill")
     ]
     var iconColor: Color {
         switch id {
@@ -27,6 +32,11 @@ struct DesktopDestination: Identifiable, Hashable {
         case "/history": return .orange
         case "/downloads": return .blue
         case "/updates": return .purple
+        case "/settings?section=reader": return .indigo
+        case "/settings?section=source-lists": return .green
+        case "/settings?section=downloads": return .blue
+        case "/settings?section=general": return .secondary
+        case "/settings?section=system": return .secondary
         default: return .secondary
         }
     }
@@ -52,7 +62,19 @@ struct DesktopShell: View {
     var selection: Binding<String?> {
         Binding(
             get: {
-                if controller.nativePanel != nil || controller.route.hasPrefix("/settings") { return "/settings" }
+                if controller.nativePanel == "server" { return "/settings?section=system" }
+                if controller.nativePanel == "updates" { return "/settings?section=general" }
+                if controller.route.hasPrefix("/settings") {
+                    let section = URLComponents(string: controller.route)?.queryItems?
+                        .first(where: { $0.name == "section" })?.value
+                    switch section {
+                    case "reader", "library": return "/settings?section=reader"
+                    case "source-lists", "trackers": return "/settings?section=source-lists"
+                    case "downloads", "backups": return "/settings?section=downloads"
+                    case "system": return "/settings?section=system"
+                    default: return "/settings?section=general"
+                    }
+                }
                 if controller.route.hasPrefix("/browse") { return "/browse" }
                 if controller.route.hasPrefix("/manga/") || controller.route.hasPrefix("/library") { return "/library" }
                 return controller.route
@@ -69,13 +91,13 @@ struct DesktopShell: View {
             Text(item.title).font(.system(size: 15, weight: .medium))
         } icon: {
             Image(systemName: NativeSymbol.resolve(item.symbol))
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: 18, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(item.iconColor)
-                .frame(width: 32, height: 32)
+                .frame(width: 26, height: 28)
                 .accessibilityHidden(true)
         }
-        .frame(minHeight: 48, alignment: .leading)
+        .frame(minHeight: 44, alignment: .leading)
         .contentShape(Rectangle())
         .tag(item.id)
         .contextMenu { Button("Open \(item.title)") { select(item.id) } }
