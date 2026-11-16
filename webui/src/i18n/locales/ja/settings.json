@@ -1,6 +1,11 @@
 {
   "settings": {
     "groupNav": "設定セクション",
+    "categoryReadingLibrary": "読書とライブラリ",
+    "categorySourcesTracking": "ソースとトラッキング",
+    "categoryDownloadsBackups": "ダウンロードとバックアップ",
+    "categoryAppearanceUpdates": "外観とアップデート",
+    "categoryServerAccount": "サーバーとアカウント",
     "groupGeneral": "一般",
     "groupReader": "リーダー",
     "groupLibrary": "ライブラリ",

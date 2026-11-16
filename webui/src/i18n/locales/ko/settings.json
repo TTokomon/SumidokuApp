@@ -1,6 +1,11 @@
 {
   "settings": {
     "groupNav": "설정 섹션",
+    "categoryReadingLibrary": "읽기 및 라이브러리",
+    "categorySourcesTracking": "소스 및 추적",
+    "categoryDownloadsBackups": "다운로드 및 백업",
+    "categoryAppearanceUpdates": "모양 및 업데이트",
+    "categoryServerAccount": "서버 및 계정",
     "groupGeneral": "일반",
     "groupReader": "리더",
     "groupLibrary": "라이브러리",

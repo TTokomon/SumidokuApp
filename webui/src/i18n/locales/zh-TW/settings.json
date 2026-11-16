@@ -1,6 +1,11 @@
 {
   "settings": {
     "groupNav": "設定區段",
+    "categoryReadingLibrary": "閱讀與書庫",
+    "categorySourcesTracking": "圖源與追蹤",
+    "categoryDownloadsBackups": "下載與備份",
+    "categoryAppearanceUpdates": "外觀與更新",
+    "categoryServerAccount": "伺服器與帳號",
     "groupGeneral": "一般",
     "groupReader": "閱讀器",
     "groupLibrary": "書庫",
