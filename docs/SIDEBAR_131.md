@@ -1,198 +1,114 @@
-# Sumidoku Desktop 1.3.1 — sidebar and Settings redesign
+# Sumidoku Desktop 1.3.1 (7) — final sidebar review
 
-**Status:** The previous six-entry 1.3.1 (7) design passed Mac preview/build checks
-and remains staged for review. A follow-up changes icon sizing and the Preferences
-shortcuts on this PR; these new changes have **not** yet been built or visually
-verified on macOS. The installed 1.3.0 (6), existing server and library remain
-untouched. No merge, release or installation is authorized by this document.
+The revised sidebar was pulled at `a8eb608`. The final runtime build is
+`250c0c4`, including the query-aware active-selection correction in `417043c`.
+The installed 1.3.0 (6), persistent library and existing server are preserved.
+This PR remains draft; no merge, installation or release is performed here.
 
-## Navigation — final Preferences structure
+## Final design
 
-The native macOS `NavigationSplitView` sidebar has **eleven destinations**:
-five Collection entries and six concise Preferences entries. This remains
-smaller than the original fifteen-entry sidebar and makes General explicit.
+The original Sumidoku mark remains **48pt**. Native navigation uses **18pt**
+medium SF Symbols, a 26pt icon column, comfortable 44pt minimum rows and
+consistent semantic colors. Native Liquid Glass and its existing system-material
+fallbacks are preserved; no custom icon artwork is added.
 
 **Collection:** Library, Sources, History, Downloads, Chapter Updates.
 
-**Preferences:**
-
-| Sidebar entry | Settings section | Contents |
+| Preferences, in order | Legacy section | Contents |
 | --- | --- | --- |
 | General | `general` | Appearance, language, application updates |
 | Reader | `reader` | Reading modes, gestures, incognito reading |
 | Library | `library` | Categories, library display, chapter refresh |
-| Sources | `source-lists`, `trackers` | Source Lists, source updates and trackers |
-| Downloads & Backups | `downloads`, `backups` | Download preferences, backup/import/restore |
-| Server & Account | `system` | Native server controls, account, security, cache and diagnostics |
+| Sources | `source-lists`, `trackers` | Source Lists, source updates, trackers |
+| Downloads & Backups | `downloads`, `backups` | Downloads, backups, import/restore |
+| Server & Account | `system` | Server controls, account, security, cache, diagnostics |
 
-Native icons use restrained, Aidoku-aligned OS-rendered **18pt medium SF
-Symbols** with a 26pt icon column and **44pt minimum rows**. The unchanged
-original Sumidoku logo remains 48pt. The sidebar stays resizable; OS-native
-Liquid Glass and accessibility fallback surfaces remain unchanged. No external
-icon artwork has been introduced.
+Both native and browser-only sidebars expose eleven destinations. The root
+`/settings` selects General; all eight historical query-section links remain
+valid. Trackers selects Sources and backups selects Downloads & Backups. All
+eight Settings panels remain mounted, preserving Aidoku recovery while managing
+Source Lists. Browser query-aware links now expose exactly one `aria-current`
+destination, rather than inheriting pathname-only NavLink selection.
 
-The same eleven top-level links are present in the browser-only fallback
-sidebar. All eight legacy `?section=general|reader|library|source-lists|
-trackers|downloads|backups|system` deep links work. Trackers correctly selects
-Sources in the native sidebar and backups selects Downloads & Backups. Every
-Settings panel remains mounted while inactive, preserving in-progress Aidoku
-backup recovery when switching to Source Lists.
+App Updates and Local Server retain their compact native footer controls and
+actual status. Opening a footer panel changes neither the server nor its service.
+The main-frame localhost check on the native bridge remains intact.
 
-The native `server` message is accepted only by the existing main-frame,
-localhost-checked `WKScriptMessageHandler`. No new background server, network
-endpoint, or automatic installation behavior has been introduced.
+## Focused verification
 
-## Native sidebar footer
+| Check | Result |
+| --- | --- |
+| TypeScript | Passed |
+| Frontend sidebar, Settings, import rendering and locale checks | 20 passed |
+| Native sidebar/symbol regression guards | 7 passed |
+| Native application build | One build; 1.3.1 (7), strict signature verified |
+| Embedded frontend | Six index/assets matched the frontend build byte for byte |
+| Native route/legacy selection/footer/Aidoku recovery | Passed: 11 destinations, 9 legacy/root links, both footer clicks and exact-file recovery |
+| Screenshots | Passed: exactly one light and one dark native capture |
 
-A single, compact native material surface contains two buttons:
+The current-destination regression was deliberately broken from committed green:
+pathname-only NavLink marked six Preferences links current. Restoring the single
+file returned the focused assertion to green. Three stale assertions and the
+unused earlier category labels were removed or updated.
 
-- **App Updates:** actual update state and colored status. Neutral when unverified,
-  green when verified current, orange when available, red for actual errors.
-  The visible text is abbreviated for the sidebar and the accessibility label
-  contains the complete result. Opens the existing native Updates panel.
-- **Local Server:** actual server availability and colored state text. Opens
-  the existing native Server & Account panel.
-
-Status controls do not trigger an update or change the background service.
-
-## Version
-
-`macos/build-app.sh` sets **1.3.1 (7)** for development builds from this
-branch. The user's currently installed 1.3.0 (6) remains unchanged.
-No public 1.3.1 release or signed feed is published.
-
-## Required before merge/install
-
-Run on the Mac against a disposable test library first:
+Reproduce only the relevant checks:
 
 ```sh
-npm --prefix webui ci
 npm --prefix webui run check
-npm --prefix webui test
-export CARGO_BUILD_JOBS=1
-export CARGO_TARGET_DIR="${TMPDIR:-/tmp}/sumidoku-fork-target"
-./macos/build-fork.sh
-export SUMIDOKU_SERVER_BINARY="$PWD/dist/fork/sumidoku-server"
-cargo nextest run --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-python3 -m unittest discover -s macos/tests -p 'test_*.py'
-./macos/test-app.sh
-./macos/test-updates.sh
-./macos/test-community.sh
-./macos/test-symbols.sh
-./macos/test-onboarding.sh
-./macos/test-onboarding.sh --launchagent
-python3 macos/test-desktop.py
-python3 macos/test-sources.py
-./macos/test-welcome.sh
-python3 macos/smoke-test.py
+(cd webui && node --test tests/sidebar-layout.test.ts tests/settings-layout.test.ts tests/desktop-design.test.ts tests/settings-import.test.ts tests/i18n.test.ts)
+python3 -m unittest macos.tests.test_sidebar_131 macos.tests.test_aidoku_symbols
+CARGO_BUILD_JOBS=1 ./macos/build-fork.sh
+SUMIDOKU_SERVER_BINARY="$PWD/dist/fork/sumidoku-server" SUMIDOKU_TEST_SIDEBAR_ONLY=1 python3 macos/test-desktop.py
 ```
 
-Freeze the built frontend and executable while these tests run. The binary override
-ensures fixtures use this build rather than the installed official server. Run cold
-release/debug Rust builds sequentially to keep memory use bounded.
+The focused preview uses a disposable library, checks eleven selection bindings,
+root Settings plus eight legacy URLs, both actual footer clicks, six categories,
+eight persistent panels, back/forward and exact-byte Aidoku backup resume. It
+saves only `library-light.png`, `library-dark.png` and verification metadata.
+The existing extended fixture remains available for broader future work.
 
-Additional manual checks:
+## Cleanup
 
-1. Visually inspect a real unlocked native window in light/dark, larger text,
-   high contrast and reduced transparency. The original Sumidoku icon must
-   remain unchanged.
-2. Select each of the eleven sidebar entries and six Settings categories; use
-   both internal Settings subsections and browser back/forward. Verify the
-   selected state and no duplicate visible sidebar in WKWebView.
-3. Open an existing Aidoku backup, navigate to Settings → Sources & Tracking →
-   Source Lists and return. The backup file and exact-ID recovery state must
-   survive. Confirm explicit removal choices still preserve library/progress.
-4. Click App Updates and Local Server footer controls and verify that actual
-   statuses and panel destinations are correct. Force offline/checking/error
-   states; no false green state.
-5. Confirm authenticated restart, one managed localhost server, account,
-   library, categories, reading progress, sources, downloads and backups.
-6. The app should not download chapters, install updates automatically or
-   change signing policy as part of this UI-only change.
+Removed only verified obsolete or redundant artifacts:
 
-## Latest follow-up: concise Preferences and General
+- Four earlier six-destination 1.3.1 app copies (including the superseded review
+  copy), plus three emptied app staging directories. One final staged app remains.
+- Six old temporary capture directories containing 108 files, plus the final
+  temporary capture copy (three files) after preserving the canonical pair/metadata.
+- Twenty-six older verification logs. Current focused logs and regression evidence
+  are retained with the final staged app.
+- Eight superseded tracked variants: `footer-available.png`, `footer-error.png`,
+  `footer-offline.png`, `reduced-transparency.png`, `sidebar-increased-contrast.png`,
+  `sidebar-large-text.png`, `sidebar-small.png`, `source-lists.png`.
+- Thirty unused translation entries: `categoryReadingLibrary`,
+  `categorySourcesTracking`, `categoryAppearanceUpdates` in ten locale catalogs.
+  Three stale single/five-category assertions were updated, and one unused Python
+  import was removed. Useful extended test drivers remain; the focused mode
+  avoids running them for this small change.
 
-The latest PR head separates Reader and Library, adds **General** as the first
-Preferences shortcut, renames Sources & Tracking to **Sources**, and retains
-Downloads & Backups and Server & Account. Incognito reading controls now sit
-under Reader instead of General. Both native and browser sidebars and their
-focused tests/preview fixtures have been updated. **These latest changes are
-not in the earlier staged app or screenshots below; a new focused native build,
-one representative light/dark capture and relevant test pass are required.**
-Do not claim that previous 378 frontend / 29 Python test results certify this
-new head.
+The two canonical images and verification JSON replace the earlier design's
+copies. The exact local removed/replaced path inventory is `cleanup.json` beside
+the staged app. Latest evidence, useful test sources, compiler caches, historical
+1.3.0 documentation and every personal/installed component are retained. Finder
+folder metadata was preserved. The installed 1.3.0 executable is byte-identical;
+the same existing server remains the sole localhost listener.
 
-## Mac verification results
+## Review images
 
-The first full frontend run found missing category translations in nine locales
-and two tests still asserting the old flat Settings navigation. The Python symbol
-suite also pinned the removed individual native settings rows. The locale catalogs
-and regression assertions were corrected without removing any legacy panel/route.
-The unchanged locale-coverage test was deliberately broken from committed green by
-removing one German category key; it failed on that exact missing key, then passed
-after a single-file restore.
+These are the final eleven-destination native captures using
+original disposable comic fixtures; no personal library data is published.
 
-- Frontend: **378 passed**; TypeScript check and production build passed.
-- Python maintenance/static regressions: **29 passed**.
-- Native navigation **12**, update/material policies **37**, community bootstrap **9**,
-  native symbols **6 resolutions + 2 fallback cases** passed.
-- Previous six-entry build's native fixture: six destination selection bindings; own-window clicks on both
-  footer buttons; four fixture release outcomes (offline, malformed/error, empty
-  catalog/unverified, update available), each passing through Checking; five
-  visible Settings categories, eight persistent panels, subsections/back-forward,
-  independent source preferences and exact-byte Aidoku backup resume all passed.
-- Actual unlocked native window captures passed in light/dark, a 920×640 window,
-  high-contrast appearance and an enlarged web-content preview. No duplicate browser
-  sidebar is visible. Original Sumidoku logo/red theme and native materials remain.
-- The **previous six-entry staged 1.3.1 (7)** build passed strict/deep signature verification. The six
-  embedded index/assets match the built frontend byte for byte; the packaged
-  server digest matches the fork manifest. Runtime build revision was `8d99f93`;
-  the new ten-entry sidebar changes are **not included** in that staged build.
-- Onboarding/authenticated restart: **32 assertions each** through direct-process
-  and temporary LaunchAgent drivers. Backup/source smoke passed exact-ID Aidoku
-  import, invalid-backup rejection, export/restore, categories/progress, restart
-  persistence and zero downloads. All fixture data is disposable.
-- Source UI: all four built-in setup/test forms, grouped Source Lists and add-list
-  controls passed against the final embedded frontend. Welcome/create/sign-in
-  views rendered without creating a real account.
-- The installed 1.3.0 (6) and its managed localhost server were not replaced or
-  restarted. Private preservation fingerprints for the actual library, credentials,
-  progress, settings, source records, configuration/key files, downloads, backups,
-  descriptor and official executable still match the pre-verification baseline.
-- Rust test compilation completed. Full nextest execution was stopped before
-  completion; strict Clippy was not run. Neither is claimed as passing.
+![Final light sidebar](images/sidebar-131/library-light.png)
+![Final dark sidebar](images/sidebar-131/library-dark.png)
 
-### New follow-up verification (outstanding)
+## Remaining gates
 
-The reduced 18pt native glyphs, five Preferences shortcuts, URL-based
-selection mapping, and the corresponding browser-only navigation are code
-changes after the previous screenshots and Mac test results. Focused
-regression guards have been updated, including the actual window fixture's
-ten-route verification. Before install/merge, run the frontend's focused
-sidebar tests, the small Python native-sidebar suite, and one native UI build
-and representative light/dark capture on the new PR head. The screenshots
-below represent the **earlier 22pt/six-entry design**, not this revision.
+Full Rust/Clippy, the complete frontend suite and remote CI are not certified on
+this head by this focused UI review. Mandatory repository merge gates remain
+incomplete; previous broader results do not certify this revision. Actual older
+hardware, global accessibility settings and reboot behavior remain separate checks.
 
-### Visual evidence
-
-These are captures of the running native fixture with original disposable comic
-art, resized for documentation; no personal library or credentials are included.
-
-![Native sidebar in light mode](images/sidebar-131/library-light.png)
-![Native sidebar in dark mode](images/sidebar-131/library-dark.png)
-![Grouped Source Lists](images/sidebar-131/source-lists.png)
-![Compact window](images/sidebar-131/sidebar-small.png)
-![High-contrast native appearance](images/sidebar-131/sidebar-increased-contrast.png)
-
-The large-text preview sets WebKit zoom to 135%. Native rows currently specify
-point sizes explicitly, so this is not
-certification of native text scaling under every macOS accessibility setting.
-Reduced-transparency/forced-material policies are checked using the native control
-fixture; system-wide accessibility preferences were not changed. Actual older
-hardware, global accessibility setting changes and a reboot remain manual checks.
-
-Unsigned automatic app installation remains disabled. Release metadata transport
-is fixture-only in native UI tests; neither packages nor manga chapters are
-fetched automatically by this verification. Keep PR #4 draft and do not install
-over the current application, merge or publish until separately approved.
+The app is ad-hoc signed for local review, not notarized for public distribution.
+Unsigned automatic application installation stays disabled. No manga chapters are
+automatically downloaded, and no server/data migration or installation occurs.
+Do not merge PR #4, replace the installed app or publish 1.3.1 without approval.
