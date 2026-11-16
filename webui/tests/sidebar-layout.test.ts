@@ -83,7 +83,7 @@ test('legacy Settings section links select the correct consolidated Preferences 
 	};
 	for (const [section, destination] of Object.entries(sections)) {
 		const markup = await renderSidebar(false, `/settings?section=${section}`);
-		const activeHrefs = [...markup.matchAll(/<a\\b[^>]*>/g)]
+		const activeHrefs = [...markup.matchAll(/<a\b[^>]*>/g)]
 			.filter(([anchor]) => anchor.includes('side-nav__item--active'))
 			.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
 		assert.deepEqual(activeHrefs, [`/settings?section=${destination}`], section);
