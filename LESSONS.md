@@ -6,6 +6,16 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Normalize filesystem aliases before deriving signed relative paths.**
+Foundation enumeration can spell the same temporary root through a different
+system alias. Verify parent containment and normalize the parent before removing
+the root prefix; preserve leaf symlinks for explicit verification. Never mutate a
+read-only memory-mapped Mach-O buffer while canonicalizing its signing envelope;
+copy bytes into owned writable storage first.
+- Evidence: community publisher-seal probes found truncated inventory paths and a
+  protected-memory fault during re-sign verification; disposable bundle inventory
+  and re-signing checks exercise both cases.
+
 **Uninstall a package without deleting its persistent source identity.**
 Foreign-key deletion of a source can cascade into manga, categories and reading
 progress. A package-only uninstall must disable runtime capability while retaining
