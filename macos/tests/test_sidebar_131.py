@@ -24,7 +24,7 @@ class Sidebar131Tests(unittest.TestCase):
         self.assertIn("DesktopBrand.accent", SHELL)
         self.assertRegex(SHELL, r'frame\(width: 48, height: 48\)')
         self.assertRegex(SHELL, r'size: 18, weight: \.medium')
-        self.assertRegex(SHELL, r'frame\\(minHeight: 44, alignment: \.leading\\)')
+        self.assertRegex(SHELL, r'frame\(minHeight: 44, alignment: \.leading\)')
 
     def test_both_footer_destinations_open_native_controls(self):
         self.assertIn('controller.nativePanel = "updates"', SHELL)
