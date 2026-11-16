@@ -174,15 +174,22 @@ References: [Sparkle publishing and channels](https://sparkle-project.org/docume
 ## Current review evidence
 
 - Complete frontend typecheck, 380 tests and production build: passed.
-- Native policy assertions (including fully populated adversarial provisioning
+- 44 native policy assertions (including fully populated adversarial provisioning
   flags, pinned key/feed preservation and automatic-install rejection): passed.
-- Native security/transaction assertions: passed, including authenticated malicious
+- 51 native security/transaction assertions: passed, including authenticated malicious
   archives, offline/redirect rejection, Stable/Beta/Stable with newer progress,
   failed handoff, a real helper-process exit between pair mutations, tampered loose
   recovery payload, changed-data refusal and startup credential override refusal.
 - Real disposable LaunchAgent/server round trip: passed with a fixture client
   relaunch probe; original login/library/progress/config/source packages retained.
-- Python regressions/packaging rejection and shell/workflow syntax: passed.
+- 37 Python regressions/packaging rejection and shell/workflow syntax: passed.
+- One complete native app/helper build: passed; nested ad-hoc signature verified,
+  Beta 1/build 8 metadata correct, all installation flags off. Native source
+  `d7e8f5e` is clean. The reused, unchanged backend records source `2c754e1`; this
+  local review is not a same-source public Beta candidate.
+- Recovery regression proof: from committed green, replacing normalized path
+  comparisons with raw URL equality failed the recovered-runtime assertion. A
+  one-file git restore returned all 51 security assertions to green.
 
 The existing managed job has the expected four-argument runner contract, its runner
 matches the sealed original, and the actual read-only migration version is 37.
