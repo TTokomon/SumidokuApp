@@ -67,8 +67,21 @@ library/progress before and after organization. Tracker controls use an explicit
 local fetch fixture: default provider, callback cleanup, disconnect confirmation
 and binding removal. This is not live provider authentication certification.
 
-Final application build, embedded-asset parity and screenshots are recorded below
-after the frozen-source build completes.
+The one production native application build passed as **1.3.1 (7)** from
+implementation commit `2c754e1`. Strict nested signature verification and
+byte-for-byte parity of all six embedded frontend files pass. Automatic application
+installation flags remain false. Later changes contain evidence, test descriptions
+and trailing-blank-line cleanup only; executable source is otherwise identical.
+The final native run passed the same checks and captured exactly one light and one
+dark window, both visually inspected with all Preferences labels and footer controls
+visible. These are disposable native fixture windows, not the personal library.
+
+The duplicate-symbol guard was broken from committed green by assigning Automation
+the Reader symbol: it failed with `12 != 13`. A one-file git restore returned all
+eight guards to green. The final sidebar-only frontend follow-up passed 10 tests,
+including contextual legacy redirect assertions (part of the original 69).
+Existing native fixture `onChange` deprecation and frontend chunk-size warnings
+remain nonblocking.
 
 ```sh
 npm --prefix webui run check
@@ -102,9 +115,13 @@ automatically downloaded. Use `SUMIDOKU_TEST_NO_CAPTURE=1` for behavior-only wor
 Superseded monolithic Settings navigation/editor ownership and the duplicate
 native change-password sheet were removed by moving existing controls to their
 canonical homes. Useful automated tests remain. Earlier cleanup is inventoried in
-the staged review directory's historical `cleanup.json`; this revision performs
-no additional broad filesystem cleanup. The canonical two screenshots are replaced
-only after the updated pair is verified; the staged review app is similarly superseded.
+the staged review directory's historical `cleanup.json`. This revision replaced
+only the previous verified review app (`250c0c4`), two canonical screenshots,
+verification JSON and six obsolete verification logs with the new results; README
+and artifact manifest were refreshed. Exact paths/reasons are in the local
+`navigation-cleanup.json`. Historical selection-regression logs and folder metadata
+remain. No additional broad filesystem cleanup was performed. Finder metadata added
+to the generated app was removed before strict nested signature verification.
 No personal data, installed sources, credentials, backups or installed app are removed.
 
 Full Rust/Clippy, the complete frontend suite and remote CI are not certified on
@@ -112,6 +129,11 @@ this head; mandatory merge gates remain incomplete. Actual older macOS hardware,
 live tracker OAuth/reconnect and reboot behavior remain separate checks. The local
 app is ad-hoc signed and not notarized. Automatic app installation stays disabled.
 No installation, service activation, merge or release is authorized by this review.
+The staged bundle includes the matching fork executable, but this review does not
+activate it. The installed background service still serves its existing frontend;
+reviewing the changed web surfaces uses the disposable matching backend. A later
+approved coordinated app/backend update is required for those surfaces in the
+personal installation.
 
 ## Design references
 

@@ -133,7 +133,7 @@ test('collapsing keeps the sidebar toggle at the same spot', async () => {
 });
 
 
-test('Source Lists stays visible inside the grouped Settings page without losing hidden panels', async () => {
+test('Accounts groups trackers and retains inactive canonical panels', async () => {
 	const vite = await createServer({
 		root: fileURLToPath(new URL('../', import.meta.url)),
 		configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true }
@@ -152,18 +152,21 @@ test('Source Lists stays visible inside the grouped Settings page without losing
 	} finally { await vite.close(); }
 });
 
-test('six Settings categories preserve every historical deep link', async () => {
+test('six Settings categories cover canonical sections and contextual legacy routes', async () => {
 	const vite = await createServer({
 		root: fileURLToPath(new URL('../', import.meta.url)),
 		configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true }
 	});
 	try {
-		const { SETTINGS_GROUPS, SETTINGS_CATEGORIES, settingsCategoryFor } =
-			await vite.ssrLoadModule('/src/pages/settings/SettingsLayout.tsx');
+		const { SETTINGS_GROUPS, SETTINGS_CATEGORIES, settingsCategoryFor, contextualSettingsRoute } =
+			await vite.ssrLoadModule('/src/pages/settings/navigation.ts');
 		assert.equal(SETTINGS_CATEGORIES.length, 6);
 		const all = SETTINGS_CATEGORIES.flatMap((group: { sections: string[] }) => group.sections);
 		assert.deepEqual(new Set(all), new Set(SETTINGS_GROUPS.map(([id]: [string]) => id)));
-				assert.equal(settingsCategoryFor('trackers').id, 'accounts');
+		assert.equal(contextualSettingsRoute('library'), '/library?panel=organize');
+		assert.equal(contextualSettingsRoute('source-lists'), '/browse?view=lists');
+		assert.equal(contextualSettingsRoute('trackers'), null);
+		assert.equal(settingsCategoryFor('trackers').id, 'accounts');
 		assert.equal(settingsCategoryFor('system').id, 'server');
 		assert.equal(settingsCategoryFor('general').id, 'general');
 		assert.equal(settingsCategoryFor('reader').id, 'reader');
@@ -187,10 +190,10 @@ test('query-based Preferences expose exactly one current destination', async () 
 	}
 });
 
- test('all browser destination icons are distinct', async () => {
-    const markup = await renderSidebar(false);
-    const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
-    const icons = [...navigation.matchAll(/class="lucide ([^"]+)"/g)].map((match) => match[1]);
-    assert.equal(icons.length, 11);
-    assert.equal(new Set(icons).size, 11);
+test('all browser destination icons are distinct', async () => {
+	const markup = await renderSidebar(false);
+	const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
+	const icons = [...navigation.matchAll(/class="lucide ([^"]+)"/g)].map((match) => match[1]);
+	assert.equal(icons.length, 11);
+	assert.equal(new Set(icons).size, 11);
 });

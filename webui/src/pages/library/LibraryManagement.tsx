@@ -600,4 +600,3 @@ export function FilterGroupsSection() {
 		</Section>
 	);
 }
-
