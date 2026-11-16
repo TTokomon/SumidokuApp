@@ -1,0 +1,12 @@
+{
+  "version": "1.3.1",
+  "build": "7",
+  "aidokuExactFileResumed": true,
+  "nativeWindowCaptures": true,
+  "nativeDestinations": 6,
+  "nativeFooterActions": 2,
+  "settingsCategories": 5,
+  "persistentSettingsPanels": 8,
+  "footerFixtureStates": 4,
+  "success": true
+}

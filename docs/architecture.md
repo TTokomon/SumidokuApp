@@ -46,8 +46,9 @@ Offline failures leave no marker and retry at most once a minute while authentic
 Subscription creates no packages or chapters. A desktop event invalidates Source
 Lists queries without replacing the document or losing an import preview.
 
-`DesktopShell.swift` now owns native NavigationSplitView, toolbar/menu routing and
-application update status. The WebKit document retains existing library/source/reader
+`DesktopShell.swift` owns native NavigationSplitView with five Collection destinations
+and one Settings entry, toolbar/menu routing and application update status. Its native
+footer opens App Updates and Local Server controls without changing service state. The WebKit document retains existing library/source/reader
 logic; an origin-checked desktop bridge routes local paths and appearance. Actual
 SwiftUI Liquid Glass is guarded at macOS 26; older systems use native materials and
 accessibility modes can request opaque controls. `AppUpdates.swift` checks explicitly
@@ -2189,9 +2190,9 @@ page's title.
 When authentication is on, the
 login page takes the admin username + password with an initially empty username
 field, browser API requests use the login cookie, CLI clients may send a
-bearer header, and any `401` lands on `/login`. Desktop navigation keeps library,
-browse and updates at the top level; activity and settings start collapsed and
-open on an active route. The browse page keeps cross-source search above its
+bearer header, and any `401` lands on `/login`. Desktop navigation exposes library,
+sources, history, downloads, chapter updates and one Settings destination. The native
+WKWebView hides the browser sidebar to avoid duplicated navigation. The browse page keeps cross-source search above its
 installed/repository views, with `/search` redirecting to its search view.
 Remote source and cross-source searches run on explicit submission; local-source
 filtering uses a 500ms debounce. Clearing a source's search box resubmits an
@@ -2209,8 +2210,11 @@ and shows each field's source as follow-the-source, written by a provider, or
 manual, with per-field unlock and a restore-to-source action. Both live in
 `webui/src/pages/manga/`, share `metadata.css`, and are only offered while the
 entry is in the library or its source is local.
-Settings sections are linked from the settings group, while mobile keeps the
-settings page's own tabs. The settings page shows the admin account and
+Settings exposes five visible categories (Reading & Library, Sources & Tracking,
+Downloads & Backups, Appearance & Updates, Server & Account), with subsection
+controls and all eight legacy query-section URLs preserved. All panels stay mounted
+while their category is inactive, retaining an Aidoku import during Source Lists
+management. The settings page shows the admin account and
 all management controls; there is no Users page or role-dependent UI. The
 System section lists the cover cache above the chapter-page cache: the cover
 cache shows cached entries, its entry cap and usage plus a confirmed clear,

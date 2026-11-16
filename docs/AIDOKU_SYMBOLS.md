@@ -45,8 +45,10 @@ supported. Its bundled **Sumidoku logo and red accent remain unchanged**.
 A lightweight regression suite:
 `python3 -m unittest macos/tests/test_aidoku_symbols.py`
 
-Integration review resolved all 15 preferred identifiers through AppKit on the
-current Mac, and tests force two older-system fallback cases. `NativeSymbol.resolve`
+The 1.3.0 integration review resolved 15 preferred identifiers through AppKit.
+The 1.3.1 sidebar consolidates its destinations to six, all resolved on the current
+Mac, with two forced older-system fallback cases. Detailed settings now use the
+existing web components; see [1.3.1 verification](SIDEBAR_131.md). `NativeSymbol.resolve`
 checks the running system before rendering; unsupported update symbols use
 `clock.arrow.circlepath`, with a generic system glyph for other missing names.
 Actual older macOS hardware remains a separate certification step.
