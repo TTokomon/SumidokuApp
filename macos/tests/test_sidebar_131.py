@@ -13,8 +13,9 @@ class Sidebar131Tests(unittest.TestCase):
         collection = SHELL.split("static let collection = [", 1)[1].split("\n    ]", 1)[0]
         settings = SHELL.split("static let settings = [", 1)[1].split("\n    ]", 1)[0]
         self.assertEqual(collection.count("Self(id:"), 5)
-        self.assertEqual(settings.count("Self(id:"), 1)
-        self.assertIn('Self(id: "/settings", title: "Settings", symbol: "gear")', settings)
+        self.assertEqual(settings.count("Self(id:"), 5)
+        for section in ("reader", "source-lists", "downloads", "general", "system"):
+            self.assertIn(f'Self(id: "/settings?section={section}"', settings)
 
     def test_original_logo_and_genuine_material_preserved(self):
         self.assertIn("NSImage.applicationIconName", SHELL)
@@ -22,7 +23,8 @@ class Sidebar131Tests(unittest.TestCase):
         self.assertIn("NativeControlGroup", SHELL)
         self.assertIn("DesktopBrand.accent", SHELL)
         self.assertRegex(SHELL, r'frame\(width: 48, height: 48\)')
-        self.assertRegex(SHELL, r'size: 22, weight: \.semibold')
+        self.assertRegex(SHELL, r'size: 18, weight: \.medium')
+        self.assertRegex(SHELL, r'frame\\(minHeight: 44, alignment: \.leading\\)')
 
     def test_both_footer_destinations_open_native_controls(self):
         self.assertIn('controller.nativePanel = "updates"', SHELL)
@@ -31,9 +33,12 @@ class Sidebar131Tests(unittest.TestCase):
         self.assertIn("controller.available", SHELL)
         self.assertIn("Open server controls.", SHELL)
 
-    def test_legacy_settings_routes_select_single_destination(self):
+    def test_legacy_settings_routes_map_to_five_destinations(self):
         self.assertIn('controller.route.hasPrefix("/settings")', SHELL)
-        self.assertIn('return "/settings"', SHELL)
+        self.assertIn('case "reader", "library": return "/settings?section=reader"', SHELL)
+        self.assertIn('case "source-lists", "trackers": return "/settings?section=source-lists"', SHELL)
+        self.assertIn('case "downloads", "backups": return "/settings?section=downloads"', SHELL)
+        self.assertIn('case "system": return "/settings?section=system"', SHELL)
         self.assertIn('body["action"] == "server"', BRIDGE)
 
 
