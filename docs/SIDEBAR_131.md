@@ -6,53 +6,41 @@ shortcuts on this PR; these new changes have **not** yet been built or visually
 verified on macOS. The installed 1.3.0 (6), existing server and library remain
 untouched. No merge, release or installation is authorized by this document.
 
-## Navigation
+## Navigation — final Preferences structure
 
-The native macOS `NavigationSplitView` sidebar now has ten destinations:
+The native macOS `NavigationSplitView` sidebar has **eleven destinations**:
+five Collection entries and six concise Preferences entries. This remains
+smaller than the original fifteen-entry sidebar and makes General explicit.
 
-**Collection (five):** Library, Sources, History, Downloads, Chapter Updates.
+**Collection:** Library, Sources, History, Downloads, Chapter Updates.
 
-**Preferences (five):**
-- Reading & Library → `/settings?section=reader` (Reader and Library & Categories)
-- Sources & Tracking → `/settings?section=source-lists` (Source Lists and Trackers)
-- Downloads & Backups → `/settings?section=downloads` (both download and backup settings)
-- Appearance & Updates → `/settings?section=general` (appearance and app-update bridge)
-- Server & Account → `/settings?section=system` (server management and diagnostics)
+**Preferences:**
 
-This is fewer than the original fifteen separate sidebar entries, but more
-discoverable than the one-entry Preferences design. The same ten destinations
-are in the browser-only sidebar. Existing deep-link sections are still honored:
-the selected sidebar shortcut follows the category for any underlying section,
-including `library`, `trackers` and `backups`.
+| Sidebar entry | Settings section | Contents |
+| --- | --- | --- |
+| General | `general` | Appearance, language, application updates |
+| Reader | `reader` | Reading modes, gestures, incognito reading |
+| Library | `library` | Categories, library display, chapter refresh |
+| Sources | `source-lists`, `trackers` | Source Lists, source updates and trackers |
+| Downloads & Backups | `downloads`, `backups` | Download preferences, backup/import/restore |
+| Server & Account | `system` | Native server controls, account, security, cache and diagnostics |
 
-Original Sumidoku logo retained at 48pt. The Aidoku-aligned, OS-rendered SF
-Symbols are now **18pt medium** (previously 22pt semibold), aligned in a 26pt
-icon column. Native rows are at least **44pt** high (previously 48pt).
-The sidebar remains resizable, with an ideal width of 270pt. Collection colors
-stay red/green/orange/blue/purple; Preferences use more restrained tints.
-Platform-native glass/material and accessibility fallback policies are
-unchanged; no new icon assets are bundled.
+Native icons use restrained, Aidoku-aligned OS-rendered **18pt medium SF
+Symbols** with a 26pt icon column and **44pt minimum rows**. The unchanged
+original Sumidoku logo remains 48pt. The sidebar stays resizable; OS-native
+Liquid Glass and accessibility fallback surfaces remain unchanged. No external
+icon artwork has been introduced.
 
-## Five Settings categories (web content under the native shell)
-
-| Category | Existing subsections |
-| --- | --- |
-| Reading & Library | Reader, Library & Categories |
-| Sources & Tracking | Source Lists, Trackers |
-| Downloads & Backups | Downloads, Backups & Imports |
-| Appearance & Updates | General, including theme and native application update bridge |
-| Server & Account | System, security, API keys, caches, logs/about; native Server & Account controls via the local-only desktop bridge |
-
-Each category has its own top-level button; categories with multiple sections
-have a second row of subsection controls. The old `?section=general`,
-`reader`, `library`, `trackers`, `downloads`, `backups`,
-`source-lists` and `system` URLs stay valid and select the corresponding
-category. All eight panel components remain mounted (inactive sections hidden)
-so switching to Source Lists does not discard a selected Aidoku backup file.
+The same eleven top-level links are present in the browser-only fallback
+sidebar. All eight legacy `?section=general|reader|library|source-lists|
+trackers|downloads|backups|system` deep links work. Trackers correctly selects
+Sources in the native sidebar and backups selects Downloads & Backups. Every
+Settings panel remains mounted while inactive, preserving in-progress Aidoku
+backup recovery when switching to Source Lists.
 
 The native `server` message is accepted only by the existing main-frame,
-localhost-checked `WKScriptMessageHandler`. No new local service or network
-endpoint has been created.
+localhost-checked `WKScriptMessageHandler`. No new background server, network
+endpoint, or automatic installation behavior has been introduced.
 
 ## Native sidebar footer
 
@@ -109,7 +97,7 @@ Additional manual checks:
 1. Visually inspect a real unlocked native window in light/dark, larger text,
    high contrast and reduced transparency. The original Sumidoku icon must
    remain unchanged.
-2. Select each of the ten sidebar entries and five Settings categories; use
+2. Select each of the eleven sidebar entries and six Settings categories; use
    both internal Settings subsections and browser back/forward. Verify the
    selected state and no duplicate visible sidebar in WKWebView.
 3. Open an existing Aidoku backup, navigate to Settings → Sources & Tracking →
@@ -122,6 +110,18 @@ Additional manual checks:
    library, categories, reading progress, sources, downloads and backups.
 6. The app should not download chapters, install updates automatically or
    change signing policy as part of this UI-only change.
+
+## Latest follow-up: concise Preferences and General
+
+The latest PR head separates Reader and Library, adds **General** as the first
+Preferences shortcut, renames Sources & Tracking to **Sources**, and retains
+Downloads & Backups and Server & Account. Incognito reading controls now sit
+under Reader instead of General. Both native and browser sidebars and their
+focused tests/preview fixtures have been updated. **These latest changes are
+not in the earlier staged app or screenshots below; a new focused native build,
+one representative light/dark capture and relevant test pass are required.**
+Do not claim that previous 378 frontend / 29 Python test results certify this
+new head.
 
 ## Mac verification results
 
