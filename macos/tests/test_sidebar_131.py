@@ -13,8 +13,8 @@ class Sidebar131Tests(unittest.TestCase):
         collection = SHELL.split("static let collection = [", 1)[1].split("\n    ]", 1)[0]
         settings = SHELL.split("static let settings = [", 1)[1].split("\n    ]", 1)[0]
         self.assertEqual(collection.count("Self(id:"), 5)
-        self.assertEqual(settings.count("Self(id:"), 5)
-        for section in ("reader", "source-lists", "downloads", "general", "system"):
+        self.assertEqual(settings.count("Self(id:"), 6)
+        for section in ("general", "reader", "library", "source-lists", "downloads", "system"):
             self.assertIn(f'Self(id: "/settings?section={section}"', settings)
 
     def test_original_logo_and_genuine_material_preserved(self):
@@ -35,7 +35,8 @@ class Sidebar131Tests(unittest.TestCase):
 
     def test_legacy_settings_routes_map_to_five_destinations(self):
         self.assertIn('controller.route.hasPrefix("/settings")', SHELL)
-        self.assertIn('case "reader", "library": return "/settings?section=reader"', SHELL)
+        self.assertIn('case "reader": return "/settings?section=reader"', SHELL)
+        self.assertIn('case "library": return "/settings?section=library"', SHELL)
         self.assertIn('case "source-lists", "trackers": return "/settings?section=source-lists"', SHELL)
         self.assertIn('case "downloads", "backups": return "/settings?section=downloads"', SHELL)
         self.assertIn('case "system": return "/settings?section=system"', SHELL)
