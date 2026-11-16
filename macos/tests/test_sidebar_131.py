@@ -1,6 +1,5 @@
 """Static sidebar regression guards; full rendering still requires Xcode on macOS."""
 from pathlib import Path
-import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +32,7 @@ class Sidebar131Tests(unittest.TestCase):
         self.assertIn("controller.available", SHELL)
         self.assertIn("Open server controls.", SHELL)
 
-    def test_legacy_settings_routes_map_to_five_destinations(self):
+    def test_legacy_settings_routes_map_to_six_destinations(self):
         self.assertIn('controller.route.hasPrefix("/settings")', SHELL)
         self.assertIn('case "reader": return "/settings?section=reader"', SHELL)
         self.assertIn('case "library": return "/settings?section=library"', SHELL)

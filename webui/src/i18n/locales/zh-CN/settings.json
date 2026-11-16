@@ -1,10 +1,7 @@
 {
   "settings": {
     "groupNav": "设置分组",
-    "categoryReadingLibrary": "阅读与书库",
-    "categorySourcesTracking": "图源与追踪",
     "categoryDownloadsBackups": "下载与备份",
-    "categoryAppearanceUpdates": "外观与更新",
     "categoryServerAccount": "服务器与账户",
     "groupGeneral": "通用",
     "groupReader": "阅读器",

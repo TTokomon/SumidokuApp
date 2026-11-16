@@ -46,7 +46,7 @@ A lightweight regression suite:
 `python3 -m unittest macos/tests/test_aidoku_symbols.py`
 
 The 1.3.0 integration review resolved 15 preferred identifiers through AppKit.
-The 1.3.1 sidebar consolidates its destinations to six, all resolved on the current
+The final 1.3.1 sidebar has eleven destinations with 18pt native glyphs, resolved on the current
 Mac, with two forced older-system fallback cases. Detailed settings now use the
 existing web components; see [1.3.1 verification](SIDEBAR_131.md). `NativeSymbol.resolve`
 checks the running system before rendering; unsupported update symbols use

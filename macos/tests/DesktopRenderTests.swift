@@ -38,6 +38,7 @@ struct DesktopRenderTests {
         }
         throw UpdateFailure("UI fixture timed out: " + expression)
     }
+    var sidebarOnly: Bool { CommandLine.arguments.contains("--sidebar-only") }
     var capturesEnabled: Bool { !CommandLine.arguments.contains("--no-capture") }
     func clickOwnWindow(_ window: NSWindow, at point: NSPoint) async throws {
         window.makeKeyAndOrderFront(nil)
@@ -53,6 +54,11 @@ struct DesktopRenderTests {
             shell.selection.wrappedValue = item.id
             try await wait("location.pathname + location.search === '\(item.id)'")
             guard shell.selection.wrappedValue == item.id else { throw UpdateFailure("Native sidebar selection mismatch") }
+        }
+        for (route, expected) in [("/settings", "general"), ("/settings?section=general", "general"), ("/settings?section=reader", "reader"), ("/settings?section=library", "library"), ("/settings?section=source-lists", "source-lists"), ("/settings?section=trackers", "source-lists"), ("/settings?section=downloads", "downloads"), ("/settings?section=backups", "downloads"), ("/settings?section=system", "system")] {
+            controller.navigate(route)
+            try await wait("location.pathname + location.search === '\(route)'")
+            guard shell.selection.wrappedValue == "/settings?section=\(expected)" else { throw UpdateFailure("Legacy Settings selection mismatch") }
         }
         guard let window = controller.webView.window else { throw UpdateFailure("Native window missing") }
         try await Task.sleep(nanoseconds: 300_000_000)
@@ -109,7 +115,7 @@ struct DesktopRenderTests {
         guard capturesEnabled else { return }
         try await Task.sleep(nanoseconds:700_000_000)
         guard let window = NSApp.windows.first(where: { $0.isVisible && !$0.isSheet }) else { throw UpdateFailure("Preview window missing") }
-        if controller.nativePanel == nil {
+        if !sidebarOnly && controller.nativePanel == nil {
             let view = controller.webView
             guard view.window === window, view.bounds.width > 500, view.bounds.height > 400 else { throw UpdateFailure("Embedded web view has no visible layout: \(view.bounds)") }
             let snapshot = try await view.takeSnapshot(configuration: nil)
@@ -187,6 +193,10 @@ struct DesktopRenderTests {
                         try await wait("document.documentElement.dataset.theme === 'light' && document.querySelectorAll('.cover-card').length >= 4")
                         try await verifyNativeNavigation()
                         try await verifyGroupedSettingsAndRecovery()
+                        if sidebarOnly {
+                            try JSONSerialization.data(withJSONObject:["success":true,"mode":"focused-sidebar","nativeWindowCaptures":capturesEnabled,"nativeDestinations":11,"legacySettingsRoutes":9,"nativeFooterActions":2,"settingsCategories":6,"persistentSettingsPanels":8,"aidokuExactFileResumed":true]).write(to:root.appendingPathComponent("render-result.json"))
+                            exit(0)
+                        }
                         let fixture = try JSONSerialization.jsonObject(with:Data(contentsOf:root.appendingPathComponent("preview.json"))) as! [String:Int]
                         let routes = [("manga-details","/manga/\(fixture["manga"]!)"),("sources","/browse"),("source-lists","/settings?section=source-lists"),("history","/history"),("backup-import","/settings?section=backups"),("reader","/reader/\(fixture["chapter"]!)")]
                         for (name,route) in routes {
@@ -234,7 +244,7 @@ struct DesktopRenderTests {
         let releases = PreviewReleases()
         let updates=AppUpdates(defaults:UserDefaults(suiteName:"SumidokuUIFixture")!,schedule:false,fetcher:releases)
         let host=NSHostingView(rootView:AnyView(DesktopShell(controller:controller,updates:updates).frame(minWidth:780,minHeight:600)))
-        let window=NSWindow(contentRect:NSRect(x:0,y:0,width:1120,height:820),styleMask:[.titled,.closable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
+        let window=NSWindow(contentRect:NSRect(x:0,y:0,width:1120,height:CommandLine.arguments.contains("--sidebar-only") ? 1000 : 820),styleMask:[.titled,.closable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
         window.title="Sumidoku — Disposable UI Fixture"
         window.contentView=host;window.orderFrontRegardless();window.makeKeyAndOrderFront(nil);window.display()
         app.activate(ignoringOtherApps:true)

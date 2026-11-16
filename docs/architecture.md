@@ -47,7 +47,7 @@ Subscription creates no packages or chapters. A desktop event invalidates Source
 Lists queries without replacing the document or losing an import preview.
 
 `DesktopShell.swift` owns native NavigationSplitView with five Collection destinations
-and one Settings entry, toolbar/menu routing and application update status. Its native
+and six Preferences entries, beginning with General, toolbar/menu routing and application update status. Its native
 footer opens App Updates and Local Server controls without changing service state. The WebKit document retains existing library/source/reader
 logic; an origin-checked desktop bridge routes local paths and appearance. Actual
 SwiftUI Liquid Glass is guarded at macOS 26; older systems use native materials and
@@ -2210,8 +2210,8 @@ and shows each field's source as follow-the-source, written by a provider, or
 manual, with per-field unlock and a restore-to-source action. Both live in
 `webui/src/pages/manga/`, share `metadata.css`, and are only offered while the
 entry is in the library or its source is local.
-Settings exposes five visible categories (Reading & Library, Sources & Tracking,
-Downloads & Backups, Appearance & Updates, Server & Account), with subsection
+Settings exposes six visible categories (General, Reader, Library, Sources,
+Downloads & Backups, Server & Account), with subsection
 controls and all eight legacy query-section URLs preserved. All panels stay mounted
 while their category is inactive, retaining an Aidoku import during Source Lists
 management. The settings page shows the admin account and

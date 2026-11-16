@@ -67,6 +67,7 @@ with tempfile.TemporaryDirectory(prefix='sumidoku-native-ui-fixture-') as tempor
             output=Path(tempfile.mkdtemp(prefix='sumidoku-native-desktop-renders-'))
             subprocess.run(['/usr/bin/codesign','--force','--sign','-',str(app)],check=True)
             arguments=['/usr/bin/open','-n','-W',str(app),'--args',str(root),str(output)]
+            if os.environ.get('SUMIDOKU_TEST_SIDEBAR_ONLY')=='1': arguments.append('--sidebar-only')
             if os.environ.get('SUMIDOKU_TEST_NO_CAPTURE')=='1': arguments.append('--no-capture')
             subprocess.run(arguments,env=env,check=True,timeout=150)
             result=json.loads((root/'render-result.json').read_text())

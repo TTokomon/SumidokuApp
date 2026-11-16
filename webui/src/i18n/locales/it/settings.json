@@ -1,10 +1,7 @@
 {
   "settings": {
     "groupNav": "Sezioni delle impostazioni",
-    "categoryReadingLibrary": "Lettura e libreria",
-    "categorySourcesTracking": "Fonti e tracciamento",
     "categoryDownloadsBackups": "Download e backup",
-    "categoryAppearanceUpdates": "Aspetto e aggiornamenti",
     "categoryServerAccount": "Server e account",
     "groupGeneral": "Generali",
     "groupReader": "Lettore",

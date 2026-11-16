@@ -1,10 +1,7 @@
 {
   "settings": {
     "groupNav": "Разделы настроек",
-    "categoryReadingLibrary": "Чтение и библиотека",
-    "categorySourcesTracking": "Источники и отслеживание",
     "categoryDownloadsBackups": "Загрузки и резервные копии",
-    "categoryAppearanceUpdates": "Внешний вид и обновления",
     "categoryServerAccount": "Сервер и учётная запись",
     "groupGeneral": "Общие",
     "groupReader": "Читалка",

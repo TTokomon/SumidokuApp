@@ -171,3 +171,19 @@ test('six Settings categories preserve every historical deep link', async () => 
 		assert.equal(settingsCategoryFor('library').id, 'library');
 	} finally { await vite.close(); }
 });
+
+test('query-based Preferences expose exactly one current destination', async () => {
+	for (const [route, expected] of [
+		['/settings?section=general', 'general'],
+		['/settings?section=reader', 'reader'],
+		['/settings?section=trackers', 'source-lists'],
+		['/settings?section=backups', 'downloads']
+	]) {
+		const markup = await renderSidebar(false, route);
+		const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
+		const current = [...navigation.matchAll(/<a\b[^>]*>/g)]
+			.filter(([anchor]) => anchor.includes('aria-current="page"'))
+			.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
+		assert.deepEqual(current, [`/settings?section=${expected}`], route);
+	}
+});

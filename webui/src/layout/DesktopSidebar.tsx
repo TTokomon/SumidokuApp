@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Download, Globe, Library as LibraryIcon, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -53,7 +53,7 @@ function SidebarLink({ item, collapsed }: { item: SidebarItem; collapsed: boolea
 	const Icon = item.icon;
 	const label = t(item.labelKey, { defaultValue: item.fallbackLabel ?? item.labelKey });
 	return (
-		<NavLink
+		<Link
 			to={item.to}
 			viewTransition
 			className={active ? 'side-nav__item side-nav__item--active' : 'side-nav__item'}
@@ -64,7 +64,7 @@ function SidebarLink({ item, collapsed }: { item: SidebarItem; collapsed: boolea
 		>
 			<Icon size={18} strokeWidth={2} aria-hidden="true" />
 			<span className="side-nav__label" hidden={collapsed}>{label}</span>
-		</NavLink>
+		</Link>
 	);
 }
 
