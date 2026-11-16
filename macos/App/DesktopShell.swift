@@ -15,14 +15,14 @@ struct DesktopDestination: Identifiable, Hashable {
         Self(id: "/downloads", title: "Downloads", symbol: "arrow.down.circle.fill"),
         Self(id: "/updates", title: "Chapter Updates", symbol: "clock.arrow.2.circlepath")
     ]
-    // Match the five consolidated Settings categories without restoring
-    // the original ten-entry preferences list. All historical section URLs
-    // still open the correct category via SettingsLayout.
+    // Six concise Preferences destinations. The existing eight Settings
+    // sections and every historical deep link remain available.
     static let settings = [
-        Self(id: "/settings?section=reader", title: "Reading & Library", symbol: "book.fill"),
-        Self(id: "/settings?section=source-lists", title: "Sources & Tracking", symbol: "globe"),
+        Self(id: "/settings?section=general", title: "General", symbol: "gear"),
+        Self(id: "/settings?section=reader", title: "Reader", symbol: "book.fill"),
+        Self(id: "/settings?section=library", title: "Library", symbol: "books.vertical.fill"),
+        Self(id: "/settings?section=source-lists", title: "Sources", symbol: "globe"),
         Self(id: "/settings?section=downloads", title: "Downloads & Backups", symbol: "arrow.down.circle.fill"),
-        Self(id: "/settings?section=general", title: "Appearance & Updates", symbol: "slider.horizontal.3"),
         Self(id: "/settings?section=system", title: "Server & Account", symbol: "gearshape.2.fill")
     ]
     var iconColor: Color {
@@ -33,6 +33,7 @@ struct DesktopDestination: Identifiable, Hashable {
         case "/downloads": return .blue
         case "/updates": return .purple
         case "/settings?section=reader": return .indigo
+        case "/settings?section=library": return DesktopBrand.accent
         case "/settings?section=source-lists": return .green
         case "/settings?section=downloads": return .blue
         case "/settings?section=general": return .secondary
@@ -67,7 +68,8 @@ struct DesktopShell: View {
                 if controller.route.hasPrefix("/settings") {
                     let section = URLComponents(string: controller.route)?.queryItems?.first(where: { $0.name == "section" })?.value
                     switch section {
-                    case "reader", "library": return "/settings?section=reader"
+                    case "reader": return "/settings?section=reader"
+                    case "library": return "/settings?section=library"
                     case "source-lists", "trackers": return "/settings?section=source-lists"
                     case "downloads", "backups": return "/settings?section=downloads"
                     case "system": return "/settings?section=system"
