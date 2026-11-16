@@ -2010,3 +2010,13 @@ the draft on session teardown rather than persisting private backup bytes.
 - Evidence: 2026-11-16, the navigation review moved Source Lists out of Settings.
   The disposable native fixture crossed that page boundary, resumed byte-identical
   Aidoku input and retained its exact-ID package selection after Settings remounted.
+
+**Recovery journals compare normalized filesystem paths, not URL directory flags.**
+A file URL created before a directory exists can serialize differently from one
+created after it exists even when both address the same directory. Validate the
+owned recovery namespace using normalized paths, then verify sealed previous
+artifacts before replacing anything. Never use a loose runtime backup as trust.
+- Evidence: 2026-11-16, the native failed-handoff fixture initially rejected its own
+  valid recovery journal and left the new runtime in place. Path normalization
+  restored both artifacts; a separate hard-exit fixture recovered between runtime
+  replacement and app swap, ignoring a tampered loose runtime backup.
