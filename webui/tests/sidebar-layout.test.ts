@@ -54,25 +54,39 @@ test('expanded sidebar keeps visible labels and collapse control', async () => {
 	assert.match(markup, /aria-expanded="true"/);
 });
 
-test('sidebar exposes five collection links and one Settings destination', async () => {
+test('sidebar shows five Collection items and five useful Preferences shortcuts', async () => {
 	const markup = await renderSidebar(false);
 	const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
 	assert.deepEqual(
 		[...navigation.matchAll(/href="([^"]+)"/g)].map((match) => match[1]),
-		['/library', '/browse', '/history', '/downloads', '/updates', '/settings']
+		[
+			'/library', '/browse', '/history', '/downloads', '/updates',
+			'/settings?section=reader',
+			'/settings?section=source-lists',
+			'/settings?section=downloads',
+			'/settings?section=general',
+			'/settings?section=system'
+		]
 	);
-	assert.match(navigation, /Collection/);
-	assert.match(navigation, /Preferences/);
+	for (const heading of ['Collection', 'Preferences', 'Reading &amp; Library', 'Sources &amp; Tracking', 'Downloads &amp; Backups', 'Appearance &amp; Updates', 'Server &amp; Account']) {
+		assert.ok(navigation.includes(heading), heading);
+	}
 	assert.doesNotMatch(navigation, /data-nav-group/);
 });
 
-test('legacy settings section deep links select the single Settings destination', async () => {
-	for (const route of ['/settings?section=downloads', '/settings?section=source-lists', '/settings?section=system']) {
-		const markup = await renderSidebar(false, route);
-		const activeHrefs = [...markup.matchAll(/<a\b[^>]*>/g)]
+test('legacy Settings section links select the correct consolidated Preferences shortcut', async () => {
+	const sections: Record<string, string> = {
+		downloads: 'downloads', backups: 'downloads',
+		'source-lists': 'source-lists', trackers: 'source-lists',
+		reader: 'reader', library: 'reader',
+		system: 'system', general: 'general'
+	};
+	for (const [section, destination] of Object.entries(sections)) {
+		const markup = await renderSidebar(false, `/settings?section=${section}`);
+		const activeHrefs = [...markup.matchAll(/<a\\b[^>]*>/g)]
 			.filter(([anchor]) => anchor.includes('side-nav__item--active'))
 			.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
-		assert.deepEqual(activeHrefs, ['/settings'], route);
+		assert.deepEqual(activeHrefs, [`/settings?section=${destination}`], section);
 	}
 });
 
