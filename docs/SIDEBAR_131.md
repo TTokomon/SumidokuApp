@@ -1,34 +1,37 @@
 # Sumidoku Desktop 1.3.1 — sidebar and Settings redesign
 
-**Status:** Mac build and native sidebar verification completed on PR #4. The 1.3.1 (7) application is
-built in staging; the installed 1.3.0 (6), existing server and library are preserved.
-No merge to `main`, release, service replacement or library migration is authorized
-by this verification.
+**Status:** The previous six-entry 1.3.1 (7) design passed Mac preview/build checks
+and remains staged for review. A follow-up changes icon sizing and the Preferences
+shortcuts on this PR; these new changes have **not** yet been built or visually
+verified on macOS. The installed 1.3.0 (6), existing server and library remain
+untouched. No merge, release or installation is authorized by this document.
 
 ## Navigation
 
-The native macOS `NavigationSplitView` sidebar now has exactly six destinations:
+The native macOS `NavigationSplitView` sidebar now has ten destinations:
 
-- Library
-- Sources
-- History
-- Downloads
-- Chapter Updates
-- Settings
+**Collection (five):** Library, Sources, History, Downloads, Chapter Updates.
 
-The first five are grouped under Collection. The one Settings entry is under
-Preferences, replacing the ten individual Settings links. The same six
-destinations are exposed by the browser-only fallback sidebar. This change does
-not remove any old settings routes.
+**Preferences (five):**
+- Reading & Library → `/settings?section=reader` (Reader and Library & Categories)
+- Sources & Tracking → `/settings?section=source-lists` (Source Lists and Trackers)
+- Downloads & Backups → `/settings?section=downloads` (both download and backup settings)
+- Appearance & Updates → `/settings?section=general` (appearance and app-update bridge)
+- Server & Account → `/settings?section=system` (server management and diagnostics)
 
-Original Sumidoku logo retained, displayed at 48pt with a larger name and
-subtle Desktop caption. Native navigation glyphs are OS-rendered SF Symbols
-chosen from Aidoku's original navigation system, at 22pt with restrained tints:
-red Library, green Sources, orange History, blue Downloads, purple Updates,
-neutral Settings. Native row height is at least 48pt. The sidebar's ideal
-width is 270pt and is resizable. High contrast and the existing Liquid Glass
-runtime fallback still use the platform's native surfaces. No Aidoku raster
-assets or additional icon packs are bundled.
+This is fewer than the original fifteen separate sidebar entries, but more
+discoverable than the one-entry Preferences design. The same ten destinations
+are in the browser-only sidebar. Existing deep-link sections are still honored:
+the selected sidebar shortcut follows the category for any underlying section,
+including `library`, `trackers` and `backups`.
+
+Original Sumidoku logo retained at 48pt. The Aidoku-aligned, OS-rendered SF
+Symbols are now **18pt medium** (previously 22pt semibold), aligned in a 26pt
+icon column. Native rows are at least **44pt** high (previously 48pt).
+The sidebar remains resizable, with an ideal width of 270pt. Collection colors
+stay red/green/orange/blue/purple; Preferences use more restrained tints.
+Platform-native glass/material and accessibility fallback policies are
+unchanged; no new icon assets are bundled.
 
 ## Five Settings categories (web content under the native shell)
 
@@ -106,7 +109,7 @@ Additional manual checks:
 1. Visually inspect a real unlocked native window in light/dark, larger text,
    high contrast and reduced transparency. The original Sumidoku icon must
    remain unchanged.
-2. Select each of the six sidebar entries and five Settings categories; use
+2. Select each of the ten sidebar entries and five Settings categories; use
    both internal Settings subsections and browser back/forward. Verify the
    selected state and no duplicate visible sidebar in WKWebView.
 3. Open an existing Aidoku backup, navigate to Settings → Sources & Tracking →
@@ -134,7 +137,7 @@ after a single-file restore.
 - Python maintenance/static regressions: **29 passed**.
 - Native navigation **12**, update/material policies **37**, community bootstrap **9**,
   native symbols **6 resolutions + 2 fallback cases** passed.
-- Native fixture: six destination selection bindings; own-window clicks on both
+- Previous six-entry build's native fixture: six destination selection bindings; own-window clicks on both
   footer buttons; four fixture release outcomes (offline, malformed/error, empty
   catalog/unverified, update available), each passing through Checking; five
   visible Settings categories, eight persistent panels, subsections/back-forward,
@@ -142,10 +145,10 @@ after a single-file restore.
 - Actual unlocked native window captures passed in light/dark, a 920×640 window,
   high-contrast appearance and an enlarged web-content preview. No duplicate browser
   sidebar is visible. Original Sumidoku logo/red theme and native materials remain.
-- Staged native **1.3.1 (7)** passes strict/deep signature verification. The six
+- The **previous six-entry staged 1.3.1 (7)** build passed strict/deep signature verification. The six
   embedded index/assets match the built frontend byte for byte; the packaged
-  server digest matches the fork manifest. Runtime build revision is `8d99f93`;
-  later changes contain only verification drivers, captures and documentation.
+  server digest matches the fork manifest. Runtime build revision was `8d99f93`;
+  the new ten-entry sidebar changes are **not included** in that staged build.
 - Onboarding/authenticated restart: **32 assertions each** through direct-process
   and temporary LaunchAgent drivers. Backup/source smoke passed exact-ID Aidoku
   import, invalid-backup rejection, export/restore, categories/progress, restart
@@ -159,6 +162,17 @@ after a single-file restore.
   descriptor and official executable still match the pre-verification baseline.
 - Rust test compilation completed. Full nextest execution was stopped before
   completion; strict Clippy was not run. Neither is claimed as passing.
+
+### New follow-up verification (outstanding)
+
+The reduced 18pt native glyphs, five Preferences shortcuts, URL-based
+selection mapping, and the corresponding browser-only navigation are code
+changes after the previous screenshots and Mac test results. Focused
+regression guards have been updated, including the actual window fixture's
+ten-route verification. Before install/merge, run the frontend's focused
+sidebar tests, the small Python native-sidebar suite, and one native UI build
+and representative light/dark capture on the new PR head. The screenshots
+below represent the **earlier 22pt/six-entry design**, not this revision.
 
 ### Visual evidence
 
