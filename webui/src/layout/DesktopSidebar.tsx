@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Download, Globe, PanelLeftClose, PanelLeftOpen, Server, SlidersHorizontal } from 'lucide-react';
+import { BookOpen, Download, Globe, Library as LibraryIcon, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { IconButton } from '../components';
 import { SETTINGS_CATEGORIES } from '../pages/settings/SettingsLayout';
@@ -26,17 +26,18 @@ const COLLECTION_NAV: SidebarItem[] = NAV.filter((item) => item.to !== '/setting
 	.map((item) => ({ ...item, tone: item.to.slice(1) }));
 
 const PREFERENCE_ICONS: Record<string, LucideIcon> = {
-	reading: BookOpen,
+	general: SettingsIcon,
+	reader: BookOpen,
+	library: LibraryIcon,
 	sources: Globe,
 	storage: Download,
-	appearance: SlidersHorizontal,
 	server: Server
 };
 const PREFERENCES_NAV: SidebarItem[] = SETTINGS_CATEGORIES.map((category) => ({
 	to: `/settings?section=${category.sections[0]}`,
 	labelKey: category.labelKey,
 	fallbackLabel: category.fallbackLabel,
-	icon: PREFERENCE_ICONS[category.id] ?? SlidersHorizontal,
+	icon: PREFERENCE_ICONS[category.id] ?? SettingsIcon,
 	sections: category.sections,
 	tone: category.id
 }));
