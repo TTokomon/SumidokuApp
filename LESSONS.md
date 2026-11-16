@@ -2001,3 +2001,12 @@ with Link and assert exactly one current destination, including legacy aliases.
 - Evidence: 2026-11-15, reverting the sidebar link fix from committed green made
   the focused Preferences regression report six current links instead of one;
   restoring that single file returned the test to green.
+
+**Recovery state must outlive every page visited during recovery.**
+Keeping Settings panels mounted protects tab changes, not navigation to a different
+page. Own the original File, preview and exact package selections above those
+routes, in a session scoped to the authenticated user. Use SPA shortcuts and clear
+the draft on session teardown rather than persisting private backup bytes.
+- Evidence: 2026-11-16, the navigation review moved Source Lists out of Settings.
+  The disposable native fixture crossed that page boundary, resumed byte-identical
+  Aidoku input and retained its exact-ID package selection after Settings remounted.
