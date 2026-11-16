@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { BookOpen, Download, Globe, PanelLeftClose, PanelLeftOpen, Server, SlidersHorizontal } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { IconButton } from '../components';
+import { SETTINGS_CATEGORIES } from '../pages/settings/SettingsLayout';
 import { NAV } from './navigation';
 
 interface DesktopSidebarProps {
@@ -11,31 +13,56 @@ interface DesktopSidebarProps {
 	children: ReactNode;
 }
 
-const COLLECTION_NAV = NAV.filter((item) => item.to !== '/settings');
-const SETTINGS_NAV = NAV.find((item) => item.to === '/settings')!;
+interface SidebarItem {
+	to: string;
+	labelKey: string;
+	icon: LucideIcon;
+	fallbackLabel?: string;
+	sections?: readonly string[];
+	tone: string;
+}
 
-function SidebarLink({ item, collapsed }: {
-	item: (typeof NAV)[number];
-	collapsed: boolean;
-}) {
+const COLLECTION_NAV: SidebarItem[] = NAV.filter((item) => item.to !== '/settings')
+	.map((item) => ({ ...item, tone: item.to.slice(1) }));
+
+const PREFERENCE_ICONS: Record<string, LucideIcon> = {
+	reading: BookOpen,
+	sources: Globe,
+	storage: Download,
+	appearance: SlidersHorizontal,
+	server: Server
+};
+const PREFERENCES_NAV: SidebarItem[] = SETTINGS_CATEGORIES.map((category) => ({
+	to: `/settings?section=${category.sections[0]}`,
+	labelKey: category.labelKey,
+	fallbackLabel: category.fallbackLabel,
+	icon: PREFERENCE_ICONS[category.id] ?? SlidersHorizontal,
+	sections: category.sections,
+	tone: category.id
+}));
+
+function SidebarLink({ item, collapsed }: { item: SidebarItem; collapsed: boolean }) {
 	const { t } = useTranslation();
-	const { pathname } = useLocation();
-	const active = item.to === '/settings'
-		? pathname.startsWith('/settings')
+	const { pathname, search } = useLocation();
+	const section = new URLSearchParams(search).get('section') ?? 'general';
+	const active = item.sections
+		? pathname === '/settings' && item.sections.includes(section)
 		: pathname === item.to || (item.to === '/library' && pathname.startsWith('/manga/')) ||
 			(item.to === '/browse' && pathname.startsWith('/browse/'));
 	const Icon = item.icon;
+	const label = t(item.labelKey, { defaultValue: item.fallbackLabel ?? item.labelKey });
 	return (
 		<NavLink
 			to={item.to}
 			viewTransition
 			className={active ? 'side-nav__item side-nav__item--active' : 'side-nav__item'}
+			data-sidebar-tone={item.tone}
 			aria-current={active ? 'page' : undefined}
-			aria-label={collapsed ? t(item.labelKey) : undefined}
-			title={collapsed ? t(item.labelKey) : undefined}
+			aria-label={collapsed ? label : undefined}
+			title={collapsed ? label : undefined}
 		>
-			<Icon size={22} strokeWidth={2.2} aria-hidden="true" />
-			<span className="side-nav__label" hidden={collapsed}>{t(item.labelKey)}</span>
+			<Icon size={18} strokeWidth={2} aria-hidden="true" />
+			<span className="side-nav__label" hidden={collapsed}>{label}</span>
 		</NavLink>
 	);
 }
@@ -52,7 +79,7 @@ export function DesktopSidebar({ collapsed, onToggle, children }: DesktopSidebar
 				<span className="side-nav__heading" hidden={collapsed}>Collection</span>
 				{COLLECTION_NAV.map((item) => <SidebarLink key={item.to} item={item} collapsed={collapsed} />)}
 				<span className="side-nav__heading side-nav__heading--separated" hidden={collapsed}>Preferences</span>
-				<SidebarLink item={SETTINGS_NAV} collapsed={collapsed} />
+				{PREFERENCES_NAV.map((item) => <SidebarLink key={item.to} item={item} collapsed={collapsed} />)}
 			</nav>
 			<div className="app__sidebar-foot">
 				<IconButton
