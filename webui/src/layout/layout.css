@@ -193,8 +193,10 @@
 	.side-nav__item[data-sidebar-tone="browse"] svg,
 	.side-nav__item[data-sidebar-tone="sources"] svg { color: #27a86b; }
 	.side-nav__item[data-sidebar-tone="history"] svg { color: #e69a2d; }
-	.side-nav__item[data-sidebar-tone="downloads"] svg,
-	.side-nav__item[data-sidebar-tone="storage"] svg { color: #398bf1; }
+	.side-nav__item[data-sidebar-tone="downloads"] svg { color: #398bf1; }
+	.side-nav__item[data-sidebar-tone="storage"] svg { color: #e69a2d; }
+	.side-nav__item[data-sidebar-tone="automation"] svg { color: #a279d8; }
+	.side-nav__item[data-sidebar-tone="accounts"] svg { color: #219b9b; }
 	.side-nav__item[data-sidebar-tone="updates"] svg { color: #a279d8; }
 	.side-nav__item[data-sidebar-tone="reader"] svg { color: #8072c6; }
 	.side-nav__item[data-sidebar-tone="general"] svg,

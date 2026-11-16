@@ -1,3 +1,5 @@
+import { useSearchParams } from 'react-router-dom';
+import { CategoriesSection, FilterGroupsSection, LibraryDisplaySection } from './library/LibraryManagement';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -23,7 +25,7 @@ import type { TriStateSelection } from '../lib/triState';
 import { compareSourceName } from '../lib/source';
 import { downloadEligibleIds } from '../lib/librarySelection';
 import { hasLibraryFilterPrefs, loadLibraryFilters, saveLibraryFilters } from '../lib/libraryFilterPrefs';
-import { BatchActionBar, Button, CoverCard, EmptyState, InfiniteList, PageHeader, Skeleton, pushToast } from '../components';
+import { BatchActionBar, Button, CoverCard, EmptyState, InfiniteList, Modal, PageHeader, Skeleton, pushToast } from '../components';
 import { LibraryToolbar, UNCATEGORIZED, type RemovableFilterKind } from './library/LibraryToolbar';
 import { ChangeCategoriesModal, RemoveFromLibraryModal } from './library/LibraryBatchModals';
 import './library/library.css';
@@ -69,6 +71,9 @@ export interface LibraryPageProps {
 export default function LibraryPage({ initialSelecting = false }: LibraryPageProps) {
 	const { t } = useTranslation();
 	const qc = useQueryClient();
+	const [params, setParams] = useSearchParams();
+	const panel = params.get('panel');
+	const setPanel = (value: string | null) => setParams((previous) => { const next = new URLSearchParams(previous); if (value) next.set('panel', value); else next.delete('panel'); return next; });
 	// Controls restore from localStorage; the prefs are loaded once — the pruning effect below drops ids that no longer exist
 	const [initialPrefs] = useState(loadLibraryFilters);
 	const [searchInput, setSearchInput] = useState(initialPrefs.search);
@@ -385,6 +390,8 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 
 	return (
 		<div className="page container">
+			<Modal open={panel === 'organize'} title="Organize Library" onClose={() => setPanel(null)}><CategoriesSection /><FilterGroupsSection /></Modal>
+			<Modal open={panel === 'view'} title="Library View Options" onClose={() => setPanel(null)}><LibraryDisplaySection /></Modal>
 			<PageHeader
 				title={t('common.nav.library')}
 				actions={
@@ -401,9 +408,10 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 							</Button>
 						</>
 					) : (
+						<><Button size="sm" onClick={() => setPanel('organize')}>Organize</Button><Button size="sm" onClick={() => setPanel('view')}>View Options</Button>
 						<Button size="sm" disabled={entries.length === 0} onClick={enterSelect}>
 							{t('library.select')}
-						</Button>
+						</Button></>
 					)
 				}
 			/>

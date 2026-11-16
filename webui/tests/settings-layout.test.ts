@@ -25,7 +25,7 @@ async function renderSettings(section: string): Promise<string> {
 
 test('settings deep link selects the requested group and hides only the other panels', async () => {
 	const markup = await renderSettings('downloads');
-	for (const group of ['general', 'reader', 'library', 'trackers', 'downloads', 'backups', 'source-lists', 'system']) {
+	for (const group of ['general', 'reader', 'automation', 'trackers', 'downloads', 'backups', 'accounts', 'system']) {
 		assert.match(markup, new RegExp(`data-settings-panel="${group}"`));
 	}
 	assert.equal((markup.match(/data-settings-category=/g) ?? []).length, 6);

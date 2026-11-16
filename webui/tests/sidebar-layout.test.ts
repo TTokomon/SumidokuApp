@@ -63,13 +63,13 @@ test('sidebar shows five Collection items and six Preferences shortcuts', async 
 			'/library', '/browse', '/history', '/downloads', '/updates',
 			'/settings?section=general',
 			'/settings?section=reader',
-			'/settings?section=library',
-			'/settings?section=source-lists',
+			'/settings?section=automation',
 			'/settings?section=downloads',
+			'/settings?section=accounts',
 			'/settings?section=system'
 		]
 	);
-	for (const heading of ['Collection', 'Preferences', 'General', 'Reader', 'Library', 'Sources', 'Downloads &amp; Backups', 'Server &amp; Account']) {
+	for (const heading of ['Collection', 'Preferences', 'General', 'Reader', 'Automation', 'Storage &amp; Backups', 'Accounts &amp; Integrations', 'Server &amp; Diagnostics']) {
 		assert.ok(navigation.includes(heading), heading);
 	}
 	assert.doesNotMatch(navigation, /data-nav-group/);
@@ -78,8 +78,8 @@ test('sidebar shows five Collection items and six Preferences shortcuts', async 
 test('legacy Settings section links select the correct consolidated Preferences shortcut', async () => {
 	const sections: Record<string, string> = {
 		downloads: 'downloads', backups: 'downloads',
-		'source-lists': 'source-lists', trackers: 'source-lists',
-		reader: 'reader', library: 'library',
+		trackers: 'accounts', accounts: 'accounts', automation: 'automation',
+		reader: 'reader',
 		system: 'system', general: 'general'
 	};
 	for (const [section, destination] of Object.entries(sections)) {
@@ -142,13 +142,13 @@ test('Source Lists stays visible inside the grouped Settings page without losing
 		const { SettingsLayout, SETTINGS_GROUPS } = await vite.ssrLoadModule('/src/pages/settings/SettingsLayout.tsx');
 		const panels = Object.fromEntries(SETTINGS_GROUPS.map(([id]: [string]) => [id, createElement('span', null, id)]));
 		const markup = renderToStaticMarkup(createElement(SettingsLayout, {
-			current: 'source-lists', onSelect: () => {}, panels
+			current: 'trackers', onSelect: () => {}, panels
 		}));
 		assert.equal((markup.match(/data-settings-category=/g) ?? []).length, 6);
-		assert.match(markup, /data-settings-group="source-lists"[^>]*aria-current="page"/);
-		assert.match(markup, /data-settings-group="trackers"/);
+		assert.match(markup, /data-settings-group="trackers"[^>]*aria-current="page"/);
+		assert.match(markup, /data-settings-group="accounts"/);
 		assert.equal((markup.match(/data-settings-panel=/g) ?? []).length, 8);
-		assert.match(markup, /data-settings-panel="source-lists">/);
+		assert.match(markup, /data-settings-panel="trackers">/);
 	} finally { await vite.close(); }
 });
 
@@ -163,12 +163,11 @@ test('six Settings categories preserve every historical deep link', async () => 
 		assert.equal(SETTINGS_CATEGORIES.length, 6);
 		const all = SETTINGS_CATEGORIES.flatMap((group: { sections: string[] }) => group.sections);
 		assert.deepEqual(new Set(all), new Set(SETTINGS_GROUPS.map(([id]: [string]) => id)));
-		assert.equal(settingsCategoryFor('source-lists').id, 'sources');
-		assert.equal(settingsCategoryFor('trackers').id, 'sources');
+				assert.equal(settingsCategoryFor('trackers').id, 'accounts');
 		assert.equal(settingsCategoryFor('system').id, 'server');
 		assert.equal(settingsCategoryFor('general').id, 'general');
 		assert.equal(settingsCategoryFor('reader').id, 'reader');
-		assert.equal(settingsCategoryFor('library').id, 'library');
+		assert.equal(settingsCategoryFor('automation').id, 'automation');
 	} finally { await vite.close(); }
 });
 
@@ -176,7 +175,7 @@ test('query-based Preferences expose exactly one current destination', async () 
 	for (const [route, expected] of [
 		['/settings?section=general', 'general'],
 		['/settings?section=reader', 'reader'],
-		['/settings?section=trackers', 'source-lists'],
+		['/settings?section=trackers', 'accounts'],
 		['/settings?section=backups', 'downloads']
 	]) {
 		const markup = await renderSidebar(false, route);
@@ -186,4 +185,12 @@ test('query-based Preferences expose exactly one current destination', async () 
 			.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
 		assert.deepEqual(current, [`/settings?section=${expected}`], route);
 	}
+});
+
+ test('all browser destination icons are distinct', async () => {
+    const markup = await renderSidebar(false);
+    const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
+    const icons = [...navigation.matchAll(/class="lucide ([^"]+)"/g)].map((match) => match[1]);
+    assert.equal(icons.length, 11);
+    assert.equal(new Set(icons).size, 11);
 });

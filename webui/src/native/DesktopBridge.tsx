@@ -4,7 +4,7 @@ import { qk } from '../api/hooks';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 
-type DesktopWindow = Window & { __sumidokuDesktop?: boolean; __sumidokuRouterReady?: boolean; webkit?: { messageHandlers?: { desktop?: { postMessage: (body: Record<string, string>) => Promise<unknown> } } } };
+type DesktopWindow = Window & { __sumidokuDesktop?: boolean; __sumidokuVersion?: string; __sumidokuRouterReady?: boolean; webkit?: { messageHandlers?: { desktop?: { postMessage: (body: Record<string, string>) => Promise<unknown> } } } };
 export function desktopHost() {
 	if (typeof window === 'undefined') return undefined;
 	const host = window as DesktopWindow;
@@ -31,6 +31,7 @@ export function DesktopUpdatesSection() {
 	if (!desktopHost()) return null;
 	return <section className="card settings-section" aria-label="Application Updates">
 		<h2>Application Updates</h2>
+		<p>Sumidoku Desktop {(window as DesktopWindow).__sumidokuVersion ?? 'Development'}</p>
 		<p>Check for a new version of Sumidoku Desktop and view release notes. Application updates are separate from manga source updates.</p>
 		<Button onClick={() => void desktopHost()?.postMessage({ action: 'checkUpdates' })}>Check Now…</Button>
 	</section>;
@@ -39,9 +40,9 @@ export function DesktopUpdatesSection() {
 /** Server management stays native; the web Settings page links to the existing safe shell. */
 export function DesktopServerSection() {
 	if (!desktopHost()) return null;
-	return <section className="card settings-section" aria-label="Native Server & Account">
-		<h2>Server & Account</h2>
-		<p>Manage the local server, library folder, account credentials and diagnostics in the native desktop controls.</p>
-		<Button onClick={() => void desktopHost()?.postMessage({ action: 'server' })}>Open Server & Account…</Button>
+	return <section className="card settings-section" aria-label="Native Server & Diagnostics">
+		<h2>Local Server Controls</h2>
+		<p>Manage the local server, library folder and diagnostics in the native desktop controls.</p>
+		<Button onClick={() => void desktopHost()?.postMessage({ action: 'server' })}>Open Local Server Controls…</Button>
 	</section>;
 }

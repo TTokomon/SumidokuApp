@@ -32,19 +32,28 @@ with tempfile.TemporaryDirectory(prefix='sumidoku-native-ui-fixture-') as tempor
     client_build=re.search(r"'CFBundleVersion': '([^']+)'",build_script).group(1)
     (app/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'app.sumidoku.desktop-ui-tests','CFBundleExecutable':'DesktopRenderTests','CFBundlePackageType':'APPL','CFBundleShortVersionString':client_version,'CFBundleVersion':client_build,'CFBundleIconFile':'AppIcon.png','NSPrincipalClass':'NSApplication','NSAppTransportSecurity':{'NSAllowsLocalNetworking':True}}))
     shutil.copyfile(ROOT/'crates/server/tests/fixtures/example.aib',root/'example.aib')
+    shutil.copyfile(ROOT/'macos/tests/TrackerBrowserFixture.js',root/'tracker-fixture.js')
     shutil.copyfile(ROOT/'macos/service.sh',resources/'service.sh')
     shutil.copyfile(ROOT/'webui/public/icons/icon-512.png',resources/'AppIcon.png')
-    subprocess.run(['xcrun','swiftc','-swift-version','5','-parse-as-library','-D','NATIVE_UI_TESTS','-module-cache-path',str(ROOT/'dist/native/ModuleCache'),*[str(p) for p in (ROOT/'macos/App').glob('*.swift')],str(ROOT/'macos/tests/DesktopRenderTests.swift'),'-o',str(app/'Contents/MacOS/DesktopRenderTests')],env=env,check=True)
+    subprocess.run(['xcrun','swiftc','-swift-version','5','-parse-as-library','-D','NATIVE_UI_TESTS','-module-cache-path',str(ROOT/'dist/native/ModuleCache'),*[str(p) for p in (ROOT/'macos/App').glob('*.swift')],str(ROOT/'macos/tests/DesktopRenderTests.swift'),str(ROOT/'macos/tests/NavigationWorkspaceChecks.swift'),'-o',str(app/'Contents/MacOS/DesktopRenderTests')],env=env,check=True)
     def request(path,body=None,method=None):
         data=json.dumps(body).encode() if body is not None else None
         req=urllib.request.Request('http://127.0.0.1:3309'+path,data=data,method=method,headers={'Content-Type':'application/json'})
         with urllib.request.urlopen(req,timeout=30) as response:return json.load(response)
+    import http.server,threading,functools
+    repo_dir=root/'Repository';repo_dir.mkdir()
+    (repo_dir/'index.json').write_text(json.dumps({'name':'Recovery Fixture','sources':[{'id':'en.example-source','name':'Exact Fixture','version':1,'downloadURL':'example.aix','languages':['en'],'contentRating':0}]}))
+    class QuietRepo(http.server.SimpleHTTPRequestHandler):
+        def log_message(self,*args): pass
+    repo=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(QuietRepo,directory=str(repo_dir)))
+    threading.Thread(target=repo.serve_forever,daemon=True).start()
     with (root/'server.log').open('w') as log:
         server=subprocess.Popen([str(BINARY),'--config-dir',str(root)],cwd=root,stdout=log,stderr=log,env={k:v for k,v in os.environ.items() if not k.startswith('SUMIDOKU_')})
         try:
             for _ in range(100):
                 try:request('/health');break
                 except OSError:time.sleep(.2)
+            request('/api/v1/source-repos',{'url':f'http://127.0.0.1:{repo.server_port}/index.json'},'POST')
             source=request('/api/v1/integrations',{'provider':'local','name':'Local Files Preview','paths':[str(books)]},'POST')
             request('/api/v1/local/scan',{'sourceId':source['id']},'POST')
             entries=[]
@@ -76,6 +85,7 @@ with tempfile.TemporaryDirectory(prefix='sumidoku-native-ui-fixture-') as tempor
             print('Native verification:',json.dumps(result,sort_keys=True))
             print('Native fixture renders:' if result.get('nativeWindowCaptures') else 'Native behavior checks passed; visual capture explicitly NOT performed:',output)
         finally:
+            repo.shutdown();repo.server_close()
             server.send_signal(signal.SIGINT)
             try:server.wait(timeout=20)
             except subprocess.TimeoutExpired:server.kill();server.wait()

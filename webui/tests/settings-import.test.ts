@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 
 test('import modal titles evaluate translation calls', () => {
-	const source = readFileSync(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8');
+	const source = readFileSync(new URL('../src/pages/settings/SettingsSections.tsx', import.meta.url), 'utf8');
 	const quotedTitles = source.match(/title="\{t\([^"]*\}"/g) ?? [];
 	assert.deepEqual(quotedTitles, []);
 });

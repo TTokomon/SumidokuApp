@@ -52,7 +52,18 @@ struct SystemGlassAction<Label: View>: View {
 enum NativeSymbol {
     static func resolve(_ preferred: String, available: (String) -> Bool = { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) -> String {
         if available(preferred) { return preferred }
-        let fallback = preferred == "clock.arrow.2.circlepath" ? "clock.arrow.circlepath" : "circle"
-        return available(fallback) ? fallback : "questionmark.circle"
+        let candidates: [String: [String]] = [
+            "books.vertical.fill": ["books.vertical", "square.stack.3d.up"],
+            "globe": ["network"], "clock.fill": ["clock"],
+            "arrow.down.circle.fill": ["arrow.down.circle", "tray.and.arrow.down"],
+            "clock.arrow.2.circlepath": ["clock.arrow.circlepath", "arrow.triangle.2.circlepath"],
+            "gear": ["gearshape"], "book.fill": ["book"],
+            "calendar.badge.clock": ["calendar", "calendar.circle"],
+            "externaldrive.fill": ["externaldrive", "internaldrive"],
+            "person.crop.circle.fill": ["person.crop.circle", "person.fill"],
+            "gearshape.2.fill": ["gearshape.2", "wrench.and.screwdriver"],
+            "arrow.clockwise": ["goforward"], "server.rack": ["desktopcomputer", "terminal"]
+        ]
+        return (candidates[preferred] ?? ["circle"]).first(where: available) ?? "questionmark.circle"
     }
 }

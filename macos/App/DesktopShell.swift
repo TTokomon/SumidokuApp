@@ -20,10 +20,10 @@ struct DesktopDestination: Identifiable, Hashable {
     static let settings = [
         Self(id: "/settings?section=general", title: "General", symbol: "gear"),
         Self(id: "/settings?section=reader", title: "Reader", symbol: "book.fill"),
-        Self(id: "/settings?section=library", title: "Library", symbol: "books.vertical.fill"),
-        Self(id: "/settings?section=source-lists", title: "Sources", symbol: "globe"),
-        Self(id: "/settings?section=downloads", title: "Downloads & Backups", symbol: "arrow.down.circle.fill"),
-        Self(id: "/settings?section=system", title: "Server & Account", symbol: "gearshape.2.fill")
+        Self(id: "/settings?section=automation", title: "Automation", symbol: "calendar.badge.clock"),
+        Self(id: "/settings?section=downloads", title: "Storage & Backups", symbol: "externaldrive.fill"),
+        Self(id: "/settings?section=accounts", title: "Accounts & Integrations", symbol: "person.crop.circle.fill"),
+        Self(id: "/settings?section=system", title: "Server & Diagnostics", symbol: "gearshape.2.fill")
     ]
     var iconColor: Color {
         switch id {
@@ -33,9 +33,9 @@ struct DesktopDestination: Identifiable, Hashable {
         case "/downloads": return .blue
         case "/updates": return .purple
         case "/settings?section=reader": return .indigo
-        case "/settings?section=library": return DesktopBrand.accent
-        case "/settings?section=source-lists": return .green
-        case "/settings?section=downloads": return .blue
+        case "/settings?section=automation": return .purple
+        case "/settings?section=accounts": return .teal
+        case "/settings?section=downloads": return .orange
         case "/settings?section=general": return .secondary
         case "/settings?section=system": return .secondary
         default: return .secondary
@@ -69,8 +69,10 @@ struct DesktopShell: View {
                     let section = URLComponents(string: controller.route)?.queryItems?.first(where: { $0.name == "section" })?.value
                     switch section {
                     case "reader": return "/settings?section=reader"
-                    case "library": return "/settings?section=library"
-                    case "source-lists", "trackers": return "/settings?section=source-lists"
+                    case "library": return "/library"
+                    case "source-lists": return "/browse"
+                    case "accounts", "trackers": return "/settings?section=accounts"
+                    case "automation": return "/settings?section=automation"
                     case "downloads", "backups": return "/settings?section=downloads"
                     case "system": return "/settings?section=system"
                     default: return "/settings?section=general"
@@ -124,7 +126,7 @@ struct DesktopShell: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Button { controller.nativePanel = "updates" } label: {
                             HStack(spacing: 9) {
-                                Image(systemName: "arrow.clockwise").foregroundStyle(.secondary)
+                                Image(systemName: NativeSymbol.resolve("arrow.clockwise")).foregroundStyle(.secondary)
                                     .frame(width: 20)
                                 Text("App Updates").font(.callout)
                                 Spacer(minLength: 4)
@@ -163,7 +165,7 @@ struct DesktopShell: View {
                 if controller.nativePanel == "server" { ServerSettings(embedded: true, controller: controller) }
             }
             .background(Color(nsColor: .windowBackgroundColor))
-            .navigationTitle(controller.nativePanel == "updates" ? "Application Updates" : controller.nativePanel == "server" ? "Server & Account" : controller.routeTitle)
+            .navigationTitle(controller.nativePanel == "updates" ? "Application Updates" : controller.nativePanel == "server" ? "Server & Diagnostics" : controller.routeTitle)
             .toolbar {
                 ToolbarItemGroup(placement: .navigation) {
                     Button { controller.nativePanel = nil; controller.webView.goBack() } label: { Image(systemName: "chevron.left") }.disabled(!controller.canGoBack).help("Back")
@@ -201,20 +203,19 @@ struct DesktopShell: View {
 struct NativePreferences: View {
     @ObservedObject var controller: ServerController
     @ObservedObject var updates: AppUpdates
-    @State private var tab = "general"
+    @Environment(\.openWindow) private var openWindow
     var body: some View {
-        TabView(selection: $tab) {
-            Form {
-                Section("Application") {
-                    LabeledContent("Version", value: updates.installed)
-                    UpdateStatusButton(updates: updates) { tab = "updates" }
-                    Button("Check Now") { updates.check() }.disabled(updates.state == .checking)
-                    Text(updates.detail).foregroundStyle(.secondary)
+        Form {
+            Section("Preferences") {
+                ForEach(DesktopDestination.settings) { item in
+                    Button(item.title) {
+                        controller.navigate(item.id)
+                        NSApp.keyWindow?.close()
+                        openWindow(id: "main")
+                    }
                 }
-                Section("Appearance") { Text("The native window follows your library's light/dark appearance. System contrast, reduced transparency and reduced motion are respected.") }
-            }.formStyle(.grouped).padding().tabItem { Label("General", systemImage: "gear") }.tag("general")
-            ServerSettings(controller: controller).tabItem { Label("Server & Account", systemImage: "gearshape.2.fill") }.tag("server")
-            ApplicationUpdatesView(updates: updates).tabItem { Label("Updates", systemImage: NativeSymbol.resolve("clock.arrow.2.circlepath")) }.tag("updates")
-        }.tint(DesktopBrand.accent).frame(width: 640, height: 690)
+            }
+            Text("Preferences open in the main window. Application updates and local server controls remain available in its footer.").foregroundStyle(.secondary)
+        }.formStyle(.grouped).padding().frame(width: 440)
     }
 }

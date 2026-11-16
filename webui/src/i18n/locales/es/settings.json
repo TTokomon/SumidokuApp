@@ -1,6 +1,10 @@
 {
   "settings": {
     "groupNav": "Secciones de ajustes",
+    "categoryAutomation": "Automatización",
+    "categoryStorage": "Almacenamiento y copias",
+    "categoryAccounts": "Cuentas e integraciones",
+    "categoryDiagnostics": "Servidor y diagnóstico",
     "categoryDownloadsBackups": "Descargas y copias de seguridad",
     "categoryServerAccount": "Servidor y cuenta",
     "groupGeneral": "General",

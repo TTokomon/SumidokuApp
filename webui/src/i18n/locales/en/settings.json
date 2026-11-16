@@ -1,6 +1,10 @@
 {
   "settings": {
     "groupNav": "Settings sections",
+    "categoryAutomation": "Automation",
+    "categoryStorage": "Storage & Backups",
+    "categoryAccounts": "Accounts & Integrations",
+    "categoryDiagnostics": "Server & Diagnostics",
     "categoryDownloadsBackups": "Downloads & Backups",
     "categoryServerAccount": "Server & Account",
     "groupGeneral": "General",

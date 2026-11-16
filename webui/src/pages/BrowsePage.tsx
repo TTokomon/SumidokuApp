@@ -11,6 +11,7 @@ import {
 	PinOff,
 	Play,
 	ScanSearch,
+	Search,
 	Settings,
 	Trash,
 	TriangleAlert,
@@ -46,6 +47,7 @@ import {
 import ReposPanel from './browse/ReposPanel';
 import { SearchPanel } from './browse/SearchPanel';
 import { TrashPanel } from './browse/TrashPanel';
+import { SourceLists } from './settings/SourceLists';
 import { BuiltInSources } from './browse/BuiltInSources';
 
 import { SourceSettingsButton, SourceSettingsDialog } from './browse/SourceSettingsModal';
@@ -335,7 +337,8 @@ export default function BrowsePage() {
 	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const searching = searchParams.get('view') === 'search';
-	const [tab, setTab] = useState<'installed' | 'available' | 'trash'>('installed');
+	const rawView = searchParams.get('view');
+	const tab = rawView === 'available' || rawView === 'discover' ? 'discover' : rawView === 'trash' ? 'trash' : rawView === 'lists' ? 'lists' : 'installed';
 	const [query, setQuery] = useState(''); const [language, setLanguage] = useState('');
 	const [pendingDelete, setPendingDelete] = useState<Source | null>(null);
 	const del = useDeleteSource(); const pin = usePinSource(); const setEnabled = useSetSourceEnabled();
@@ -348,27 +351,28 @@ export default function BrowsePage() {
 	}
 	return <div className="page container">
 		<PageHeader title="Sources" actions={<>
+			<Button onClick={() => setSearchParams({ view: 'search' })}><Search size={15} />Search Sources</Button>
 			<Button onClick={() => navigate('/migrate')}><ArrowLeftRight size={15} />{t('browse.migrate')}</Button>
 			<ImportAixButton />
 			<Button loading={scan.isPending} onClick={() => scan.mutate()}><ScanSearch size={15} />{t('browse.scan')}</Button>
 		</>} />
-		{!searching && <BuiltInSources />}
+		{!searching && <div className="browse__tabs"><SegmentedControl options={[
+					{ value: 'installed', label: 'Installed' }, { value: 'discover', label: 'Discover' }, { value: 'lists', label: 'Source Lists' }, { value: 'trash', label: t('browse.tabTrash') }
+				]} value={tab} onChange={(view) => setSearchParams(view === 'installed' ? {} : { view })} /></div>}
+		{!searching && tab === 'installed' && <BuiltInSources />}
 		<section aria-label="External Sources">
 			<h2 className="browse__section">External Sources</h2>
 			<p className="muted">Aidoku-compatible packages from your subscribed source lists.</p>
-			<Button onClick={() => navigate('/settings?section=source-lists')}>Settings → Source Lists</Button>
 			<SearchPanel active={searching} initialQuery={searchParams.get('q') ?? ''} onActiveChange={(active, q) => setSearchParams(active ? { view: 'search', ...(q ? { q } : {}) } : {}, { replace: true })} />
 			{!searching && <>
-				<div className="browse__tabs"><SegmentedControl options={[
-					{ value: 'installed', label: 'Installed sources' }, { value: 'available', label: 'Browse available sources' }, { value: 'trash', label: t('browse.tabTrash') }
-				]} value={tab} onChange={setTab} /></div>
-				{tab === 'available' ? <ReposPanel manage={false} /> : tab === 'trash' ? <TrashPanel /> : <>
+
+				{tab === 'lists' ? <SourceLists /> : tab === 'discover' ? <ReposPanel manage={false} /> : tab === 'trash' ? <TrashPanel /> : <>
 					<div className="repos__filters">
 						<Input type="search" aria-label="Search installed external sources" placeholder="Search installed sources by name or ID" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
 						<select aria-label="Filter installed source language" value={language} onChange={(e) => setLanguage(e.currentTarget.value)}><option value="">All languages</option>{[...new Set(all.flatMap((s) => s.languages))].sort().map((lang) => <option key={lang} value={lang}>{languageLabel(lang)}</option>)}</select>
 					</div>
 					{sources.isError && <p role="alert">Installed sources could not be loaded. Try again when the server is available.</p>}
-					{sources.isPending ? <Skeleton height={82} /> : !visible.length ? <EmptyState icon={PackageOpen} title="No matching installed external sources" hint="Browse available sources or add a list in Settings → Source Lists." /> : <div className="source-list">{visible.map((source) => <div key={source.id}>
+					{sources.isPending ? <Skeleton height={82} /> : !visible.length ? <EmptyState icon={PackageOpen} title="No matching installed external sources" hint="Discover available sources or subscribe in Source Lists." /> : <div className="source-list">{visible.map((source) => <div key={source.id}>
 						<SourceCard source={source} onTogglePin={(s) => pin.mutate({ id: s.id, pinned: !s.pinned })} onToggleEnabled={(s) => setEnabled.mutate({ id: s.id, enabled: !s.enabled })} onDelete={setPendingDelete} />
 						<p className="muted source-origin">Origin: {repos.data?.find((repo) => repo.id === source.repoId)?.name ?? (source.repoId != null ? 'Subscribed Source List' : 'Sideloaded or unsubscribed list')} · {repos.data?.find((repo) => repo.id === source.repoId)?.url ?? source.key}</p>
 					</div>)}</div>}

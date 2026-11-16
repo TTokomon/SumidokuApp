@@ -364,10 +364,9 @@ button svg,a svg {
 	margin: 0 auto;
 	padding-top: 24px;
 }
-/* The native shell now exposes only one Settings destination.
-   Keep the five Settings categories visible inside the embedded page. */
+/* Native Preferences already provide the category navigation. */
 [data-native-shell='true'] .settings-nav {
-	display: flex;
+	display: none;
 }
 [data-native-shell='true'] .settings-layout {
 	grid-template-columns: minmax(0,1fr);
@@ -432,3 +431,6 @@ button svg,a svg {
 	background: var(--bg-elev);
 	border-color: var(--border);
 }
+
+.settings-search-results { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (min-width: 768px) { .settings-nav { display: none; } }

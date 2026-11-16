@@ -1,6 +1,10 @@
 {
   "settings": {
     "groupNav": "設定セクション",
+    "categoryAutomation": "自動化",
+    "categoryStorage": "ストレージとバックアップ",
+    "categoryAccounts": "アカウントと連携",
+    "categoryDiagnostics": "サーバーと診断",
     "categoryDownloadsBackups": "ダウンロードとバックアップ",
     "categoryServerAccount": "サーバーとアカウント",
     "groupGeneral": "一般",

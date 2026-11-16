@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Download, Globe, Library as LibraryIcon, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon } from 'lucide-react';
+import { BookOpen, CalendarClock, HardDrive, Users, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { IconButton } from '../components';
-import { SETTINGS_CATEGORIES } from '../pages/settings/SettingsLayout';
+import { SETTINGS_CATEGORIES, contextualSettingsRoute } from '../pages/settings/navigation';
 import { NAV } from './navigation';
 
 interface DesktopSidebarProps {
@@ -28,9 +28,9 @@ const COLLECTION_NAV: SidebarItem[] = NAV.filter((item) => item.to !== '/setting
 const PREFERENCE_ICONS: Record<string, LucideIcon> = {
 	general: SettingsIcon,
 	reader: BookOpen,
-	library: LibraryIcon,
-	sources: Globe,
-	storage: Download,
+	automation: CalendarClock,
+	storage: HardDrive,
+	accounts: Users,
 	server: Server
 };
 const PREFERENCES_NAV: SidebarItem[] = SETTINGS_CATEGORIES.map((category) => ({
@@ -46,9 +46,10 @@ function SidebarLink({ item, collapsed }: { item: SidebarItem; collapsed: boolea
 	const { t } = useTranslation();
 	const { pathname, search } = useLocation();
 	const section = new URLSearchParams(search).get('section') ?? 'general';
+	const effectivePath = pathname === '/settings' ? contextualSettingsRoute(section)?.split('?')[0] ?? pathname : pathname;
 	const active = item.sections
 		? pathname === '/settings' && item.sections.includes(section)
-		: pathname === item.to || (item.to === '/library' && pathname.startsWith('/manga/')) ||
+		: effectivePath === item.to || (item.to === '/library' && pathname.startsWith('/manga/')) ||
 			(item.to === '/browse' && pathname.startsWith('/browse/'));
 	const Icon = item.icon;
 	const label = t(item.labelKey, { defaultValue: item.fallbackLabel ?? item.labelKey });

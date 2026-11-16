@@ -34,16 +34,16 @@ test('Sources separates built-ins from external packages and links to the single
 		const qc = new QueryClient(); qc.setQueryData(['sources'], []);
 		const markup = render(Browse, qc);
 		assert.match(markup, /Built-in Sources/); assert.match(markup, /External Sources/);
-		assert.match(markup, /Settings → Source Lists/); assert.doesNotMatch(markup, /Add Repository/);
+		assert.match(markup, />Source Lists<\/button>/); assert.doesNotMatch(markup, /Add Repository/);
 	} finally { await vite.close(); }
 });
 
-test('Settings has a dedicated Source Lists section with list management', async () => {
+test('Sources owns the canonical Source Lists section with list management', async () => {
 	const vite = await modules();
 	try {
 		const { SourceLists } = await vite.ssrLoadModule('/src/pages/settings/SourceLists.tsx');
-		const { SETTINGS_GROUPS } = await vite.ssrLoadModule('/src/pages/settings/SettingsLayout.tsx');
-		assert.ok(SETTINGS_GROUPS.some(([id]) => id === 'source-lists'));
+		const { contextualSettingsRoute } = await vite.ssrLoadModule('/src/pages/settings/navigation.ts');
+		assert.equal(contextualSettingsRoute('source-lists'), '/browse?view=lists');
 		const markup = render(SourceLists); assert.match(markup, /Source Lists/); assert.match(markup, /Add Source List/);
 		assert.match(markup, /Installed packages and repository subscriptions are separate/);
 	} finally { await vite.close(); }

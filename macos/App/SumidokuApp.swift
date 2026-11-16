@@ -48,7 +48,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     init(manager injectedManager: LibraryManager? = nil, dataStore: WKWebsiteDataStore? = nil) {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore ?? .default()
-        configuration.userContentController.addUserScript(WKUserScript(source: Self.shellScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        configuration.userContentController.addUserScript(WKUserScript(source: "window.__sumidokuVersion=\(LibraryManager.quote(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development"));\n" + Self.shellScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView = WKWebView(frame: .zero, configuration: configuration)
         let network = URLSessionConfiguration.ephemeral
         network.timeoutIntervalForRequest = 2
@@ -260,14 +260,14 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     func showSourceLists() {
         nativePanel = nil
         guard signedIn else { controlError = "Sign in to manage Source Lists."; return }
-        webView.load(URLRequest(url: URL(string: "settings?section=source-lists", relativeTo: address)!))
+        navigate("/browse?view=lists")
     }
 
     func showBackupRestore() {
         nativePanel = nil
         guard signedIn else { controlError = "Sign in before opening Backup and Restore."; return }
         // Keep the upstream backup UI, its preview and section selectors.
-        webView.load(URLRequest(url: URL(string: "settings?section=backups", relativeTo: address)!))
+        navigate("/settings?section=backups")
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -560,7 +560,6 @@ struct ServerSettings: View {
     var embedded = false
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var controller: ServerController
-    @State private var changingPassword = false
     var body: some View {
         Form {
             Section("Local server") {
@@ -579,7 +578,7 @@ struct ServerSettings: View {
             }
             if controller.signedIn {
                 Section("Owner account") {
-                    Button("Change Password…") { changingPassword = true }
+                    Button("Accounts & Integrations…") { controller.navigate("/settings?section=accounts"); if !embedded { NSApp.keyWindow?.close(); openWindow(id: "main") } }
                     Button("Source Lists") { controller.showSourceLists(); if !embedded { NSApp.keyWindow?.close(); openWindow(id: "main") } }
                     Button("Backup and Restore…") { controller.showBackupRestore(); if !embedded { NSApp.keyWindow?.close(); openWindow(id: "main") } }
                     Button("Sign Out") { Task { await controller.signOut() } }
@@ -591,38 +590,9 @@ struct ServerSettings: View {
                 .font(.footnote).foregroundStyle(.secondary)
         }.formStyle(.grouped).padding().frame(width: 580)
             .disabled(controller.operation != nil)
-            .sheet(isPresented: $changingPassword) { PasswordSheet(controller: controller, presented: $changingPassword) }
     }
 }
 
-struct PasswordSheet: View {
-    @ObservedObject var controller: ServerController
-    @Binding var presented: Bool
-    @State private var current = ""
-    @State private var new = ""
-    @State private var confirmation = ""
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Change Password").font(.title2).bold()
-            Text("The server will stop briefly to save a recovery snapshot. Your new password will stay effective after restart.")
-            SecureField("Current password", text: $current)
-            SecureField("New password (at least 8 characters)", text: $new)
-            SecureField("Confirm new password", text: $confirmation)
-            if let error = controller.controlError { Text(error).foregroundStyle(.red) }
-            HStack {
-                Button("Cancel") { current = ""; new = ""; confirmation = ""; presented = false }
-                Button("Change Password") {
-                    let old = current, secret = new, confirm = confirmation
-                    current = ""; new = ""; confirmation = ""
-                    Task {
-                        await controller.passwordAction(current: old, new: secret, confirmation: confirm, owner: controller.username, recovery: false)
-                        if controller.controlError == nil { presented = false }
-                    }
-                }.keyboardShortcut(.defaultAction)
-            }
-        }.padding(24).frame(width: 430).disabled(controller.operation != nil)
-    }
-}
 
 #if !NATIVE_UI_TESTS
 @main
