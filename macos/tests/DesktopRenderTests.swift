@@ -62,13 +62,13 @@ struct DesktopRenderTests {
         guard controller.nativePanel == "server" else { throw UpdateFailure("Local Server footer destination mismatch") }
         controller.navigate("/library")
         try await wait("location.pathname === '/library'")
-        print("PASS: ten native selection bindings and own-window clicks on both native footer controls")
+        print("PASS: eleven native selection bindings and own-window clicks on both native footer controls")
     }
     func verifyGroupedSettingsAndRecovery() async throws {
         controller.navigate("/settings?section=backups")
-        try await wait("document.querySelectorAll('[data-settings-category]').length === 5 && document.querySelectorAll('[data-settings-panel]').length === 8")
+        try await wait("document.querySelectorAll('[data-settings-category]').length === 6 && document.querySelectorAll('[data-settings-panel]').length === 8")
         _ = try await controller.webView.evaluateJavaScript("window.__backupPanel=document.querySelector('[data-settings-panel=backups]');true")
-        for (category, section) in [("reading", "reader"), ("sources", "source-lists"), ("storage", "downloads"), ("appearance", "general"), ("server", "system")] {
+        for (category, section) in [("reader", "reader"), ("library", "library"), ("sources", "source-lists"), ("storage", "downloads"), ("general", "general"), ("server", "system")] {
             _ = try await controller.webView.evaluateJavaScript("document.querySelector('[data-settings-category=\"\(category)\"]').click()")
             try await wait("document.querySelector('[data-settings-category=\"\(category)\"]').getAttribute('aria-pressed') === 'true' && document.querySelector('[data-settings-panel=\"\(section)\"]').hidden === false")
         }
@@ -103,7 +103,7 @@ struct DesktopRenderTests {
         _ = try await controller.webView.evaluateJavaScript("Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Resume Aidoku Import').click()")
         try await wait("document.querySelector('[aria-label=\"Recover Missing Aidoku Sources\"]') !== null && window.__aibBodies.length === 2 && window.__aibBodies[0] === window.__aibBodies[1]")
         _ = try await controller.webView.evaluateJavaScript("Array.from(document.querySelector('[role=dialog]').querySelectorAll('button')).find(b=>b.textContent==='Cancel').click()")
-        print("PASS: five visible Settings categories, eight persistent panels, subsections/back-forward and exact same Aidoku backup resumed after Source Lists")
+        print("PASS: six visible Settings categories, eight persistent panels, subsections/back-forward and exact same Aidoku backup resumed after Source Lists")
     }
     func capture(_ name: String) async throws {
         guard capturesEnabled else { return }
@@ -214,7 +214,7 @@ struct DesktopRenderTests {
                         try await captureSidebarVariants()
                         try await verifyFooterStates()
                         try await captureAccessibility()
-                        try JSONSerialization.data(withJSONObject:["success":true,"nativeWindowCaptures":capturesEnabled,"nativeDestinations":10,"nativeFooterActions":2,"footerFixtureStates":4,"settingsCategories":5,"persistentSettingsPanels":8,"aidokuExactFileResumed":true]).write(to:root.appendingPathComponent("render-result.json"))
+                        try JSONSerialization.data(withJSONObject:["success":true,"nativeWindowCaptures":capturesEnabled,"nativeDestinations":11,"nativeFooterActions":2,"footerFixtureStates":4,"settingsCategories":6,"persistentSettingsPanels":8,"aidokuExactFileResumed":true]).write(to:root.appendingPathComponent("render-result.json"))
                         print("PASS: native shell and embedded library/detail/sources/history/backups/reader/update/settings rendered; disposable fixtures only")
                         exit(0)
         } catch {
