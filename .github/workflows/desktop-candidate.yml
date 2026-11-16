@@ -1,0 +1,164 @@
+name: Desktop release candidate (unpublished)
+
+# Separate from the Rust/server/Docker publisher. No tag/release/feed writes.
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed 40-character source commit
+        required: true
+      version:
+        description: Desktop version, e.g. 1.3.1-beta.1
+        required: true
+      build_number:
+        description: Monotonically increasing numeric CFBundleVersion
+        required: true
+      previous_catalog_url:
+        description: Trusted HTTPS prior signed catalog (required for Beta)
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: desktop-candidate
+  cancel-in-progress: false
+jobs:
+  candidate:
+    runs-on: macos-26
+    environment: desktop-signing
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - name: Validate immutable source and desktop version
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          DESKTOP_VERSION: ${{ inputs.version }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          python3 - <<'PY'
+          import os,re
+          assert re.fullmatch(r'[a-f0-9]{40}',os.environ['SOURCE_SHA'])
+          assert re.fullmatch(r'\d+\.\d+\.\d+(?:-beta\.[1-9]\d*)?',os.environ['DESKTOP_VERSION'])
+          assert re.fullmatch(r'[1-9]\d*',os.environ['BUILD_NUMBER'])
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Require arm64 and the Liquid Glass SDK
+        run: |
+          test "$(uname -m)" = arm64
+          printf 'DEVELOPER_DIR=%s\n' "$(xcode-select -p)" >> "$GITHUB_ENV"
+          xcrun --sdk macosx --show-sdk-version | python3 -c 'import sys; assert int(sys.stdin.read().split(".")[0]) >= 26'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: taiki-e/install-action@e800962fea8b802cd1bd32c4e6f08fbda4bb0048 # nextest
+        with:
+          tool: cargo-nextest
+      - name: Complete release-critical checks
+        run: |
+          set -euo pipefail
+          npm --prefix webui ci
+          npm --prefix webui run check
+          npm --prefix webui test
+          npm --prefix webui run build
+          cargo nextest run --workspace
+          cargo clippy --workspace --all-targets -- -D warnings
+          python3 -m unittest discover -s macos/tests -p 'test_*.py'
+          ./macos/test-updates.sh
+          ./macos/test-release-security.sh
+      - name: Import ephemeral Developer ID identity and notarization key
+        env:
+          P12: ${{ secrets.DESKTOP_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.DESKTOP_DEVELOPER_ID_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.DESKTOP_NOTARY_P8 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import os,base64
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          if not all(os.environ.get(k) for k in ['P12','P12_PASSWORD','NOTARY_KEY']):raise SystemExit('Developer ID/notarization credentials are not provisioned.')
+          (root/'desktop.p12').write_bytes(base64.b64decode(os.environ['P12'],validate=True))
+          (root/'notary.p8').write_text(os.environ['NOTARY_KEY'])
+          PY
+          signing_keychain_password=$(openssl rand -hex 32)
+          security create-keychain -p "$signing_keychain_password" "$RUNNER_TEMP/desktop-signing.keychain-db"
+          security set-keychain-settings -lut 7200 "$RUNNER_TEMP/desktop-signing.keychain-db"
+          security unlock-keychain -p "$signing_keychain_password" "$RUNNER_TEMP/desktop-signing.keychain-db"
+          security import "$RUNNER_TEMP/desktop.p12" -k "$RUNNER_TEMP/desktop-signing.keychain-db" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$signing_keychain_password" "$RUNNER_TEMP/desktop-signing.keychain-db" >/dev/null
+          security list-keychains -d user -s "$RUNNER_TEMP/desktop-signing.keychain-db"
+      - name: Build exact-source paired candidate (installation remains unqualified)
+        env:
+          SIGNING_IDENTITY: ${{ vars.DESKTOP_SIGNING_IDENTITY }}
+          SUMIDOKU_RELEASE_TEAM: ${{ vars.DESKTOP_TEAM_ID }}
+          SUMIDOKU_UPDATE_PUBLIC_KEY: ${{ vars.DESKTOP_ED25519_PUBLIC_KEY }}
+          SUMIDOKU_UPDATE_FEED: ${{ vars.DESKTOP_FEED_URL }}
+          SUMIDOKU_RELEASE_CATALOG: ${{ vars.DESKTOP_CATALOG_URL }}
+          SUMIDOKU_RELEASE_VERSION: ${{ inputs.version }}
+          SUMIDOKU_BUILD_NUMBER: ${{ inputs.build_number }}
+          SUMIDOKU_RELEASE_BUILD: '1'
+          SUMIDOKU_CERTIFIED_COORDINATION: '0'
+          CARGO_BUILD_JOBS: '1'
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_IDENTITY" && test "$SIGNING_IDENTITY" != '-'
+          export SUMIDOKU_MARKETING_VERSION="${SUMIDOKU_RELEASE_VERSION%%-*}"
+          ./macos/build-fork.sh
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          app=json.loads(Path('dist/fork/native-build.json').read_text())['appPath']
+          Path(os.environ['GITHUB_ENV']).open('a').write('DESKTOP_CANDIDATE_APP='+app+'\n')
+          PY
+      - name: Notarize and staple candidate
+        env:
+          NOTARY_KEY_ID: ${{ vars.DESKTOP_NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ vars.DESKTOP_NOTARY_ISSUER }}
+        run: |
+          set -euo pipefail
+          ditto -c -k --norsrc --noextattr --keepParent "$DESKTOP_CANDIDATE_APP" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" --wait
+          xcrun stapler staple "$DESKTOP_CANDIDATE_APP"
+          codesign --verify --deep --strict "$DESKTOP_CANDIDATE_APP"
+          xcrun stapler validate "$DESKTOP_CANDIDATE_APP"
+      - name: Prepare signed catalog, Sparkle beta appcast and checksums
+        env:
+          PREVIOUS_CATALOG_URL: ${{ inputs.previous_catalog_url }}
+          SUMIDOKU_SPARKLE_PRIVATE_KEY: ${{ secrets.DESKTOP_SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ -n "$PREVIOUS_CATALOG_URL" ]]; then
+            python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+          u=urlsplit(os.environ['PREVIOUS_CATALOG_URL'])
+          assert u.scheme=='https' and u.hostname and not u.username and not u.password and not u.query and not u.fragment
+          PY
+            curl --fail --proto '=https' --max-redirs 0 --max-filesize 2000000 "$PREVIOUS_CATALOG_URL" -o "$RUNNER_TEMP/prior-catalog.json"
+            curl --fail --proto '=https' --max-redirs 0 --max-filesize 256 "$PREVIOUS_CATALOG_URL.sig" -o "$RUNNER_TEMP/prior-catalog.json.sig"
+            args=(--previous-catalog "$RUNNER_TEMP/prior-catalog.json")
+          fi
+          ./macos/Distribution/prepare-release.sh "$DESKTOP_CANDIDATE_APP" "$RUNNER_TEMP/desktop-distribution" "${args[@]}"
+      - name: Preserve unpublished signed distribution candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: desktop-unpublished-${{ inputs.version }}-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/desktop-distribution/
+          retention-days: 30
+      - name: Cleanup ephemeral signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/desktop-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/desktop.p12" "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/notarize.zip"

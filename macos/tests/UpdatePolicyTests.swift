@@ -43,6 +43,33 @@ struct UpdatePolicyTests {
         for feed in ["http://example.com/feed.xml","https:/broken","https://user:secret@example.com/feed.xml"] {
             expect(!DistributionPolicy(info:["SUFeedURL":feed,"SUPublicEDKey":key,"SumidokuReleaseTeam":"ABCDEFGHIJ","SumidokuCoordinatedUpdatesValidated":true]).provisioned,"reject unsafe feed")
         }
+        let fixture = FileManager.default.temporaryDirectory.appendingPathComponent("SumidokuTrustFlags-"+UUID().uuidString+".app")
+        try FileManager.default.createDirectory(at:fixture.appendingPathComponent("Contents/MacOS"),withIntermediateDirectories:true)
+        defer { try? FileManager.default.removeItem(at:fixture) }
+        let fakeInfo: [String:Any] = ["CFBundleIdentifier":"app.sumidoku.desktop","CFBundlePackageType":"APPL","CFBundleExecutable":"Sumidoku","CFBundleVersion":"8","CFBundleShortVersionString":"1.3.1","SumidokuReleaseVersion":"1.3.1-beta.1","SumidokuDevelopmentBuild":false,"SUFeedURL":"https://example.invalid/appcast.xml","SumidokuReleaseCatalogURL":"https://example.invalid/catalog.json","SUPublicEDKey":key,"SumidokuReleaseTeam":"ABCDEFGHIJ","SumidokuCoordinatedUpdatesValidated":true]
+        try PropertyListSerialization.data(fromPropertyList:fakeInfo,format:.xml,options:0).write(to:fixture.appendingPathComponent("Contents/Info.plist"))
+        let helper = fixture.appendingPathComponent("Contents/MacOS/SumidokuUpdateHelper")
+        try Data("fixture".utf8).write(to:helper);try FileManager.default.setAttributes([.posixPermissions:0o700],ofItemAtPath:helper.path)
+        var qualified = fakeInfo
+        qualified["SumidokuCoordinatedUpdateProtocolVersion"] = 1
+        qualified["SUAutomaticallyUpdate"] = false; qualified["SUAllowsAutomaticUpdates"] = false
+        let pinned = DistributionPolicy(info:qualified)
+        expect(pinned.acceptsReplacement(qualified),"unchanged qualified trust metadata is eligible for cryptographic verification")
+        for (field,value) in [("SumidokuCoordinatedUpdatesValidated",false),("SUAllowsAutomaticUpdates",true)] {
+            var changed = qualified; changed[field] = value
+            expect(!pinned.acceptsReplacement(changed),"unqualified or automatic-install replacement is rejected")
+        }
+        var moved = qualified; moved["SUFeedURL"] = "https://other.invalid/appcast.xml"
+        expect(!pinned.acceptsReplacement(moved),"replacement cannot silently change trusted feed")
+        var rotated = qualified; rotated["SUPublicEDKey"] = Data(repeating:2,count:32).base64EncodedString()
+        expect(!pinned.acceptsReplacement(rotated),"replacement cannot silently rotate release key")
+        let fakeBundle = Bundle(url:fixture)!
+        let flagOnly = AppUpdates(bundle:fakeBundle,defaults:UserDefaults(suiteName:"SumidokuFlagTest-"+UUID().uuidString)!,schedule:false,fetcher:StubReleases(data:Data()))
+        let fakePaths = InstallationPaths(application:fakeBundle.bundleURL,config:fixture.appendingPathComponent("Server"),backups:fixture.appendingPathComponent("Backups"),runtime:fixture.appendingPathComponent("server"),agent:fixture.appendingPathComponent("agent.plist"),runner:fixture.appendingPathComponent("runner.sh"),port:3348)
+        flagOnly.installer = NativeUpdateInstaller(bundle:fakeBundle,paths:fakePaths,support:fixture,beforeHandoff:{ _ in throw UpdateFailure("Fixture handoff must never occur.") })
+        expect(flagOnly.policy.provisioned,"all declared release fields are present in adversarial fixture")
+        await flagOnly.refreshInstallation()
+        expect(!flagOnly.canInstall && !flagOnly.canRestoreStable,"Info.plist flags cannot enable unsigned installation or Restore Stable")
         expect(SurfacePolicy.material(majorVersion:26,reduceTransparency:false,increasedContrast:false) == .liquidGlass,"macOS 26 uses actual native glass")
         expect(SurfacePolicy.material(majorVersion:25,reduceTransparency:false,increasedContrast:false) == .systemMaterial,"older macOS uses native system material")
         expect(SurfacePolicy.material(majorVersion:26,reduceTransparency:true,increasedContrast:false) == .opaque,"reduce transparency requests opaque native surfaces")

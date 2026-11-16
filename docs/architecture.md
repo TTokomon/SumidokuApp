@@ -53,10 +53,18 @@ logic; an origin-checked desktop bridge routes local paths and appearance. Actua
 SwiftUI Liquid Glass is guarded at macOS 26; older systems use native materials and
 accessibility modes can request opaque controls. `AppUpdates.swift` checks explicitly
 published desktop releases with cached daily polling and separate native states.
-Sparkle 2 is pinned/embedded, but installation remains hard-gated pending signing,
-feed infrastructure and a certified paired-server handoff. The separately tested
-transaction stage retains cold recovery snapshots and never automatically downgrades
-a migrated database. See [design boundaries, release contract and checks](DESKTOP_DESIGN.md).
+Sparkle 2 remains pinned for appcast/archive signing compatibility. Release discovery
+is separate from installation authority: a signed companion catalog and archive
+bind exact client/server hashes, source, version and schema. The bundled native
+`SumidokuUpdateHelper` revalidates Developer ID/Gatekeeper trust and owned-service
+paths, receives session credentials through a pipe, journals a cold snapshot and
+coordinates the pair after GUI termination. `PairedInstallation.swift` owns the
+same-schema transaction; failures never automatically restore a database. Confirmed
+Restore Stable uses an authenticated retained Stable pair and keeps current data.
+A relaunch acknowledgement and explicit interrupted-update recovery complete the
+handoff contract. Unsigned/unprovisioned builds remain blocked, and unattended
+installation remains disabled. See [desktop release and rollback contract](BETA_RELEASE.md)
+for provenance/signing blockers and qualification gates.
 
 ## Server (`crates/server`)
 

@@ -21,6 +21,12 @@ xcrun --sdk macosx swiftc -swift-version 5 -O -parse-as-library -target arm64-ap
   -module-cache-path "$OUT/ModuleCache" -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -framework SwiftUI -framework WebKit -framework AppKit -framework ScreenCaptureKit \
   "$ROOT"/macos/App/*.swift \
   -o "$APP/Contents/MacOS/Sumidoku"
+xcrun --sdk macosx swiftc -swift-version 5 -O -parse-as-library -target arm64-apple-macosx13.0 \
+  -module-cache-path "$OUT/ModuleCache" \
+  "$ROOT/macos/App/UpdatePolicy.swift" "$ROOT/macos/App/ReleaseTrust.swift" \
+  "$ROOT/macos/App/ArchiveValidation.swift" "$ROOT/macos/App/PairedInstallation.swift" \
+  "$ROOT/macos/App/UpdateHandoff.swift" "$ROOT/macos/App/LibraryManager.swift" \
+  "$ROOT/macos/Distribution/UpdateHelperMain.swift" -o "$APP/Contents/MacOS/SumidokuUpdateHelper"
 mkdir -p "$APP/Contents/Frameworks"
 ditto --norsrc --noextattr "$SPARKLE/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 cp "$SPARKLE/LICENSE" "$APP/Contents/Resources/Sparkle-LICENSE.txt"
@@ -51,20 +57,31 @@ app = Path(sys.argv[1])
 info = {
     'CFBundleName': 'Sumidoku', 'CFBundleDisplayName': 'Sumidoku',
     'CFBundleIdentifier': 'app.sumidoku.desktop', 'CFBundleExecutable': 'Sumidoku',
-    'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '1.3.1', 'CFBundleVersion': '7',
+    'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': os.environ.get('SUMIDOKU_MARKETING_VERSION', '1.3.1'), 'CFBundleVersion': os.environ.get('SUMIDOKU_BUILD_NUMBER', '7'),
     'LSMinimumSystemVersion': '13.0', 'NSHighResolutionCapable': True,
     'SUEnableAutomaticChecks': False, 'SUAutomaticallyUpdate': False, 'SUAllowsAutomaticUpdates': False,
     'SUVerifyUpdateBeforeExtraction': True, 'SURequireSignedFeed': True,
-    'SUSignedFeedFailureExpirationInterval': 0, 'SumidokuCoordinatedUpdatesValidated': False,
+    'SUSignedFeedFailureExpirationInterval': 0,
     'SumidokuDevelopmentBuild': os.environ.get('SUMIDOKU_RELEASE_BUILD') != '1',
+    'SumidokuCoordinatedUpdateProtocolVersion': 1,
+    'SumidokuCoordinatedUpdatesValidated': os.environ.get('SUMIDOKU_CERTIFIED_COORDINATION') == '1',
     'CFBundleIconFile': 'AppIcon', 'NSPrincipalClass': 'NSApplication',
     'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
 }
-for name, key in [('SUMIDOKU_RELEASE_VERSION','SumidokuReleaseVersion'),('SUMIDOKU_UPDATE_FEED','SUFeedURL'),('SUMIDOKU_UPDATE_PUBLIC_KEY','SUPublicEDKey'),('SUMIDOKU_RELEASE_TEAM','SumidokuReleaseTeam')]:
+for name, key in [('SUMIDOKU_RELEASE_VERSION','SumidokuReleaseVersion'),('SUMIDOKU_UPDATE_FEED','SUFeedURL'),('SUMIDOKU_RELEASE_CATALOG','SumidokuReleaseCatalogURL'),('SUMIDOKU_UPDATE_PUBLIC_KEY','SUPublicEDKey'),('SUMIDOKU_RELEASE_TEAM','SumidokuReleaseTeam')]:
     if os.environ.get(name): info[key] = os.environ[name]
 with (app / 'Contents/Info.plist').open('wb') as stream:
     plistlib.dump(info, stream)
 PY
+python3 - "$ROOT" "$APP/Contents/Resources/client-build.json" <<'PYCLIENT'
+from pathlib import Path
+import hashlib,json,subprocess,sys
+root=Path(sys.argv[1]);digest=hashlib.sha256()
+files=subprocess.check_output(['git','ls-files','-z','--cached','--others','--exclude-standard'],cwd=root).split(b'\0')
+for raw in sorted(set(files)):
+    if raw and (root/raw.decode()).is_file():digest.update(raw+b'\0'+(root/raw.decode()).read_bytes())
+Path(sys.argv[2]).write_text(json.dumps({'sourceRevision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'sourceTreeSha256':digest.hexdigest(),'dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=root))},indent=2)+'\n')
+PYCLIENT
 ICONSET="$OUT/AppIcon.iconset"
 mkdir -p "$ICONSET"
 for size in 16 32 128 256 512; do
@@ -92,8 +109,16 @@ bundles=[p for p in (framework/'Versions').rglob('*') if p.suffix in ['.app','.x
 for path in leaves+sorted(bundles,key=lambda p:len(p.parts),reverse=True)+[framework]:
     subprocess.run(['codesign','--force','--options','runtime','--timestamp','--sign',identity,str(path)],check=True)
 PYSIGN
+  codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP/Contents/MacOS/SumidokuUpdateHelper"
+  codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP/Contents/Resources/sumidoku-server"
+  python3 - "$APP/Contents/Resources/server-build.json" "$APP/Contents/Resources/sumidoku-server" <<'PYMANIFEST'
+import hashlib,json,sys
+from pathlib import Path
+path=Path(sys.argv[1]);value=json.loads(path.read_text());value['sha256']=hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest();path.write_text(json.dumps(value,indent=2)+'\n')
+PYMANIFEST
   codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" --identifier app.sumidoku.desktop "$APP"
 else
+  codesign --force --sign - "$APP/Contents/MacOS/SumidokuUpdateHelper"
   codesign --force --sign - --identifier app.sumidoku.desktop "$APP"
 fi
 codesign --verify --strict --verbose=2 "$APP"

@@ -48,7 +48,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     init(manager injectedManager: LibraryManager? = nil, dataStore: WKWebsiteDataStore? = nil) {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore ?? .default()
-        configuration.userContentController.addUserScript(WKUserScript(source: "window.__sumidokuVersion=\(LibraryManager.quote(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development"));\n" + Self.shellScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        configuration.userContentController.addUserScript(WKUserScript(source: "window.__sumidokuVersion=\(LibraryManager.quote(Bundle.main.object(forInfoDictionaryKey: "SumidokuReleaseVersion") as? String ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development"));\n" + Self.shellScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView = WKWebView(frame: .zero, configuration: configuration)
         let network = URLSessionConfiguration.ephemeral
         network.timeoutIntervalForRequest = 2
@@ -421,6 +421,24 @@ struct MainWindow: View {
     @Environment(\.openWindow) private var openWindow
     private let refresh = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
+    @MainActor
+    private func configureInstallation() async {
+        guard let library = controller.library else { updates.installer = nil; await updates.refreshInstallation(); return }
+        let manager = controller.manager
+        updates.installer = NativeUpdateInstaller(paths:InstallationPaths(application:Bundle.main.bundleURL,config:library.config,backups:library.backups,runtime:manager.binary,agent:manager.agent,runner:manager.runner,port:manager.api.base.port ?? 3000),support:manager.support,beforeHandoff:{ recovering in
+            guard controller.operation == nil, recovering || controller.signedIn else { throw UpdateFailure("Finish current maintenance and sign in before updating.") }
+            let session = UpdateSession(cookie:await controller.cookieHeader(),username:controller.username)
+            controller.operation = "Preparing application update"
+            do { try await WebSessionQuiescer.suspend(controller.webView) }
+            catch { controller.operation = nil; throw error }
+            return session
+        },handoffFailed:{
+            controller.operation = nil
+            await controller.check(reload:true)
+        })
+        await updates.refreshInstallation()
+    }
+
     var body: some View {
         ZStack {
             if controller.library == nil || (controller.available && !controller.signedIn) {
@@ -457,6 +475,30 @@ struct MainWindow: View {
             if let library = controller.library { updates.loadInstalledHistory(library.backups) }
             updates.checkIfDue()
             await controller.check()
+            await configureInstallation()
+            if let index = CommandLine.arguments.firstIndex(of:"--complete-update"), CommandLine.arguments.count > index+1,
+               let library = controller.library, controller.signedIn {
+                let url = URL(fileURLWithPath:CommandLine.arguments[index+1]).standardizedFileURL
+                if url.path.hasPrefix(library.backups.path+"/ApplicationUpdate-"), url.lastPathComponent == "update-journal.json",
+                   url.resolvingSymlinksInPath().path == url.path,
+                   let data = try? Data(contentsOf:url), let journal = try? JSONDecoder().decode(PairedJournal.self,from:data),
+                   journal.phase == "artifacts-replaced", journal.paths.application.standardizedFileURL.path == Bundle.main.bundleURL.standardizedFileURL.path,
+                   journal.paths.config.standardizedFileURL.path == library.config.standardizedFileURL.path,
+                   journal.version == updates.installed {
+                    for _ in 0..<100 {
+                        if !controller.webView.isLoading, (try? await controller.webView.evaluateJavaScript("document.querySelector('#root')?.childElementCount > 0")) as? Bool == true {
+                            let ack: [String:Any] = ["version":updates.installed,"signedIn":true]
+                            if let bytes = try? JSONSerialization.data(withJSONObject:ack) {
+                                let file = url.deletingLastPathComponent().appendingPathComponent("relaunch-verified.json")
+                                try? bytes.write(to:file,options:.atomic)
+                                try? FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:file.path)
+                            }
+                            break
+                        }
+                        try? await Task.sleep(nanoseconds:200_000_000)
+                    }
+                }
+            }
             if let index = CommandLine.arguments.firstIndex(of: "--capture-window"), CommandLine.arguments.count > index + 1 {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if let routeIndex = CommandLine.arguments.firstIndex(of: "--capture-route"), CommandLine.arguments.count > routeIndex + 1 {
@@ -475,6 +517,7 @@ struct MainWindow: View {
                 if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: captureURL.appendingPathExtension("status.json"), options: .atomic) }
             }
         }
+        .onChange(of:controller.signedIn) { _ in Task { await configureInstallation() } }
         .onReceive(refresh) { _ in
             guard controller.operation == nil else { return }
             Task { await controller.check() }

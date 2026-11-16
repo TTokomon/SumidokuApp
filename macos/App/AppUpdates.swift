@@ -37,10 +37,13 @@ final class AppUpdates: NSObject, ObservableObject {
     @Published var channel: UpdateChannel { didSet { defaults.set(channel.rawValue, forKey: "desktop.updateChannel"); cancel(); latest = nil; history = [] } }
     @Published var automaticChecks: Bool { didSet { defaults.set(automaticChecks, forKey: "desktop.automaticChecks") } }
     @Published var automaticInstallation: Bool = false
-    // This release has no certified Sparkle termination/relaunch handoff yet.
-    // An Info.plist flag alone can never enable a GUI-only installation.
-    let coordinatedSparkleInstallationAvailable = false
-    var canInstall: Bool { policy.provisioned && coordinatedSparkleInstallationAvailable }
+    var installer: NativeUpdateInstaller?
+    @Published private(set) var installationReady = false
+    @Published private(set) var stableRestoreVersion: String?
+    @Published private(set) var installing = false
+    @Published private(set) var pendingRecovery = false
+    var canInstall: Bool { policy.provisioned && installationReady && !installing && !pendingRecovery }
+    var canRestoreStable: Bool { canInstall && stableRestoreVersion != nil && AppVersion(installed)?.prerelease != nil }
     let developmentBuild: Bool
     let installed: String
     let policy: DistributionPolicy
@@ -49,9 +52,6 @@ final class AppUpdates: NSObject, ObservableObject {
     private var checkTask: Task<Void, Never>?
     private var generation = 0
     private var timer: Timer?
-    #if canImport(Sparkle)
-    private var sparkle: SPUStandardUpdaterController?
-    #endif
     init(bundle: Bundle = .main, defaults: UserDefaults = .standard, schedule: Bool = true, fetcher: ReleaseFetching = LiveReleaseClient()) {
         self.defaults = defaults
         self.fetcher = fetcher
@@ -63,7 +63,7 @@ final class AppUpdates: NSObject, ObservableObject {
         super.init()
         // No Sparkle scheduler/installer is started for unprovisioned development builds.
         #if canImport(Sparkle)
-        if canInstall { sparkle = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil) }
+        // Paired installation is owned by the native helper; never start a GUI-only installer.
         #endif
         if schedule {
             timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in Task { @MainActor in self?.checkIfDue() } }
@@ -137,13 +137,23 @@ final class AppUpdates: NSObject, ObservableObject {
         }
     }
     func waitForCheck() async { await checkTask?.value }
-    func install() {
-        guard canInstall else { detail = policy.blocker; return }
-        #if canImport(Sparkle)
-        // Production installation is gated by the signed coordinated-update contract.
-        sparkle?.startUpdater(); sparkle?.checkForUpdates(nil)
-        #endif
+    func refreshInstallation() async {
+        await installer?.refresh()
+        installationReady = installer?.ready ?? false
+        stableRestoreVersion = installer?.stableVersion
+        pendingRecovery = installer?.pendingRecovery != nil
     }
+    func install(restore: Bool = false, recover: Bool = false) {
+        guard (recover ? (installationReady && pendingRecovery && !installing) : canInstall), !restore || canRestoreStable, let installer else { detail = policy.blocker; return }
+        installing = true
+        detail = restore ? "Verifying the retained Stable app/server pair…" : "Authenticating and preparing the app/server update…"
+        Task {
+            defer { installing = false }
+            do { try await installer.begin(restore:restore,expectedTag:latest?.tag_name,recover:recover) }
+            catch { detail = error.localizedDescription; await installer.handoffFailed() }
+        }
+    }
+
 }
 
 final class ReleaseRedirectPolicy: NSObject, URLSessionTaskDelegate {
@@ -170,6 +180,9 @@ struct UpdateStatusButton: View {
 
 struct ApplicationUpdatesView: View {
     @ObservedObject var updates: AppUpdates
+    @State private var confirmingUpdate = false
+    @State private var confirmingRestore = false
+    @State private var confirmingRecovery = false
     var body: some View {
         Form {
             Section {
@@ -185,18 +198,30 @@ struct ApplicationUpdatesView: View {
                 LabeledContent("Latest compatible release", value: updates.latest?.tag_name ?? "Not confirmed")
                 if let date = updates.lastChecked { LabeledContent("Last checked") { Text(date, style: .relative) } }
                 HStack {
-                    Button("Check Now") { updates.check() }.disabled(updates.state == .checking)
+                    Button("Check Now") { updates.check() }.disabled(updates.state == .checking || updates.installing)
                     if updates.state == .checking { ProgressView().controlSize(.small); Button("Cancel Check") { updates.cancel() } }
-                    if updates.state == .available { Button("Update Now") { updates.install() }.disabled(!updates.canInstall) }
+                    if updates.state == .available { Button("Update Now") { confirmingUpdate = true }.disabled(!updates.canInstall) }
                 }
             }
             Section("Preferences") {
-                Picker("Release channel", selection: $updates.channel) { Text("Stable").tag(UpdateChannel.stable); Text("Include prereleases").tag(UpdateChannel.prerelease) }
+                Picker("Release channel", selection: $updates.channel) { Text("Stable").tag(UpdateChannel.stable); Text("Beta (includes Stable)").tag(UpdateChannel.prerelease) }.disabled(updates.installing)
                 Toggle("Automatically check for application updates", isOn: $updates.automaticChecks)
-                Toggle("Automatically download and install", isOn: $updates.automaticInstallation).disabled(!updates.canInstall)
-                Text("Application updates are separate from source-package updates. Checks run at most daily; source settings are managed in Source Lists.").font(.footnote).foregroundStyle(.secondary)
+                Toggle("Automatically download and install", isOn: $updates.automaticInstallation).disabled(true)
+                Text("Application updates are separate from source-package updates. Checks run at most daily. Installation always requires confirmation.").font(.footnote).foregroundStyle(.secondary)
             }
             if !updates.canInstall { Section("Installation availability") { Text(updates.policy.blocker).fixedSize(horizontal: false, vertical: true) } }
+            if updates.pendingRecovery {
+                Section("Interrupted Update") {
+                    Text("A paired update did not complete. Recover the previous verified app/server pair before starting another update. Current data is never rewound.")
+                    Button("Recover Interrupted Update…") { confirmingRecovery = true }.disabled(!updates.installationReady || updates.installing)
+                }
+            }
+            Section("Restore Stable") {
+                Text("Return to the verified previous Stable app and matching server while keeping the current library and progress. Changing channels alone does not downgrade the app.")
+                Button("Restore Stable…") { confirmingRestore = true }.disabled(!updates.canRestoreStable)
+                if let version = updates.stableRestoreVersion { Text("Retained Stable: " + version) }
+                else { Text("No verified Stable recovery pair is available.").foregroundStyle(.secondary) }
+            }
             Section("Installed update history") {
                 if updates.installedHistory.isEmpty { Text("No application updates have been recorded by this updater.").foregroundStyle(.secondary) }
                 ForEach(updates.installedHistory) { item in
@@ -216,5 +241,14 @@ struct ApplicationUpdatesView: View {
                 }
             }
         }.tint(DesktopBrand.accent).formStyle(.grouped).padding(12).frame(minWidth: 530, minHeight: 600)
+        .confirmationDialog("Install the verified application update?", isPresented:$confirmingUpdate) {
+            Button("Back Up, Update and Relaunch") { updates.install() }
+        } message: { Text("The app and its owned localhost server will restart together. A cold recovery snapshot is retained; your data is not replaced.") }
+        .confirmationDialog("Recover the interrupted update?", isPresented:$confirmingRecovery) {
+            Button("Verify and Recover Previous Pair") { updates.install(recover:true) }
+        } message: { Text("Recovery stops if current data differs from the journal. The cold snapshot is retained for manual review; no database is restored.") }
+        .confirmationDialog("Restore the verified previous Stable version?", isPresented:$confirmingRestore) {
+            Button("Back Up and Restore Stable") { updates.install(restore:true) }
+        } message: { Text("Your current library and progress stay in place. Restore is refused if the Stable server cannot read the current schema. No database is rewound.") }
     }
 }
