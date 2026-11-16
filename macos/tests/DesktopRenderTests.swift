@@ -51,18 +51,18 @@ struct DesktopRenderTests {
         let shell = DesktopShell(controller: controller, updates: updates)
         for item in DesktopDestination.collection + DesktopDestination.settings {
             shell.selection.wrappedValue = item.id
-            try await wait("location.pathname === '\(item.id)'")
+            try await wait("location.pathname + location.search === '\(item.id)'")
             guard shell.selection.wrappedValue == item.id else { throw UpdateFailure("Native sidebar selection mismatch") }
         }
         guard let window = controller.webView.window else { throw UpdateFailure("Native window missing") }
         try await Task.sleep(nanoseconds: 300_000_000)
         try await clickOwnWindow(window, at: NSPoint(x: 100, y: 64))
-        guard controller.nativePanel == "updates", shell.selection.wrappedValue == "/settings" else { throw UpdateFailure("App Updates footer destination mismatch") }
+        guard controller.nativePanel == "updates", shell.selection.wrappedValue == "/settings?section=general" else { throw UpdateFailure("App Updates footer destination mismatch") }
         try await clickOwnWindow(window, at: NSPoint(x: 100, y: 40))
         guard controller.nativePanel == "server" else { throw UpdateFailure("Local Server footer destination mismatch") }
         controller.navigate("/library")
         try await wait("location.pathname === '/library'")
-        print("PASS: six native selection bindings and own-window clicks on both native footer controls")
+        print("PASS: ten native selection bindings and own-window clicks on both native footer controls")
     }
     func verifyGroupedSettingsAndRecovery() async throws {
         controller.navigate("/settings?section=backups")
@@ -214,7 +214,7 @@ struct DesktopRenderTests {
                         try await captureSidebarVariants()
                         try await verifyFooterStates()
                         try await captureAccessibility()
-                        try JSONSerialization.data(withJSONObject:["success":true,"nativeWindowCaptures":capturesEnabled,"nativeDestinations":6,"nativeFooterActions":2,"footerFixtureStates":4,"settingsCategories":5,"persistentSettingsPanels":8,"aidokuExactFileResumed":true]).write(to:root.appendingPathComponent("render-result.json"))
+                        try JSONSerialization.data(withJSONObject:["success":true,"nativeWindowCaptures":capturesEnabled,"nativeDestinations":10,"nativeFooterActions":2,"footerFixtureStates":4,"settingsCategories":5,"persistentSettingsPanels":8,"aidokuExactFileResumed":true]).write(to:root.appendingPathComponent("render-result.json"))
                         print("PASS: native shell and embedded library/detail/sources/history/backups/reader/update/settings rendered; disposable fixtures only")
                         exit(0)
         } catch {
