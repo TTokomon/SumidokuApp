@@ -2543,10 +2543,14 @@ export default function SettingsPage() {
 						<>
 							<AppearanceSection />
 							<DesktopUpdatesSection />
+						</>
+					),
+					reader: (
+						<>
+							<ReaderSection />
 							<IncognitoSection />
 						</>
 					),
-					reader: <ReaderSection />,
 					library: (
 						<>
 							<CategoriesSection />
