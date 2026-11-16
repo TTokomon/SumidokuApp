@@ -1983,3 +1983,13 @@ eligibility is accepted.
   register manga or disable updates mid-flight. Both cases retained the old package.
   The ownership regression caught a direct settings-table read; typed access within
   the source metadata transaction passed the complete workspace suite.
+
+**Freeze shared compiler inputs until the build process has completed.**
+A native fixture build reads production and driver sources together. Editing its
+driver while the compiler is running can produce an explicit modified-input
+error and invalidates evidence about which revision was rendered. Wait for the
+process to finish, then edit and rerun against immutable inputs. Serialize cold
+Rust compilers when concurrent debug/release builds cause memory pressure.
+- Evidence: 2026-11-15, the 1.3.1 verification driver was rejected with
+  `input file ... was modified during the build`; subsequent validation freezes
+  the native inputs and completes the cold Rust profiles sequentially.
