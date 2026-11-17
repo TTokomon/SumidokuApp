@@ -13,6 +13,15 @@ on:
       build_number:
         description: Monotonically increasing numeric CFBundleVersion
         required: true
+      enable_coordinated_candidate:
+        description: Enable handoff for an unpublished candidate that will undergo qualification
+        type: boolean
+        default: false
+      distribution_mode:
+        description: Community needs no paid Apple membership; Developer ID is optional
+        type: choice
+        options: [community, developer-id]
+        default: community
       previous_catalog_url:
         description: Trusted HTTPS prior signed catalog (required for Beta)
         required: false
@@ -24,7 +33,7 @@ concurrency:
 jobs:
   candidate:
     runs-on: macos-26
-    environment: desktop-signing
+    environment: desktop-community
     timeout-minutes: 90
     env:
       CARGO_BUILD_JOBS: '1'
@@ -41,13 +50,25 @@ jobs:
           python3 - <<'PY'
           import os,re
           assert re.fullmatch(r'[a-f0-9]{40}',os.environ['SOURCE_SHA'])
-          assert re.fullmatch(r'\d+\.\d+\.\d+(?:-beta\.[1-9]\d*)?',os.environ['DESKTOP_VERSION'])
+          assert re.fullmatch(r'\d+\.\d+\.\d+(?:-beta\.[1-9]\d*|\+community\.[1-9]\d*)?',os.environ['DESKTOP_VERSION'])
           assert re.fullmatch(r'[1-9]\d*',os.environ['BUILD_NUMBER'])
           PY
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.source_sha }}
           persist-credentials: false
+      - name: Reject relabelling the Beta interface as a Stable bootstrap
+        env:
+          DESKTOP_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          if '+community.' in os.environ['DESKTOP_VERSION']:
+              p=Path('stable-bootstrap-provenance.json')
+              assert p.is_file(), 'Stable requires the separately assembled audited bootstrap source'
+              assert json.loads(p.read_text())['stableBaseRevision']=='9fd09f5c1e5c01f2061d6a00945867e62108c3a4'
+          PY
       - name: Require arm64 and the Liquid Glass SDK
         run: |
           test "$(uname -m)" = arm64
@@ -75,7 +96,8 @@ jobs:
           python3 -m unittest discover -s macos/tests -p 'test_*.py'
           ./macos/test-updates.sh
           ./macos/test-release-security.sh
-      - name: Import ephemeral Developer ID identity and notarization key
+      - name: Import optional Developer ID identity and notarization key
+        if: inputs.distribution_mode == 'developer-id'
         env:
           P12: ${{ secrets.DESKTOP_DEVELOPER_ID_P12 }}
           P12_PASSWORD: ${{ secrets.DESKTOP_DEVELOPER_ID_PASSWORD }}
@@ -100,7 +122,9 @@ jobs:
           security list-keychains -d user -s "$RUNNER_TEMP/desktop-signing.keychain-db"
       - name: Build exact-source paired candidate (installation remains unqualified)
         env:
-          SIGNING_IDENTITY: ${{ vars.DESKTOP_SIGNING_IDENTITY }}
+          SIGNING_IDENTITY: ${{ inputs.distribution_mode == 'developer-id' && vars.DESKTOP_SIGNING_IDENTITY || '-' }}
+          SUMIDOKU_DISTRIBUTION_MODE: ${{ inputs.distribution_mode }}
+          SUMIDOKU_SPARKLE_PRIVATE_KEY: ${{ secrets.DESKTOP_SPARKLE_PRIVATE_KEY }}
           SUMIDOKU_RELEASE_TEAM: ${{ vars.DESKTOP_TEAM_ID }}
           SUMIDOKU_UPDATE_PUBLIC_KEY: ${{ vars.DESKTOP_ED25519_PUBLIC_KEY }}
           SUMIDOKU_UPDATE_FEED: ${{ vars.DESKTOP_FEED_URL }}
@@ -108,12 +132,14 @@ jobs:
           SUMIDOKU_RELEASE_VERSION: ${{ inputs.version }}
           SUMIDOKU_BUILD_NUMBER: ${{ inputs.build_number }}
           SUMIDOKU_RELEASE_BUILD: '1'
-          SUMIDOKU_CERTIFIED_COORDINATION: '0'
+          SUMIDOKU_CERTIFIED_COORDINATION: ${{ inputs.enable_coordinated_candidate && '1' || '0' }}
           CARGO_BUILD_JOBS: '1'
         run: |
           set -euo pipefail
-          test -n "$SIGNING_IDENTITY" && test "$SIGNING_IDENTITY" != '-'
-          export SUMIDOKU_MARKETING_VERSION="${SUMIDOKU_RELEASE_VERSION%%-*}"
+          if [[ "$SUMIDOKU_DISTRIBUTION_MODE" == developer-id ]]; then
+            test -n "$SIGNING_IDENTITY" && test "$SIGNING_IDENTITY" != '-'
+          fi
+          export SUMIDOKU_MARKETING_VERSION="${SUMIDOKU_RELEASE_VERSION%%[-+]*}"
           ./macos/build-fork.sh
           python3 - <<'PY'
           import json,os
@@ -121,7 +147,8 @@ jobs:
           app=json.loads(Path('dist/fork/native-build.json').read_text())['appPath']
           Path(os.environ['GITHUB_ENV']).open('a').write('DESKTOP_CANDIDATE_APP='+app+'\n')
           PY
-      - name: Notarize and staple candidate
+      - name: Notarize and staple optional Developer ID candidate
+        if: inputs.distribution_mode == 'developer-id'
         env:
           NOTARY_KEY_ID: ${{ vars.DESKTOP_NOTARY_KEY_ID }}
           NOTARY_ISSUER: ${{ vars.DESKTOP_NOTARY_ISSUER }}

@@ -1,11 +1,18 @@
 #!/bin/bash
 set -eu
 label=app.sumidoku.server
+server_port=3000
+service_home="$HOME"
+if [[ $# == 4 ]]; then
+  service_home=$2; label=$3; server_port=$4
+  [[ "$label" == app.sumidoku.fixture.* && "$service_home" == */sumidoku-community-e2e-*/Home && "$server_port" =~ ^[0-9]+$ && "$server_port" != 3000 ]] || exit 2
+elif [[ $# != 1 ]]; then exit 2
+fi
 domain="gui/$(id -u)"
-plist="$HOME/Library/LaunchAgents/$label.plist"
+plist="$service_home/Library/LaunchAgents/$label.plist"
 wait_ready() {
   for attempt in {1..100}; do
-    if curl --silent --fail --max-time 1 http://127.0.0.1:3000/health >/dev/null; then return 0; fi
+    if curl --silent --fail --max-time 1 http://127.0.0.1:$server_port/health >/dev/null; then return 0; fi
     sleep 0.2
   done
   echo 'Sumidoku did not become ready; inspect Library/Logs/Sumidoku.' >&2
@@ -55,7 +62,7 @@ restart_server() {
   launchctl kill SIGTERM "$domain/$label"
   for attempt in {1..200}; do
     new_pid=$(launchctl print "$domain/$label" 2>/dev/null | awk '$1 == "pid" && $2 == "=" { print $3; exit }')
-    if [[ -n "$new_pid" && "$new_pid" != "$old_pid" ]] && curl --silent --fail --max-time 1 http://127.0.0.1:3000/health >/dev/null; then
+    if [[ -n "$new_pid" && "$new_pid" != "$old_pid" ]] && curl --silent --fail --max-time 1 http://127.0.0.1:$server_port/health >/dev/null; then
       return 0
     fi
     sleep 0.2

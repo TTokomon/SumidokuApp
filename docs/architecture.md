@@ -56,7 +56,14 @@ published desktop releases with cached daily polling and separate native states.
 Sparkle 2 remains pinned for appcast/archive signing compatibility. Release discovery
 is separate from installation authority: a signed companion catalog and archive
 bind exact client/server hashes, source, version and schema. The bundled native
-`SumidokuUpdateHelper` revalidates Developer ID/Gatekeeper trust and owned-service
+`CommunityBundleTrust.swift` binds a signed inventory of bundle contents to the
+compiled Ed25519 trust root. `ReleaseIdentity.swift` is replaced by generated
+public-only identity code at build time. Community verification uses publisher
+signatures and strict ad-hoc resource validation; optional Developer ID mode retains
+Apple team/Gatekeeper requirements. Compile-gated disposable GUI scopes have no
+production command or download-redirect entry point and are rejected by packaging.
+
+`SumidokuUpdateHelper` revalidates explicitly configured publisher-sealed community trust (or optional Developer ID/Gatekeeper trust) and owned-service
 paths, receives session credentials through a pipe, journals a cold snapshot and
 coordinates the pair after GUI termination. `PairedInstallation.swift` owns the
 same-schema transaction; failures never automatically restore a database. Confirmed

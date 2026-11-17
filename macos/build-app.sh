@@ -13,17 +13,49 @@ fi
 OUT="$ROOT/dist/native"
 SPARKLE=$(python3 "$ROOT/macos/fetch-sparkle.py")
 APP_OUTPUT=${SUMIDOKU_APP_OUTPUT:-"$OUT/Sumidoku.app"}
+if [[ ${SUMIDOKU_DISTRIBUTION_MODE:-developer-id} == community && -z ${SUMIDOKU_UPDATE_PUBLIC_KEY:-} ]]; then
+  export SUMIDOKU_UPDATE_PUBLIC_KEY=$(cat "$ROOT/macos/Distribution/community-release-public-key.txt")
+fi
 STAGING=$(mktemp -d "${TMPDIR:-/tmp}/sumidoku-client-build.XXXXXX")
 trap 'rm -rf "$STAGING"' EXIT
 APP="$STAGING/Sumidoku.app"
 mkdir -p "$OUT/ModuleCache" "$APP/Contents/MacOS" "$APP/Contents/Resources"
-xcrun --sdk macosx swiftc -swift-version 5 -O -parse-as-library -target arm64-apple-macosx13.0 \
+# Embed the public trust root in executable code as well as the signed Info.plist.
+python3 - "$STAGING/ReleaseIdentity.swift" <<'PYIDENTITY'
+import base64,json,os,sys
+from pathlib import Path
+mode=os.environ.get('SUMIDOKU_DISTRIBUTION_MODE','developer-id')
+if mode not in ['community','developer-id']:raise SystemExit('Unknown distribution trust mode')
+key=os.environ.get('SUMIDOKU_UPDATE_PUBLIC_KEY')
+if key and len(base64.b64decode(key,validate=True))!=32:raise SystemExit('Invalid Ed25519 public key')
+if mode=='community' and os.environ.get('SUMIDOKU_RELEASE_BUILD')=='1' and not key:raise SystemExit('Community releases require a pinned publisher key')
+fixture=os.environ.get("SUMIDOKU_E2E_ROOT")
+if os.environ.get('SUMIDOKU_RELEASE_BUILD')=='1' and not fixture:
+ if not key:raise SystemExit("Release builds require the pinned public update key")
+
+value='Data(base64Encoded:'+json.dumps(key)+')' if key else 'nil'
+identifier=os.environ.get('SUMIDOKU_E2E_LABEL','app.sumidoku')+'.desktop' if fixture else 'app.sumidoku.desktop'
+identity='import Foundation\nenum ReleaseIdentity {\nstatic let publicKey: Data? = '+value+'\nstatic let bundleIdentifier = '+json.dumps(identifier)+'\n'
+if fixture:
+ if not Path(fixture).resolve().name.startswith('sumidoku-community-e2e-'):raise SystemExit('Invalid disposable scope')
+ identity+='static let fixtureRoot: String? = '+json.dumps(str(Path(fixture).resolve()))+'\nstatic let fixtureLabel: String? = '+json.dumps(os.environ['SUMIDOKU_E2E_LABEL'])+'\nstatic let fixturePort: Int? = '+str(int(os.environ['SUMIDOKU_E2E_PORT']))+'\n'
+Path(sys.argv[1]).write_text(identity+'}\n')
+PYIDENTITY
+SWIFT_FLAGS=()
+[[ -z ${SUMIDOKU_E2E_ROOT:-} ]] || SWIFT_FLAGS+=(-D COMMUNITY_E2E)
+APP_SOURCES=()
+for source in "$ROOT"/macos/App/*.swift; do
+  [[ "$source" == */ReleaseIdentity.swift ]] || APP_SOURCES+=("$source")
+done
+
+xcrun --sdk macosx swiftc "${SWIFT_FLAGS[@]}" -swift-version 5 -O -whole-module-optimization -parse-as-library -target arm64-apple-macosx13.0 \
   -module-cache-path "$OUT/ModuleCache" -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -framework SwiftUI -framework WebKit -framework AppKit -framework ScreenCaptureKit \
-  "$ROOT"/macos/App/*.swift \
+  "${APP_SOURCES[@]}" "$STAGING/ReleaseIdentity.swift" \
   -o "$APP/Contents/MacOS/Sumidoku"
-xcrun --sdk macosx swiftc -swift-version 5 -O -parse-as-library -target arm64-apple-macosx13.0 \
+xcrun --sdk macosx swiftc "${SWIFT_FLAGS[@]}" -swift-version 5 -O -whole-module-optimization -parse-as-library -target arm64-apple-macosx13.0 \
   -module-cache-path "$OUT/ModuleCache" \
   "$ROOT/macos/App/UpdatePolicy.swift" "$ROOT/macos/App/ReleaseTrust.swift" \
+  "$ROOT/macos/App/CommunityBundleTrust.swift" "$STAGING/ReleaseIdentity.swift" "$ROOT/macos/App/InstallationContext.swift" "$ROOT/macos/App/CommunityEndToEndDownload.swift" \
   "$ROOT/macos/App/ArchiveValidation.swift" "$ROOT/macos/App/PairedInstallation.swift" \
   "$ROOT/macos/App/UpdateHandoff.swift" "$ROOT/macos/App/LibraryManager.swift" \
   "$ROOT/macos/Distribution/UpdateHelperMain.swift" -o "$APP/Contents/MacOS/SumidokuUpdateHelper"
@@ -32,6 +64,9 @@ ditto --norsrc --noextattr "$SPARKLE/Sparkle.framework" "$APP/Contents/Framework
 cp "$SPARKLE/LICENSE" "$APP/Contents/Resources/Sparkle-LICENSE.txt"
 cp "$ROOT/macos/service.sh" "$APP/Contents/Resources/service.sh"
 cp "$ROOT/macos/run-server.sh" "$APP/Contents/Resources/run-server.sh"
+if [[ -f "$ROOT/stable-bootstrap-provenance.json" ]]; then
+  cp "$ROOT/stable-bootstrap-provenance.json" "$APP/Contents/Resources/stable-bootstrap-provenance.json"
+fi
 SERVER_BINARY=${SUMIDOKU_SERVER_BINARY:-"$HOME/Library/Application Support/Sumidoku/bin/sumidoku-server"}
 if [[ ${SUMIDOKU_SERVER_VARIANT:-official} == fork ]]; then
   python3 - "$SERVER_BINARY" "$ROOT/dist/fork/server-build.json" <<'PYBUILD'
@@ -56,12 +91,14 @@ import os, plistlib, sys
 app = Path(sys.argv[1])
 info = {
     'CFBundleName': 'Sumidoku', 'CFBundleDisplayName': 'Sumidoku',
-    'CFBundleIdentifier': 'app.sumidoku.desktop', 'CFBundleExecutable': 'Sumidoku',
+    'CFBundleIdentifier': os.environ['SUMIDOKU_E2E_LABEL']+'.desktop' if os.environ.get('SUMIDOKU_E2E_ROOT') else 'app.sumidoku.desktop', 'CFBundleExecutable': 'Sumidoku',
     'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': os.environ.get('SUMIDOKU_MARKETING_VERSION', '1.3.1'), 'CFBundleVersion': os.environ.get('SUMIDOKU_BUILD_NUMBER', '7'),
     'LSMinimumSystemVersion': '13.0', 'NSHighResolutionCapable': True,
     'SUEnableAutomaticChecks': False, 'SUAutomaticallyUpdate': False, 'SUAllowsAutomaticUpdates': False,
     'SUVerifyUpdateBeforeExtraction': True, 'SURequireSignedFeed': True,
     'SUSignedFeedFailureExpirationInterval': 0,
+    'SumidokuEndToEndFixture': bool(os.environ.get('SUMIDOKU_E2E_ROOT')),
+    'SumidokuDistributionMode': os.environ.get('SUMIDOKU_DISTRIBUTION_MODE','developer-id'),
     'SumidokuDevelopmentBuild': os.environ.get('SUMIDOKU_RELEASE_BUILD') != '1',
     'SumidokuCoordinatedUpdateProtocolVersion': 1,
     'SumidokuCoordinatedUpdatesValidated': os.environ.get('SUMIDOKU_CERTIFIED_COORDINATION') == '1',
@@ -120,6 +157,10 @@ PYMANIFEST
 else
   codesign --force --sign - "$APP/Contents/MacOS/SumidokuUpdateHelper"
   codesign --force --sign - --identifier app.sumidoku.desktop "$APP"
+fi
+if [[ ${SUMIDOKU_DISTRIBUTION_MODE:-developer-id} == community && ${SUMIDOKU_RELEASE_BUILD:-0} == 1 ]]; then
+  "$ROOT/macos/Distribution/build-trust-tool.sh"
+  python3 "$ROOT/macos/Distribution/seal_bundle.py" "$APP" --sparkle "$SPARKLE" --trust-tool "$OUT/ReleaseTrustTool"
 fi
 codesign --verify --strict --verbose=2 "$APP"
 plutil -lint "$APP/Contents/Info.plist"

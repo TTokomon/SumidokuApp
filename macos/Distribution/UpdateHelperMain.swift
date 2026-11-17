@@ -6,26 +6,37 @@ import Darwin
 struct UpdateHelperMain {
     static func main() {
         do { try execute() }
-        catch { fputs("Coordinated update stopped; inspect the retained recovery journal.\n",stderr); exit(1) }
+        catch {
+            #if COMMUNITY_E2E
+            if let root = ReleaseIdentity.fixtureRoot {
+                try? Data(error.localizedDescription.utf8).write(to:URL(fileURLWithPath:root).appendingPathComponent("helper-error.txt"),options:.atomic)
+            }
+            #endif
+            fputs("Coordinated update stopped; inspect the retained recovery journal.\n",stderr);exit(1)
+        }
     }
     static func execute() throws {
         guard CommandLine.arguments.count == 2 else { throw UpdateFailure("A private update request is required.") }
         let files = FileManager.default
-        let home = files.homeDirectoryForCurrentUser
+        func same(_ left:URL,_ right:URL) -> Bool { left.standardizedFileURL.resolvingSymlinksInPath().path == right.standardizedFileURL.resolvingSymlinksInPath().path }
+        let home = InstallationContext.home.standardizedFileURL.resolvingSymlinksInPath()
         let support = home.appendingPathComponent("Library/Application Support/Sumidoku")
-        let work = support.appendingPathComponent("Updates")
-        let requestURL = URL(fileURLWithPath:CommandLine.arguments[1]).standardizedFileURL
+        let work = support.appendingPathComponent("Updates").standardizedFileURL.resolvingSymlinksInPath()
+        let rawRequest = URL(fileURLWithPath:CommandLine.arguments[1]).standardizedFileURL
+        guard try rawRequest.resourceValues(forKeys:[.isSymbolicLinkKey]).isSymbolicLink != true else { throw UpdateFailure("A request symlink is not allowed.") }
+        let requestURL = rawRequest.resolvingSymlinksInPath()
         guard requestURL.path.hasPrefix(work.path+"/Request-"), requestURL.resolvingSymlinksInPath() == requestURL,
               (try requestURL.resourceValues(forKeys:[.fileSizeKey]).fileSize ?? Int.max) < 2_100_000 else { throw UpdateFailure("Unsafe update request.") }
         let request = try JSONDecoder().decode(UpdateHandoff.self,from:Data(contentsOf:requestURL))
         let app = URL(fileURLWithPath:CommandLine.arguments[0]).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().standardizedFileURL
-        guard request.parent == getppid(), request.paths.application.standardizedFileURL == app,
-              request.paths.runtime.standardizedFileURL == support.appendingPathComponent("bin/sumidoku-server-fork"),
-              request.paths.runner.standardizedFileURL == support.appendingPathComponent("bin/run-server.sh"),
-              request.paths.agent.standardizedFileURL == home.appendingPathComponent("Library/LaunchAgents/app.sumidoku.server.plist"), request.paths.port == 3000 else { throw UpdateFailure("The helper only controls its own application and managed server.") }
+        guard request.parent == getppid(), same(request.paths.application,app),
+              same(request.paths.runtime,support.appendingPathComponent("bin/sumidoku-server-fork")),
+              same(request.paths.runner,support.appendingPathComponent("bin/run-server.sh")),
+              same(request.paths.agent,home.appendingPathComponent("Library/LaunchAgents/\(InstallationContext.label).plist")), request.paths.port == InstallationContext.port else { throw UpdateFailure("The helper only controls its own application and managed server.") }
         let info = try PairedInstallation.info(app), policy = DistributionPolicy(info:info)
-        guard policy.provisioned, let key = policy.publicKey, let team = policy.team else { throw UpdateFailure(policy.blocker) }
-        try verifyDeveloperRelease(app,team)
+        guard policy.provisioned, let key = policy.publicKey else { throw UpdateFailure(policy.blocker) }
+        let team = policy.team ?? ""
+        try verifyReleaseBundle(app,team)
         let lock = open(work.appendingPathComponent("installation.lock").path,O_CREAT|O_RDWR|O_NOFOLLOW,0o600)
         guard lock >= 0, flock(lock,LOCK_EX|LOCK_NB) == 0 else { throw UpdateFailure("An update/recovery is already active.") }
         defer { close(lock) }
@@ -36,11 +47,11 @@ struct UpdateHelperMain {
         guard (request.recovery != nil || !session.username.isEmpty), !session.cookie.contains("\r"), !session.cookie.contains("\n") else { throw UpdateFailure("Sign in before updating.") }
         let api = LocalAPI(port:request.paths.port)
         let descriptor = try JSONDecoder().decode(LocalLibrary.self,from:Data(contentsOf:support.appendingPathComponent("desktop-library.json")))
-        guard descriptor.config == request.paths.config, descriptor.backups == request.paths.backups else { throw UpdateFailure("The request does not match the saved library descriptor.") }
+        guard same(descriptor.config,request.paths.config), same(descriptor.backups,request.paths.backups) else { throw UpdateFailure("The request does not match the saved library descriptor.") }
         let serviceHelper = requestURL.deletingLastPathComponent().appendingPathComponent("service.sh")
         try files.copyItem(at:app.appendingPathComponent("Contents/Resources/service.sh"),to:serviceHelper)
         func verifyOwnedListener() throws {
-            let job = try UpdateProcess.output("/bin/launchctl",["print","gui/\(getuid())/app.sumidoku.server"])
+            let job = try UpdateProcess.output("/bin/launchctl",["print","gui/\(getuid())/\(InstallationContext.label)"])
             let runner = job.components(separatedBy:.newlines).compactMap { line -> Int? in
                 let words = line.split(whereSeparator: { $0.isWhitespace }); return words.count == 3 && words[0] == "pid" && words[1] == "=" ? Int(words[2]) : nil
             }.first
@@ -51,8 +62,8 @@ struct UpdateHelperMain {
                   addresses.allSatisfy({ $0 == "n127.0.0.1:\(request.paths.port)" }),
                   Int(try UpdateProcess.output("/bin/ps",["-p",listeners[0],"-o","ppid="]).trimmingCharacters(in:.whitespacesAndNewlines)) == runner else { throw UpdateFailure("The listener is not the owned localhost server.") }
         }
-        let transaction = PairedInstallation(paths:request.paths,team:team,service:{ action in
-            try UpdateProcess.run("/bin/bash",[serviceHelper.path,action])
+        let transaction = PairedInstallation(paths:request.paths,team:team,serviceLabel:InstallationContext.label,service:{ action in
+            try UpdateProcess.run("/bin/bash",[serviceHelper.path,action]+InstallationContext.serviceArguments)
             if action == "stop" {
                 let listener = try? UpdateProcess.output("/usr/sbin/lsof",["-nP","-tiTCP:\(request.paths.port)","-sTCP:LISTEN"])
                 guard listener?.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty != false else { throw UpdateFailure("A server is still bound to the managed port.") }
@@ -76,7 +87,7 @@ struct UpdateHelperMain {
                    value["version"] as? String == request.version, value["signedIn"] as? Bool == true { return }
                 Thread.sleep(forTimeInterval:0.2)
             }
-            let running = NSRunningApplication.runningApplications(withBundleIdentifier:"app.sumidoku.desktop").filter { $0.bundleURL?.standardizedFileURL.path == request.paths.application.standardizedFileURL.path }
+            let running = NSRunningApplication.runningApplications(withBundleIdentifier:ReleaseIdentity.bundleIdentifier).filter { $0.bundleURL?.standardizedFileURL.path == request.paths.application.standardizedFileURL.path }
             for client in running { client.terminate() }
             for _ in 0..<100 {
                 if running.allSatisfy(\.isTerminated) { break }
@@ -87,7 +98,7 @@ struct UpdateHelperMain {
         })
         try transaction.validatePaths()
         if let url = request.recovery {
-            guard url.standardizedFileURL.path.hasPrefix(request.paths.backups.path+"/ApplicationUpdate-"),
+            guard url.standardizedFileURL.path.hasPrefix(request.paths.backups.standardizedFileURL.resolvingSymlinksInPath().path+"/ApplicationUpdate-"),
                   url.lastPathComponent == "update-journal.json", url.resolvingSymlinksInPath().path == url.standardizedFileURL.path else { throw UpdateFailure("Unsafe recovery journal path.") }
             var journal = try JSONDecoder().decode(PairedJournal.self,from:Data(contentsOf:url))
             print("READY");fflush(stdout)
@@ -124,7 +135,7 @@ struct UpdateHelperMain {
             }
         }
         if request.restore {
-            guard request.payload.standardizedFileURL == work.appendingPathComponent("Stable/Sumidoku.app") else { throw UpdateFailure("Restore Stable only accepts the verified retained baseline.") }
+            guard same(request.payload,work.appendingPathComponent("Stable/Sumidoku.app")) else { throw UpdateFailure("Restore Stable only accepts the verified retained baseline.") }
         } else {
             guard request.payload.resolvingSymlinksInPath().path.hasPrefix(requestURL.deletingLastPathComponent().path+"/") else { throw UpdateFailure("Unsafe update payload path.") }
         }

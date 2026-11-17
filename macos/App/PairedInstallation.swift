@@ -44,7 +44,7 @@ final class PairedInstallation {
     let health: () throws -> Void
     let relaunch: (URL) throws -> Void
     init(paths: InstallationPaths, team: String, serviceLabel: String = "app.sumidoku.server",
-         verify: @escaping (URL, String) throws -> Void = verifyDeveloperRelease,
+         verify: @escaping (URL, String) throws -> Void = verifyReleaseBundle,
          service: @escaping (String) throws -> Void, health: @escaping () throws -> Void,
          relaunch: @escaping (URL) throws -> Void = { _ in }) {
         self.paths = paths; self.team = team; self.serviceLabel = serviceLabel; self.verify = verify
@@ -111,7 +111,7 @@ final class PairedInstallation {
     func validate(_ app: URL, entry: DesktopCatalog.Entry) throws {
         try verify(app, team)
         let info = try Self.info(app)
-        guard info["CFBundleIdentifier"] as? String == "app.sumidoku.desktop",
+        guard info["CFBundleIdentifier"] as? String == ReleaseIdentity.bundleIdentifier,
               info["CFBundleExecutable"] as? String == "Sumidoku",
               info["CFBundlePackageType"] as? String == "APPL",
               info["SumidokuCoordinatedUpdateProtocolVersion"] as? Int == 1,

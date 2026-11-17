@@ -1,0 +1,60 @@
+name: Publish qualified desktop community release
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful desktop candidate run with signed exact-artifact qualification
+        required: true
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: desktop-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: macos-26
+    environment: desktop-release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Retrieve only a successful candidate from this repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,re,subprocess
+          run=os.environ['CANDIDATE_RUN_ID'];assert re.fullmatch('[1-9][0-9]*',run)
+          repo='TTokomon/SumidokuApp'
+          value=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/runs/{run}']))
+          assert value['conclusion']=='success' and value['event']=='workflow_dispatch'
+          assert value['path']=='.github/workflows/desktop-candidate.yml'
+          artifacts=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/runs/{run}/artifacts']))['artifacts']
+          candidates=[a for a in artifacts if a['name'].startswith('desktop-unpublished-') and not a['expired']]
+          assert len(candidates)==1
+          subprocess.run(['gh','run','download',run,'--repo',repo,'--name',candidates[0]['name'],'--dir',os.environ['RUNNER_TEMP']+'/desktop-publish'],check=True)
+          PY
+      - name: Require reviewed exact-artifact qualification from the repository
+        run: |
+          python3 - <<'PY'
+          import json,os,re,shutil
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'desktop-publish'
+          tag=json.loads((root/'release-plan.json').read_text())['tag']
+          assert re.fullmatch(r'desktop-v\d+\.\d+\.\d+(?:-beta\.[1-9]\d*|\+community\.[1-9]\d*)?',tag)
+          for extension in ['.json','.json.sig']:
+              source=Path('macos/Distribution/qualifications')/(tag+extension)
+              assert source.is_file() and not source.is_symlink(), 'Qualification is incomplete; publication blocked'
+              shutil.copyfile(source,root/('release-qualification'+extension))
+          PY
+      - name: Verify publisher trust and release qualification, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUMIDOKU_UPDATE_PUBLIC_KEY: ${{ vars.DESKTOP_ED25519_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          ./macos/Distribution/build-trust-tool.sh
+          python3 macos/Distribution/publish_release.py "$RUNNER_TEMP/desktop-publish" --trust-tool dist/native/ReleaseTrustTool

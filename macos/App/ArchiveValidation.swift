@@ -13,9 +13,10 @@ enum ReleaseArchive {
         guard !FileManager.default.fileExists(atPath: output.path) else { throw UpdateFailure("Extraction destination already exists.") }
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         try UpdateProcess.run("/usr/bin/ditto", ["-x", "-k", "--norsrc", "--noextattr", archive.path, output.path])
-        let app = output.appendingPathComponent("Sumidoku.app")
+        let canonicalRoot = output.standardizedFileURL.resolvingSymlinksInPath()
+        let app = canonicalRoot.appendingPathComponent("Sumidoku.app")
         for file in FileManager.default.enumerator(at: output, includingPropertiesForKeys: [.isSymbolicLinkKey])?.allObjects as? [URL] ?? [] {
-            guard file.resolvingSymlinksInPath().path.hasPrefix(output.path + "/") else { throw UpdateFailure("An extracted path escaped the application archive.") }
+            guard file.resolvingSymlinksInPath().path.hasPrefix(canonicalRoot.path + "/") else { throw UpdateFailure("An extracted path escaped the application archive.") }
         }
         guard FileManager.default.fileExists(atPath: app.appendingPathComponent("Contents/Info.plist").path) else { throw UpdateFailure("The archive does not contain Sumidoku.app.") }
         return app

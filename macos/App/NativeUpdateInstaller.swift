@@ -22,12 +22,12 @@ final class NativeUpdateInstaller {
         ready = false; stableVersion = nil; pendingRecovery = nil
         guard FileManager.default.isExecutableFile(atPath:paths.application.appendingPathComponent("Contents/MacOS/SumidokuUpdateHelper").path), policy.provisioned, !((bundle.infoDictionary?["SumidokuDevelopmentBuild"] as? Bool) ?? true),
               bundle.bundleURL.standardizedFileURL == paths.application.standardizedFileURL,
-              policy.team != nil else { return }
+              (policy.mode == .community || policy.team != nil) else { return }
         let paths = self.paths, support = self.support, policy = self.policy
         do {
             let result = try await Task.detached { () -> (String?,URL?) in
-                try verifyDeveloperRelease(paths.application,policy.team!)
-                try PairedInstallation(paths:paths,team:policy.team!,service:{ _ in },health:{}).validatePaths()
+                try verifyReleaseBundle(paths.application,policy.team ?? "")
+                try PairedInstallation(paths:paths,team:policy.team ?? "",serviceLabel:InstallationContext.label,service:{ _ in },health:{}).validatePaths()
                 let folders = (try? FileManager.default.contentsOfDirectory(at:paths.backups,includingPropertiesForKeys:nil)) ?? []
                 let pending = folders.filter { $0.lastPathComponent.hasPrefix("ApplicationUpdate-") }.compactMap { folder -> URL? in
                     let url = folder.appendingPathComponent("update-journal.json")
@@ -41,7 +41,7 @@ final class NativeUpdateInstaller {
                     let catalog = try DesktopCatalog.authenticated(Data(contentsOf:stable.appendingPathComponent("catalog.json")),signature:Data(contentsOf:stable.appendingPathComponent("catalog.sig")),key:policy.publicKey!)
                     let info = try PairedInstallation.info(stable.appendingPathComponent("Sumidoku.app"))
                     if let entry = catalog.releases.first(where: { $0.channel == "stable" && $0.version == info["SumidokuReleaseVersion"] as? String }) {
-                        try PairedInstallation(paths:paths,team:policy.team!,service:{ _ in },health:{}).validate(stable.appendingPathComponent("Sumidoku.app"),entry:entry)
+                        try PairedInstallation(paths:paths,team:policy.team ?? "",serviceLabel:InstallationContext.label,service:{ _ in },health:{}).validate(stable.appendingPathComponent("Sumidoku.app"),entry:entry)
                         return (entry.version,pending)
                     }
                 } catch { /* Invalid recovery never grants downgrade permission. */ }
@@ -84,7 +84,7 @@ final class NativeUpdateInstaller {
             payload = try await Task.detached { try ReleaseArchive.extract(archive,entry:entry,key:key,to:work.appendingPathComponent("Extracted")) }.value
         }
         guard policy.acceptsReplacement(try PairedInstallation.info(payload)) else { throw UpdateFailure("The release is not qualified for coordinated updates, or changes pinned release trust. The installed app is unchanged.") }
-        try PairedInstallation(paths:paths,team:policy.team!,service:{ _ in },health:{}).validate(payload,entry:entry)
+        try PairedInstallation(paths:paths,team:policy.team ?? "",serviceLabel:InstallationContext.label,service:{ _ in },health:{}).validate(payload,entry:entry)
         let request = UpdateHandoff(paths:paths,catalog:catalog.bytes,signature:catalog.signature,version:entry.version,payload:payload,restore:restore,parent:getpid(),recovery:nil)
         try await handoff(request,work:work)
     }

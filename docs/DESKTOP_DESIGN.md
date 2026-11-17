@@ -66,7 +66,7 @@ and forced native fallback checks; it still needs testing on an actual older Mac
 | Orange | A newer published desktop release is found; installation still requires authenticity/compatibility checks |
 | Gray | Not checked, checking, offline, no compatible published release, or an unreleased development build |
 | Red | Actual malformed/failed release information requiring attention; offline is not falsely shown as red |
-| One-click or unattended download/installation | **Not enabled**: release signing/feed/notarization and the coordinated Sparkle handoff need signed end-to-end certification |
+| One-click or unattended download/installation | **Not enabled**: publisher signing, HTTPS feeds and the coordinated handoff need end-to-end qualification; paid Apple signing is optional |
 
 The small status control has text and accessibility labels, opens Updates and never
 calls an older version “expired.” Application/source/chapter update states are separate.
@@ -77,7 +77,7 @@ update feed/key configured; an empty catalog cannot produce a false green status
 `Sparkle.framework` is embedded for the signed appcast/archive contract. The generic
 Sparkle GUI-only installer is not used to replace an app independently of its server.
 A dedicated native helper now owns the paired transaction and explicit Restore Stable.
-Actual Developer ID/Gatekeeper verification, authenticated catalog/archive, matching
+Actual configured distribution-trust verification, authenticated catalog/archive, matching
 payload and release qualification are required; unsigned local builds remain blocked.
 Unattended installation remains disabled. See [Stable/Beta release infrastructure](BETA_RELEASE.md)
 for implementation files, compatibility guards, signing/hosting requirements,
@@ -139,7 +139,7 @@ server, account or backup information. Public examples must use disposable fixtu
   actual glass, forced material fallback, reduced transparency and increased contrast.
   Native compositor captures and separate embedded-view snapshots were inspected;
   fixture data is disposable and original.
-- Older macOS hardware, public Developer ID/notarization, signed feeds and live
+- Older macOS hardware, optional Developer ID/notarization, production signed feeds and live
   Sparkle paired installation are not certified by these local checks.
 
 ### Native-window examples

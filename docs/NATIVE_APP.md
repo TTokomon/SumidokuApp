@@ -119,7 +119,7 @@ open /Applications/Sumidoku.app
 
 Signing is ad-hoc for local development. Strict signature verification passes, but
 this build has no Developer ID identity or notarization and Gatekeeper distribution
-assessment rejects it. A downloaded distribution needs appropriate signing/notarization.
+assessment rejects it. Community distribution instead requires the pinned publisher key, signed bundle seal and authenticated update packages. Developer ID/notarization is optional; see [community installation](BETA_RELEASE.md) for the per-app Open Anyway procedure.
 Gatekeeper is never disabled. Signing stages outside file-provider directories to
 avoid Finder metadata invalidating the seal. Client updates preserve all server data.
 

@@ -54,14 +54,14 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         network.timeoutIntervalForRequest = 2
         network.timeoutIntervalForResource = 3
         session = URLSession(configuration: network)
-        let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Sumidoku/bin")
+        let support = InstallationContext.home.appendingPathComponent("Library/Application Support/Sumidoku/bin")
         let helper = Bundle.main.url(forResource: "service", withExtension: "sh")!
         let runtime = Bundle.main.url(forResource: "server-build", withExtension: "json")
             .flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
         let executable = runtime?["variant"] as? String == "fork" ? "sumidoku-server-fork" : "sumidoku-server"
-        manager = injectedManager ?? LibraryManager(binary: support.appendingPathComponent(executable),
+        manager = injectedManager ?? LibraryManager(home:InstallationContext.home,binary: support.appendingPathComponent(executable),
                                  runner: support.appendingPathComponent("run-server.sh"),
-                                 service: LaunchAgentService(helper: helper))
+                                 service: LaunchAgentService(helper: helper),port:InstallationContext.port)
         super.init()
         do { library = try manager.current(); if library != nil { onboarding = "signin" } }
         catch { controlError = error.localizedDescription }
@@ -474,12 +474,27 @@ struct MainWindow: View {
             controller.checkAppUpdates = { updates.check() }
             if let library = controller.library { updates.loadInstalledHistory(library.backups) }
             updates.checkIfDue()
+            #if COMMUNITY_E2E
+            if let root = ReleaseIdentity.fixtureRoot,
+               let data = try? Data(contentsOf:URL(fileURLWithPath:root).appendingPathComponent("session.json")),
+               let credentials = try? JSONDecoder().decode([String:String].self,from:data) {
+                controller.username = credentials["username"] ?? ""
+                let api = controller.manager.api
+                if let library = controller.library,
+                   let login = try? await Task.detached(operation: { try api.login(username:credentials["username"] ?? "",password:credentials["password"] ?? "") }).value {
+                    await controller.accept(login,library:library)
+                }
+            }
+            #endif
             await controller.check()
             await configureInstallation()
+            #if COMMUNITY_E2E
+            CommunityEndToEnd.attach(controller:controller,updates:updates)
+            #endif
             if let index = CommandLine.arguments.firstIndex(of:"--complete-update"), CommandLine.arguments.count > index+1,
                let library = controller.library, controller.signedIn {
                 let url = URL(fileURLWithPath:CommandLine.arguments[index+1]).standardizedFileURL
-                if url.path.hasPrefix(library.backups.path+"/ApplicationUpdate-"), url.lastPathComponent == "update-journal.json",
+                if url.path.hasPrefix(library.backups.standardizedFileURL.resolvingSymlinksInPath().path+"/ApplicationUpdate-"), url.lastPathComponent == "update-journal.json",
                    url.resolvingSymlinksInPath().path == url.path,
                    let data = try? Data(contentsOf:url), let journal = try? JSONDecoder().decode(PairedJournal.self,from:data),
                    journal.phase == "artifacts-replaced", journal.paths.application.standardizedFileURL.path == Bundle.main.bundleURL.standardizedFileURL.path,
@@ -492,6 +507,17 @@ struct MainWindow: View {
                                 let file = url.deletingLastPathComponent().appendingPathComponent("relaunch-verified.json")
                                 try? bytes.write(to:file,options:.atomic)
                                 try? FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:file.path)
+                                // The helper commits "verified" only after this acknowledgement.
+                                // Refresh once it commits, so Restore Stable is immediately usable.
+                                for _ in 0..<100 {
+                                    if let bytes = try? Data(contentsOf:url),
+                                       let completed = try? JSONDecoder().decode(PairedJournal.self,from:bytes), completed.phase == "verified" {
+                                        await updates.refreshInstallation()
+                                        updates.loadInstalledHistory(library.backups)
+                                        break
+                                    }
+                                    try? await Task.sleep(nanoseconds:200_000_000)
+                                }
                             }
                             break
                         }

@@ -35,7 +35,7 @@ class PrepareReleaseTests(unittest.TestCase):
             command.assert_not_called()
         self.assertFalse(self.output.exists())
     def test_unsafe_feed_rejected_before_codesign(self):
-        for url in ['http://example.invalid/feed','https://owner:secret@example.invalid/feed','https://example.invalid/feed?token=x']:
+        for url in ['http://example.invalid/feed','https://owner:secret@example.invalid/feed','https://example.invalid/feed?token=x','https://example.invalid:8443/feed']:
             self.info['SUFeedURL']=url;self.write()
             with patch.object(module.subprocess,'run') as command:
                 with self.assertRaises(ValueError):self.prepare(self.root/'catalog.json')
@@ -56,9 +56,26 @@ class PrepareReleaseTests(unittest.TestCase):
         with patch.object(module.subprocess,'run'):
             with self.assertRaisesRegex(ValueError,'Output exists'):self.prepare(self.root/'catalog.json')
         self.assertEqual(sentinel.read_bytes(),b'previous-artifact')
+    def test_community_policy_uses_publisher_seal_without_apple_credentials(self):
+        self.info['SumidokuDistributionMode']='community';self.info.pop('SumidokuReleaseTeam');self.write()
+        with patch.object(module.subprocess,'run') as command:
+            # Stop at the intentionally unqualified Stable gate after checking trust commands.
+            self.info['SumidokuReleaseVersion']='1.3.0+community.1';self.write()
+            with self.assertRaisesRegex(ValueError,'provenance is not qualified'):self.prepare()
+            calls=[call.args[0] for call in command.call_args_list]
+        self.assertTrue(any(str(c[0]).endswith('TrustTool') and c[1]=='bundle' for c in calls))
+        self.assertFalse(any(c[0] in ['spctl','xcrun'] for c in calls))
+        self.assertFalse(any('-R' in c for c in calls))
+    def test_unknown_policy_and_fixture_bundle_cannot_be_distributed(self):
+        for extra in [{'SumidokuDistributionMode':'unsigned'},{'SumidokuDistributionMode':'community','SumidokuEndToEndFixture':True}]:
+            self.info.update(extra);self.write()
+            with patch.object(module.subprocess,'run') as command:
+                with self.assertRaises(ValueError):self.prepare(self.root/'catalog.json')
+                command.assert_not_called()
     def test_tag_versions_cannot_inject_paths_or_server_tags(self):
         for value in ['v1.3.0','desktop-v1.3.0','1.3.1-beta.0','1.3.1-beta.1/../../other','1.3.1-rc.1','1.3.0\n']:
             with self.assertRaises(ValueError):module.release_version(value)
         self.assertEqual(module.release_version('1.3.1-beta.1'),'1.3.1-beta.1')
+        self.assertEqual(module.release_version('1.3.0+community.1'),'1.3.0+community.1')
 
 if __name__=='__main__':unittest.main()

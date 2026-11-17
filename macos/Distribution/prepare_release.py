@@ -19,7 +19,7 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 def release_version(value):
-    if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta\.[1-9][0-9]*)?', value):
+    if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta\.[1-9][0-9]*|\+community\.[1-9][0-9]*)?', value):
         raise ValueError('Expected a desktop stable or numbered beta version.')
     return value
 
@@ -30,19 +30,27 @@ def prepare(app, output, sparkle, trust_tool, previous=None):
     if '-beta.' in version and not previous:
         raise ValueError('Beta requires an authenticated published Stable catalog; no baseline is fabricated.')
     team = info.get('SumidokuReleaseTeam', '')
-    if not re.fullmatch(r'[A-Z0-9]{10}', team) or info.get('SumidokuDevelopmentBuild', True):
-        raise ValueError('Developer ID release configuration is required; development builds cannot be distributed.')
+    mode = info.get('SumidokuDistributionMode', 'developer-id')
+    if mode not in ['community', 'developer-id'] or info.get('SumidokuDevelopmentBuild', True):
+        raise ValueError('An explicit release trust policy is required; development builds cannot be distributed.')
+    if mode == 'developer-id' and not re.fullmatch(r'[A-Z0-9]{10}', team):
+        raise ValueError('The optional Developer ID mode requires a configured Apple team.')
+    if info.get('SumidokuEndToEndFixture'):
+        raise ValueError('Disposable fixture applications must never be distributed.')
     if len(base64.b64decode(info.get('SUPublicEDKey',''),validate=True)) != 32:
         raise ValueError('A pinned Ed25519 public key is required.')
     from urllib.parse import urlsplit
     feed, catalog = map(urlsplit, [info.get('SUFeedURL',''),info.get('SumidokuReleaseCatalogURL','')])
-    if any(u.scheme!='https' or not u.hostname or u.username or u.password or u.query or u.fragment for u in [feed,catalog]) or feed.hostname != catalog.hostname:
+    if any(u.scheme!='https' or not u.hostname or u.username or u.password or u.query or u.fragment or u.port not in [None,443] for u in [feed,catalog]) or feed.hostname != catalog.hostname:
         raise ValueError('Appcast and catalog must use the same trusted HTTPS origin.')
     subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)
-    requirement = f'anchor apple generic and identifier "app.sumidoku.desktop" and certificate leaf[subject.OU] = "{team}" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
-    subprocess.run(['codesign','--verify','--strict','-R',requirement,str(app)],check=True)
-    subprocess.run(['spctl','--assess','--type','execute',str(app)],check=True)
-    subprocess.run(['xcrun','stapler','validate',str(app)],check=True)
+    if mode == 'community':
+        subprocess.run([str(trust_tool),'bundle',str(app),info['SUPublicEDKey']],check=True)
+    else:
+        requirement = f'anchor apple generic and identifier "app.sumidoku.desktop" and certificate leaf[subject.OU] = "{team}" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
+        subprocess.run(['codesign','--verify','--strict','-R',requirement,str(app)],check=True)
+        subprocess.run(['spctl','--assess','--type','execute',str(app)],check=True)
+        subprocess.run(['xcrun','stapler','validate',str(app)],check=True)
     for relative in ['Contents/MacOS/Sumidoku','Contents/Resources/sumidoku-server','Contents/MacOS/SumidokuUpdateHelper']:
         executable=app/relative
         if executable.exists():subprocess.run(['lipo','-verify_arch','arm64',str(executable)],check=True)
@@ -70,7 +78,7 @@ def prepare(app, output, sparkle, trust_tool, previous=None):
     secret=os.environ.pop('SUMIDOKU_SPARKLE_PRIVATE_KEY',None)
     def sign(path, verify=None):
         args=[str(sparkle/'bin/sign_update')]
-        args += ['--ed-key-file','-'] if secret else ['--account','app.sumidoku.desktop.release']
+        args += ['--ed-key-file','-'] if secret else ['--account',os.environ.get('SUMIDOKU_SPARKLE_KEY_ACCOUNT','app.sumidoku.desktop.community.release')]
         if verify is not None:
             args += ['--verify',str(path)] + ([verify] if verify else [])
         else:

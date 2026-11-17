@@ -30,7 +30,7 @@ struct DesktopCatalog: Codable {
               Set(value.releases.map(\.version)).count == value.releases.count,
               Set(value.releases.map(\.build)).count == value.releases.count else { throw UpdateFailure("Unsupported or ambiguous release catalog.") }
         for entry in value.releases {
-            guard entry.version.range(of:"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-beta\\.[1-9][0-9]*)?$",options:.regularExpression) != nil, let version = AppVersion(entry.version), entry.build > 0,
+            guard entry.version.range(of:"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-beta\\.[1-9][0-9]*|\\+community\\.[1-9][0-9]*)?$",options:.regularExpression) != nil, let version = AppVersion(entry.version), entry.build > 0,
                   entry.channel == (version.prerelease == nil ? "stable" : "beta"),
                   entry.schema > 0, (1...536_870_912).contains(entry.length),
                   [entry.sha256, entry.clientSha256, entry.serverSha256].allSatisfy({ $0.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil }),
@@ -65,8 +65,13 @@ final class BoundedReleaseDownload: NSObject, URLSessionDownloadDelegate {
         completionHandler(url?.scheme == "https" && url?.user == nil && url?.password == nil && [nil,443].contains(url?.port) && url?.fragment == nil && hosts.contains(url?.host ?? "") ? request : nil)
     }
     static func fetch(_ url: URL, limit: Int, archive: Bool = false) async throws -> Data {
-        guard url.scheme == "https", let host = url.host, url.user == nil, url.password == nil, url.fragment == nil else { throw UpdateFailure("A trusted HTTPS release endpoint is required.") }
-        let hosts: Set<String> = archive ? ["github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"] : [host]
+        #if COMMUNITY_E2E
+        return try CommunityEndToEndDownload.fetch(url,limit:limit)
+        #else
+        guard url.scheme == "https", [nil,443].contains(url.port), let host = url.host, url.user == nil, url.password == nil, url.fragment == nil else { throw UpdateFailure("A trusted HTTPS release endpoint is required.") }
+        let releaseFeed = host == "github.com" && url.path.hasPrefix("/TTokomon/SumidokuApp/releases/download/desktop-updates/")
+            && ["appcast.xml","desktop-releases.json","desktop-releases.json.sig"].contains(url.lastPathComponent)
+        let hosts: Set<String> = archive || releaseFeed ? ["github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"] : [host]
         let delegate = Self(limit: limit, hosts: hosts)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForResource = 180
@@ -77,6 +82,7 @@ final class BoundedReleaseDownload: NSObject, URLSessionDownloadDelegate {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
               (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= limit else { throw UpdateFailure("Release download failed or exceeded its size limit.") }
         return try Data(contentsOf: file)
+        #endif
     }
 }
 

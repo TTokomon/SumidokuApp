@@ -9,6 +9,10 @@ protocol ReleaseFetching {
 }
 struct LiveReleaseClient: ReleaseFetching {
     func fetch(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        #if COMMUNITY_E2E
+        let bytes = try Data(contentsOf:URL(fileURLWithPath:ReleaseIdentity.fixtureRoot!).appendingPathComponent("releases.json"))
+        return (bytes,HTTPURLResponse(url:request.url!,statusCode:200,httpVersion:nil,headerFields:nil)!)
+        #else
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForResource = 30
         let session = URLSession(configuration: configuration, delegate: ReleaseRedirectPolicy(), delegateQueue: nil)
@@ -16,6 +20,7 @@ struct LiveReleaseClient: ReleaseFetching {
         let (data,response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw UpdateFailure("The release service returned an invalid response.") }
         return (data,http)
+        #endif
     }
 }
 

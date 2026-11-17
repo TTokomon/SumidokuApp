@@ -53,6 +53,14 @@ struct UpdatePolicyTests {
         var qualified = fakeInfo
         qualified["SumidokuCoordinatedUpdateProtocolVersion"] = 1
         qualified["SUAutomaticallyUpdate"] = false; qualified["SUAllowsAutomaticUpdates"] = false
+        var community = qualified;community.removeValue(forKey:"SumidokuReleaseTeam");community["SumidokuDistributionMode"] = "community"
+        let communityPolicy = DistributionPolicy(info:community)
+        expect(communityPolicy.provisioned,"explicit community mode does not require a paid Apple team")
+        expect(communityPolicy.acceptsReplacement(community),"community releases preserve pinned trust metadata")
+        var switched = community;switched["SumidokuDistributionMode"] = "developer-id";switched["SumidokuReleaseTeam"] = "ABCDEFGHIJ"
+        expect(!communityPolicy.acceptsReplacement(switched),"an update cannot silently change distribution trust mode")
+        var unknown = community;unknown["SumidokuDistributionMode"] = "unsigned"
+        expect(!DistributionPolicy(info:unknown).provisioned,"unknown trust policy fails closed")
         let pinned = DistributionPolicy(info:qualified)
         expect(pinned.acceptsReplacement(qualified),"unchanged qualified trust metadata is eligible for cryptographic verification")
         for (field,value) in [("SumidokuCoordinatedUpdatesValidated",false),("SUAllowsAutomaticUpdates",true)] {
