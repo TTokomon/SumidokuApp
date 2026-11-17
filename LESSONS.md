@@ -6,6 +6,15 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Read-only repository tokens cannot enumerate unpublished releases.**
+Draft visibility requires push access, even when the operation only reads. Do not
+solve a verifier's draft 404 by giving it publication permission. Transfer only
+short-lived, asset-scoped HTTPS download capabilities; verify their exact file
+set, age, bounds and digests, then authenticate the signed package independently.
+The write stage must still recheck the actual draft before any publication.
+- Evidence: the native cloud verifier ran successfully on its assigned runner,
+  but its contents-read token could not see the existing nine-asset Stable draft.
+
 **An abandoned hosted job is not a compiler or verifier failure.**
 Check runner assignment, steps and annotations before changing verification. When
 the ARM64 pool cannot provision a runner, preserve the OS and target requirements:
