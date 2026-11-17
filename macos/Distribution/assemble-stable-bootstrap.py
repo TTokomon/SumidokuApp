@@ -23,6 +23,7 @@ def assemble(source,target):
     old_begin=original.index('struct MainWindow: View {');old_end=original.index('\nstruct WelcomeView:',old_begin)
     original=original[:old_begin]+current[begin:end]+original[old_end:]
     original=original.replace('let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Sumidoku/bin")','let support = InstallationContext.home.appendingPathComponent("Library/Application Support/Sumidoku/bin")').replace('LibraryManager(binary: support','LibraryManager(home:InstallationContext.home,binary: support').replace('service: LaunchAgentService(helper: helper))','service: LaunchAgentService(helper: helper),port:InstallationContext.port)')
+    original=original.replace('process.arguments = [helper.path, action]','process.arguments = [helper.path, action]+InstallationContext.serviceArguments').replace('process.environment = ["HOME": FileManager.default.homeDirectoryForCurrentUser.path','process.environment = ["HOME": InstallationContext.home.path')
     (target/'macos/App/SumidokuApp.swift').write_text(original)
     # Library manager changes are restricted to the fixed production/test service scope.
     shutil.copy2(source/'macos/App/LibraryManager.swift',target/'macos/App/LibraryManager.swift')

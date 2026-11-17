@@ -287,8 +287,8 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
             let process = Process()
             let pipe = Pipe()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = [helper.path, action]
-            process.environment = ["HOME": FileManager.default.homeDirectoryForCurrentUser.path,
+            process.arguments = [helper.path, action]+InstallationContext.serviceArguments
+            process.environment = ["HOME": InstallationContext.home.path,
                                    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
             process.standardOutput = pipe
             process.standardError = pipe
