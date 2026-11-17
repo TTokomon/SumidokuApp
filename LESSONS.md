@@ -6,6 +6,15 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**An abandoned hosted job is not a compiler or verifier failure.**
+Check runner assignment, steps and annotations before changing verification. When
+the ARM64 pool cannot provision a runner, preserve the OS and target requirements:
+macOS 26 Intel can run the native verifier without launching a candidate, while
+Rust's explicit ARM64 target preserves the macOS compile gate. Never replace
+macOS codesign verification with a Linux-only check or silently compile x86 only.
+- Evidence: both cloud draft validation and macOS CI ended with no runner and no
+  steps; annotations reported hosted ARM64 capacity constraints. Other CI legs passed.
+
 **A tag lookup cannot prove that an unpublished draft is absent.**
 GitHub can return 404 for a draft through the release-by-tag endpoint while the
 same authenticated caller can retrieve it from the releases list. On 404, search
