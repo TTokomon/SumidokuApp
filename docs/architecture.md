@@ -2600,6 +2600,14 @@ its own.
 
 ## CI/CD (`.github/workflows`)
 
+Desktop publication has an isolated read-only verification stage and main-only
+write stage. The verifier sources and approved artifacts are pinned in main's
+`.github/desktop-release/policy.json`; PR/product code never runs with publication
+permissions. Local signing uses Keychain, not CI credential export. See the
+[trusted desktop publication contract](DESKTOP_PUBLICATION.md) for artifact,
+permission, hosting and first-Stable sequencing.
+
+
 - `ci.yml`: a paths-filter gates the legs — rust legs (clippy, nextest,
   compile on ubuntu + macOS) skip web-only changes; the web leg (tsc +
   build) skips rust-only ones. The docker leg always runs: it is the only

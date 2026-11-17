@@ -2,92 +2,129 @@ name: Publish qualified desktop community release
 on:
   workflow_dispatch:
     inputs:
-      candidate_run_id:
-        description: Successful desktop candidate run with signed exact-artifact qualification
-        required: false
+      verify_only:
+        description: Validate only; never create, upload or publish releases
+        type: boolean
+        default: true
+      policy_test:
+        description: Non-publishing trust-boundary self-test without draft assets
+        type: boolean
+        default: false
+      version:
+        description: Reviewed desktop version
+        required: true
+        default: 1.3.0+community.1
       staged_tag:
-        description: CI-created draft containing locally signed artifacts (no CI signing secret needed)
+        description: Matching unpublished draft containing locally signed artifacts
+        required: false
+      candidate_run_id:
+        description: Alternative successful reviewed candidate run
         required: false
 permissions:
-  contents: write
+  contents: read
   actions: read
 concurrency:
   group: desktop-publish
   cancel-in-progress: false
 jobs:
-  publish:
+  policy-test:
+    if: inputs.policy_test
     runs-on: macos-26
-    environment: desktop-release
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Select exactly one publication input
+      - name: Require a non-publishing test
         env:
-          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          VERIFY_ONLY: ${{ inputs.verify_only }}
+        run: test "$VERIFY_ONLY" = true
+      - name: Fetch only the immutable reviewed verifier objects
+        run: |
+          revision=$(python3 -c 'import json; print(json.load(open(".github/desktop-release/policy.json"))["toolingCommit"])')
+          git fetch --no-tags --depth=1 origin "$revision"
+      - name: Check permissions, guards and reviewed verifier compilation
+        run: |
+          python3 -m unittest discover -s .github/desktop-release/tests -v
+          python3 .github/desktop-release/validate.py --repo . --version 1.3.0+community.1 --check-policy
+  validate:
+    if: inputs.policy_test == false
+    runs-on: macos-26
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      artifact_id: ${{ steps.verified.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Fetch only the immutable reviewed verifier objects
+        run: |
+          revision=$(python3 -c 'import json; print(json.load(open(".github/desktop-release/policy.json"))["toolingCommit"])')
+          git fetch --no-tags --depth=1 origin "$revision"
+      - name: Authenticate artifacts with read-only permissions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKTOP_VERSION: ${{ inputs.version }}
           STAGED_TAG: ${{ inputs.staged_tag }}
-        run: |
-          python3 - <<'PY'
-          import os
-          assert bool(os.environ['CANDIDATE_RUN_ID']) != bool(os.environ['STAGED_TAG'])
-          PY
-      - name: Retrieve only a successful candidate from this repository
-        if: inputs.candidate_run_id != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json,os,re,subprocess
-          run=os.environ['CANDIDATE_RUN_ID'];assert re.fullmatch('[1-9][0-9]*',run)
-          repo='TTokomon/SumidokuApp'
-          value=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/runs/{run}']))
-          assert value['conclusion']=='success' and value['event']=='workflow_dispatch'
-          assert value['path']=='.github/workflows/desktop-candidate.yml'
-          artifacts=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/runs/{run}/artifacts']))['artifacts']
-          candidates=[a for a in artifacts if a['name'].startswith('desktop-unpublished-') and not a['expired']]
-          assert len(candidates)==1
-          subprocess.run(['gh','run','download',run,'--repo',repo,'--name',candidates[0]['name'],'--dir',os.environ['RUNNER_TEMP']+'/desktop-publish'],check=True)
-          PY
-      - name: Require reviewed exact-artifact qualification from the repository
-        if: inputs.candidate_run_id != ''
-        run: |
-          python3 - <<'PY'
-          import json,os,re,shutil
-          from pathlib import Path
-          root=Path(os.environ['RUNNER_TEMP'])/'desktop-publish'
-          tag=json.loads((root/'release-plan.json').read_text())['tag']
-          assert re.fullmatch(r'desktop-v\d+\.\d+\.\d+(?:-beta\.[1-9]\d*|\+community\.[1-9]\d*)?',tag)
-          for extension in ['.json','.json.sig']:
-              source=Path('macos/Distribution/qualifications')/(tag+extension)
-              assert source.is_file() and not source.is_symlink(), 'Qualification is incomplete; publication blocked'
-              shutil.copyfile(source,root/('release-qualification'+extension))
-          PY
-      - name: Retrieve locally signed artifacts from an unpublished draft
-        if: inputs.staged_tag != ''
+          python3 .github/desktop-release/validate.py --repo . --version "$DESKTOP_VERSION" --staged-tag "$STAGED_TAG" --candidate-run-id "$CANDIDATE_RUN_ID" --output "$RUNNER_TEMP/desktop-verified"
+      - name: Preserve exactly the authenticated public files
+        id: verified
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: desktop-verified
+          path: ${{ runner.temp }}/desktop-verified/
+          retention-days: 7
+  publish:
+    if: inputs.policy_test == false && inputs.verify_only == false && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: desktop-release
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download only this run's immutable verified artifact
         env:
           GH_TOKEN: ${{ github.token }}
-          STAGED_TAG: ${{ inputs.staged_tag }}
+          ARTIFACT_ID: ${{ needs.validate.outputs.artifact_id }}
         run: |
           python3 - <<'PY'
-          import json,os,re,subprocess
+          import os,subprocess,sys
           from pathlib import Path
-          tag=os.environ['STAGED_TAG']
-          assert re.fullmatch(r'desktop-v\d+\.\d+\.\d+(?:-beta\.[1-9]\d*|\+community\.[1-9]\d*)?',tag)
-          repo='TTokomon/SumidokuApp'
-          value=json.loads(subprocess.check_output(['gh','release','view',tag,'--repo',repo,'--json','isDraft,tagName']))
-          assert value['isDraft'] and value['tagName']==tag
-          root=Path(os.environ['RUNNER_TEMP'])/'desktop-publish';root.mkdir()
-          names=['Sumidoku-Desktop-'+tag[len('desktop-v'): ]+'-macOS-arm64.zip','SHA256SUMS','appcast.xml','desktop-releases.json','desktop-releases.json.sig','RELEASE_NOTES.md','release-plan.json','release-qualification.json','release-qualification.json.sig']
-          for name in names:
-              subprocess.run(['gh','release','download',tag,'--repo',repo,'--pattern',name,'--dir',str(root)],check=True)
+          sys.path.insert(0,'.github/desktop-release')
+          import common
+          identifier=os.environ['ARTIFACT_ID'];assert identifier.isdigit()
+          metadata=common.gh_json('api',f'repos/{common.REPO}/actions/artifacts/{identifier}')
+          assert str(metadata['workflow_run']['id'])==os.environ['GITHUB_RUN_ID'] and metadata['name']=='desktop-verified' and not metadata['expired']
+          root=Path(os.environ['RUNNER_TEMP']);package=root/'verified.zip'
+          common.download_stream(f'repos/{common.REPO}/actions/artifacts/{identifier}/zip',package,536870912)
+          # verified.json is main-owned data, not executable input.
+          import zipfile,stat
+          output=root/'desktop-publish';output.mkdir()
+          allowed={n:l for version in common.policy()['approvedReleases'] for n,l in common.filenames(version).items()};allowed['verified.json']=65536
+          with zipfile.ZipFile(package) as archive:
+              seen=set()
+              for entry in archive.infolist():
+                  assert entry.filename in allowed and entry.filename not in seen and not entry.is_dir() and not stat.S_ISLNK(entry.external_attr>>16) and 0<entry.file_size<=allowed[entry.filename]
+                  seen.add(entry.filename)
+                  with archive.open(entry) as source,(output/entry.filename).open('xb') as target:
+                      count=0
+                      while data:=source.read(65536):
+                          count+=len(data);assert count<=allowed[entry.filename];target.write(data)
           PY
-      - name: Verify publisher trust and release qualification, then publish
+      - name: Publish using main-owned code only after environment approval
         env:
           GH_TOKEN: ${{ github.token }}
-          SUMIDOKU_UPDATE_PUBLIC_KEY: ${{ vars.DESKTOP_ED25519_PUBLIC_KEY }}
-        run: |
-          set -euo pipefail
-          ./macos/Distribution/build-trust-tool.sh
-          python3 macos/Distribution/publish_release.py "$RUNNER_TEMP/desktop-publish" --trust-tool dist/native/ReleaseTrustTool
+        run: python3 .github/desktop-release/publish.py "$RUNNER_TEMP/desktop-publish" --execute
