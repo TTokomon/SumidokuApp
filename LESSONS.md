@@ -6,6 +6,15 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Keep signing authority separate from compilation and publication.**
+A local signing key does not imply permission to export it to CI. Support local
+Keychain signing and let CI authenticate the resulting public artifacts. If CI
+signing is explicitly provisioned, give the seed only to the signing step through
+stdin; compiler, package-manager and verification children must not inherit it.
+- Evidence: community distribution now supports a protected publisher for locally
+  signed artifacts, rejects production signing seeds in build processes, and tests
+  that verification children cannot inherit the seed.
+
 **A successful build receipt requires a verified artifact, not just command status.**
 The system Bash treats an empty optional array differently under nounset from a
 newer shell. Keep required compiler flags in the array, test the system shell,
