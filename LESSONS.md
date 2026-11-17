@@ -6,6 +6,17 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Default-branch registration does not supply a workflow's execution dependencies.**
+Registering a release workflow is insufficient if its scripts exist only in an
+unmerged product branch. Keep the privileged driver on main, authenticate immutable
+reviewed verifier sources in a read-only job, and pass only verified artifact data
+into the write job. A branch policy test must have read-only permissions and skip
+publication; never fix a missing script by checking out an arbitrary PR with a
+publication token.
+- Evidence: desktop publication registration lacked its distribution scripts. The
+  focused bootstrap pins verifier source hashes, separates validation/publication
+  jobs and tests the main-only write boundary without merging the product PR.
+
 **Uninstall a package without deleting its persistent source identity.**
 Foreign-key deletion of a source can cascade into manga, categories and reading
 progress. A package-only uninstall must disable runtime capability while retaining
