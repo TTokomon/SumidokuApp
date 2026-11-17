@@ -16,6 +16,16 @@ import validate
 spec=importlib.util.spec_from_file_location('writer',BASE/'publish.py');writer=importlib.util.module_from_spec(spec);spec.loader.exec_module(writer)
 VERSION='1.3.0+community.1'
 class PublicationTests(unittest.TestCase):
+    def test_intel_runner_preserves_macos_and_arm64_verification(self):
+        workflow=(BASE.parent/'workflows/desktop-publish.yml').read_text()
+        validation=workflow.split('\n  validate:\n',1)[1].split('\n  publish:\n',1)[0]
+        self.assertIn('runs-on: macos-26-intel',validation)
+        self.assertIn('validate.py --repo .',validation)
+        self.assertNotIn('--offline',validation)
+        build=(BASE.parent/'workflows/ci.yml').read_text().split('\n  build:\n',1)[1].split('\n  web:\n',1)[0]
+        self.assertIn('macos-26-intel',build)
+        self.assertIn('rustup target add aarch64-apple-darwin',build)
+        self.assertIn("runner.os == 'macOS' && '--target aarch64-apple-darwin'",build)
     def test_draft_found_after_tag_endpoint_returns_404(self):
         result=type('Response',(),{'returncode':1,'stdout':'','stderr':'gh: Not Found (HTTP 404)'})()
         draft={'tag_name':'desktop-v'+VERSION,'draft':True}

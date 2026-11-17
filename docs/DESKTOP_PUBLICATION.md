@@ -37,6 +37,19 @@ asset SHA-256 values and rechecks the existing feed before publishing. A concurr
 feed change stops publication. Beta requires the authenticated public Stable feed
 and publicly verified previously advertised assets. New catalogs retain prior entries.
 
+## macOS runner requirements
+
+Cloud validation uses the standard `macos-26-intel` runner to avoid hosted ARM64
+capacity failures before job acquisition. This remains native macOS 26 validation:
+the reviewed Swift verifier checks Ed25519 signatures, ARM64 Mach-O identities,
+publisher bundle inventory and strict macOS codesign integrity. It never launches
+the downloaded application or server and needs no signing credential. Host CPU
+selection does not relax the required ARM64 archive format or package checks.
+The macOS Rust CI compile gate uses the same runner with an explicit
+`aarch64-apple-darwin` target for the entire workspace and all targets. Runtime
+Stable/Beta/recovery evidence still comes from disposable native ARM64 installations.
+An unassigned or abandoned runner is an infrastructure failure, never a passed gate.
+
 ## First Stable, then Beta
 
 The first Stable is `1.3.0+community.1` (build 9), not a relabelled Beta. Its audited

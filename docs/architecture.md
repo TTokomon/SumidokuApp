@@ -2616,6 +2616,10 @@ permission, hosting and first-Stable sequencing.
   aggregates every leg (skipped counts as filtered-out, failure fails it);
   branch protection pins `changes` and `ci` because a skipped matrix leg
   never reports its expanded `build (os)` name.
+  The macOS compile check keeps its name but uses `macos-26-intel` with
+  an explicit `aarch64-apple-darwin` target to preserve ARM64 coverage during
+  hosted ARM64 runner shortages. Desktop archive verification uses native
+  macOS 26 tools on that runner without executing the downloaded application.
 - `release.yml`: a push to `main` touching `Cargo.toml` reads the
   workspace version and skips when that release already exists
   (`workflow_dispatch` is the manual fallback). Builds cross-compile the

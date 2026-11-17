@@ -60,7 +60,9 @@ jobs:
           PY
   validate:
     if: inputs.policy_test == false
-    runs-on: macos-26
+    # ARM64 hosted capacity can abandon a job before it receives a runner.
+    # The native verifier checks ARM64 Mach-O/signatures without executing it.
+    runs-on: macos-26-intel
     permissions:
       contents: read
       actions: read
