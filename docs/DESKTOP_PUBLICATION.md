@@ -28,7 +28,10 @@ job. The draft-creation workflow is also restricted to main.
 
 Both release-asset and Actions ZIP transports are size-bounded and reject unexpected
 files, duplicate paths and symlinks. GitHub authentication, transport and rate-limit
-errors are not treated as missing releases. Published releases are immutable. The
+errors are not treated as missing releases. A tag-endpoint 404 triggers an exact-tag
+search of the authenticated releases list, bounded to 20 pages of 100 entries;
+incomplete pagination fails closed. This also finds unpublished drafts that the
+tag endpoint does not expose. Published releases are immutable. The
 publisher uploads exactly the verified bytes to a matching draft, checks GitHub's
 asset SHA-256 values and rechecks the existing feed before publishing. A concurrent
 feed change stops publication. Beta requires the authenticated public Stable feed

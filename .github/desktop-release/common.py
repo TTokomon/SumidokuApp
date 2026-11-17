@@ -38,7 +38,17 @@ def maybe_release(tag):
     # Distinguish not-found from authentication/rate-limit/transport errors.
     result=subprocess.run(['gh','api',f'repos/{REPO}/releases/tags/{tag}'],capture_output=True,text=True)
     if result.returncode:
-        if '(HTTP 404)' in result.stderr:return None
+        if '(HTTP 404)' in result.stderr:
+            # Unpublished drafts may be invisible through the tag endpoint.
+            # Search exact tags, with bounded pagination and no error-as-absence.
+            for page in range(1,21):
+                releases=gh_json('api',f'repos/{REPO}/releases?per_page=100&page={page}')
+                if not isinstance(releases,list):raise ValueError('Invalid release list')
+                matches=[r for r in releases if r.get('tag_name')==tag]
+                if len(matches)>1:raise ValueError('Ambiguous release tag')
+                if matches:return matches[0]
+                if len(releases)<100:return None
+            raise ValueError('Release lookup pagination limit exceeded')
         raise RuntimeError('GitHub release lookup failed; nothing may be published')
     return json.loads(result.stdout)
 

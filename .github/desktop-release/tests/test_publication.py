@@ -16,6 +16,22 @@ import validate
 spec=importlib.util.spec_from_file_location('writer',BASE/'publish.py');writer=importlib.util.module_from_spec(spec);spec.loader.exec_module(writer)
 VERSION='1.3.0+community.1'
 class PublicationTests(unittest.TestCase):
+    def test_draft_found_after_tag_endpoint_returns_404(self):
+        result=type('Response',(),{'returncode':1,'stdout':'','stderr':'gh: Not Found (HTTP 404)'})()
+        draft={'tag_name':'desktop-v'+VERSION,'draft':True}
+        with patch.object(common.subprocess,'run',return_value=result),patch.object(common,'gh_json',side_effect=[[{'tag_name':'other'}]*100,[draft]]) as lookup:
+            self.assertEqual(common.maybe_release(draft['tag_name']),draft)
+            self.assertEqual(lookup.call_count,2)
+    def test_draft_list_failure_is_not_absence(self):
+        result=type('Response',(),{'returncode':1,'stdout':'','stderr':'gh: Not Found (HTTP 404)'})()
+        with patch.object(common.subprocess,'run',return_value=result),patch.object(common,'gh_json',side_effect=RuntimeError('HTTP 403')):
+            with self.assertRaisesRegex(RuntimeError,'403'):common.maybe_release('missing')
+    def test_release_absence_requires_complete_list(self):
+        result=type('Response',(),{'returncode':1,'stdout':'','stderr':'gh: Not Found (HTTP 404)'})()
+        with patch.object(common.subprocess,'run',return_value=result),patch.object(common,'gh_json',return_value=[]):
+            self.assertIsNone(common.maybe_release('missing'))
+        with patch.object(common.subprocess,'run',return_value=result),patch.object(common,'gh_json',return_value=[{'tag_name':'other'}]*100):
+            with self.assertRaisesRegex(ValueError,'pagination'):common.maybe_release('missing')
     def test_source_hash_mismatch_rejected_before_compiler(self):
         with tempfile.TemporaryDirectory() as directory,patch.object(validate.subprocess,'check_output',return_value=b'changed verifier'),patch.object(validate.subprocess,'run') as execute:
             with self.assertRaisesRegex(ValueError,'hash mismatch'):validate.materialize(Path(directory),Path(directory)/'out')
