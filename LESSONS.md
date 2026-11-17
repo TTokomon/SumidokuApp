@@ -6,6 +6,14 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**A tag lookup cannot prove that an unpublished draft is absent.**
+GitHub can return 404 for a draft through the release-by-tag endpoint while the
+same authenticated caller can retrieve it from the releases list. On 404, search
+a bounded, paginated authenticated list for the exact tag before treating it as
+absent. Authentication, pagination and transport errors must still fail closed.
+- Evidence: first community Stable draft staging uploaded all nine assets, but
+  the direct tag lookup returned 404; the release list exposed the matching draft.
+
 **Default-branch registration does not supply a workflow's execution dependencies.**
 Registering a release workflow is insufficient if its scripts exist only in an
 unmerged product branch. Keep the privileged driver on main, authenticate immutable
