@@ -35,6 +35,11 @@ def retrieve(root,version,tag,run):
     rules=common.policy()
     if tag:
         if tag!='desktop-v'+version:raise ValueError('Draft tag/version mismatch')
+        transport=os.environ.get('SUMIDOKU_DRAFT_TRANSPORT','')
+        if transport:
+            assets=common.draft_transport(transport,version,tag)
+            for name,asset in assets.items():common.download_capability(asset,root/name)
+            return
         release=common.maybe_release(tag)
         if release is None or not release['draft'] or release['target_commitish']!=common.selected(version)['sourceRevision']:raise ValueError('Expected the matching unpublished draft')
         assets={a['name']:a for a in release['assets']}

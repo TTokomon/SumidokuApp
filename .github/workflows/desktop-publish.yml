@@ -83,6 +83,8 @@ jobs:
           DESKTOP_VERSION: ${{ inputs.version }}
           STAGED_TAG: ${{ inputs.staged_tag }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          # Short-lived, asset-read-only URLs; never a repository or signing key.
+          SUMIDOKU_DRAFT_TRANSPORT: ${{ secrets.DESKTOP_DRAFT_TRANSPORT }}
         run: |
           python3 .github/desktop-release/validate.py --repo . --version "$DESKTOP_VERSION" --staged-tag "$STAGED_TAG" --candidate-run-id "$CANDIDATE_RUN_ID" --output "$RUNNER_TEMP/desktop-verified"
       - name: Preserve exactly the authenticated public files

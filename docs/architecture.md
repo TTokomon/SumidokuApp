@@ -2606,6 +2606,10 @@ write stage. The verifier sources and approved artifacts are pinned in main's
 permissions. Local signing uses Keychain, not CI credential export. See the
 [trusted desktop publication contract](DESKTOP_PUBLICATION.md) for artifact,
 permission, hosting and first-Stable sequencing.
+Unpublished draft retrieval uses a temporary 20-minute manifest of asset-only
+GitHub download capabilities, not a repository write token in the verifier.
+The manifest and downloads are bounded and package-bound; the signed contents
+are authenticated independently and the main-only writer rechecks draft state.
 
 
 - `ci.yml`: a paths-filter gates the legs — rust legs (clippy, nextest,

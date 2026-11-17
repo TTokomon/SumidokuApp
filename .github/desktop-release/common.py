@@ -6,6 +6,9 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import time
+import urllib.request
+from urllib.parse import urlsplit
 import zipfile
 
 REPO='TTokomon/SumidokuApp'
@@ -73,6 +76,41 @@ def download_asset(asset,destination,limit):
     download_stream(f'repos/{REPO}/releases/assets/{asset["id"]}',destination,limit,asset['size'])
     digest=asset.get('digest')
     if digest and digest!='sha256:'+sha(destination):raise ValueError('GitHub asset digest mismatch')
+
+def draft_transport(raw,version,tag):
+    # Maintainer-provided capabilities can only read the specific public-package
+    # bytes. They never confer repository write or account access.
+    if not raw or len(raw)>64000:raise ValueError('Missing or oversized draft transport')
+    value=json.loads(raw);now=time.time()
+    if set(value)!={'format','repository','tag','sourceRevision','draft','created','expires','assets'} or value['format']!=1 or value['repository']!=REPO or value['tag']!=tag or tag!='desktop-v'+version or value['sourceRevision']!=selected(version)['sourceRevision'] or value['draft'] is not True:raise ValueError('Draft transport identity mismatch')
+    if type(value['created']) is not int or type(value['expires']) is not int or value['expires']!=value['created']+1200 or not value['created']-30<=now<=value['expires']:raise ValueError('Expired or invalid draft transport')
+    if type(value['assets']) is not dict or set(value['assets'])!=set(filenames(version)):raise ValueError('Unexpected draft transport files')
+    for name,asset in value['assets'].items():
+        if set(asset)!={'url','size','sha256'} or type(asset['size']) is not int or not 0<asset['size']<=filenames(version)[name] or not re.fullmatch('[a-f0-9]{64}',asset['sha256']):raise ValueError('Invalid draft transport asset')
+        url=asset['url']
+        if not isinstance(url,str) or len(url)>16000 or not url.isascii() or any(c in url for c in '\r\n\0'):raise ValueError('Unsafe draft asset URL')
+        u=urlsplit(url)
+        if u.scheme!='https' or u.hostname!='release-assets.githubusercontent.com' or u.port not in [None,443] or u.username or u.password or u.fragment or not u.query:raise ValueError('Unsafe draft asset URL')
+    archive='Sumidoku-Desktop-'+version+'-macOS-arm64.zip'
+    if value['assets'][archive]['sha256']!=selected(version)['sha256'] or value['assets'][archive]['size']!=selected(version)['length']:raise ValueError('Draft transport archive is not approved')
+    return value['assets']
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self,*args,**kwargs):return None
+
+def download_capability(asset,destination):
+    try:
+        request=urllib.request.Request(asset['url'],headers={'User-Agent':'Sumidoku-release-verifier'})
+        with urllib.request.build_opener(NoRedirect()).open(request,timeout=60) as source,destination.open('xb') as target:
+            count=0
+            while data:=source.read(65536):
+                count+=len(data)
+                if count>asset['size']:raise ValueError('Download exceeded its size bound')
+                target.write(data)
+        if count!=asset['size'] or sha(destination)!=asset['sha256']:raise ValueError('Draft asset size or digest mismatch')
+    except Exception:
+        # Never include bearer URLs in logs, including HTTP exception messages.
+        raise ValueError('Draft asset transport failed; URL withheld') from None
 
 def unpack_artifact(archive,root):
     # Actions' artifact transport is a ZIP too: never extract arbitrary paths.

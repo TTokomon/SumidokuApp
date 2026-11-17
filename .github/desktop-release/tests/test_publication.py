@@ -1,5 +1,7 @@
 import copy
 import importlib.util
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -16,6 +18,37 @@ import validate
 spec=importlib.util.spec_from_file_location('writer',BASE/'publish.py');writer=importlib.util.module_from_spec(spec);spec.loader.exec_module(writer)
 VERSION='1.3.0+community.1'
 class PublicationTests(unittest.TestCase):
+    def transport(self):
+        entry=common.selected(VERSION)
+        assets={n:{'url':'https://release-assets.githubusercontent.com/package/file?sig=read-only-fixture','size':4,'sha256':'a'*64} for n in common.filenames(VERSION)}
+        assets['Sumidoku-Desktop-'+VERSION+'-macOS-arm64.zip'].update(size=entry['length'],sha256=entry['sha256'])
+        return {'format':1,'repository':common.REPO,'tag':'desktop-v'+VERSION,'sourceRevision':entry['sourceRevision'],'draft':True,'created':1000,'expires':2200,'assets':assets}
+    def test_draft_capabilities_are_exact_short_lived_and_package_bound(self):
+        value=self.transport()
+        with patch.object(common.time,'time',return_value=1001):
+            self.assertEqual(common.draft_transport(json.dumps(value),VERSION,value['tag']),value['assets'])
+            for field,replacement in [('draft',False),('sourceRevision','b'*40),('expires',9999),('assets',{})]:
+                changed=copy.deepcopy(value);changed[field]=replacement
+                with self.subTest(field=field),self.assertRaises(ValueError):common.draft_transport(json.dumps(changed),VERSION,value['tag'])
+            value['assets']['Sumidoku-Desktop-'+VERSION+'-macOS-arm64.zip']['sha256']='b'*64
+            with self.assertRaisesRegex(ValueError,'not approved'):common.draft_transport(json.dumps(value),VERSION,value['tag'])
+    def test_expired_or_non_github_capabilities_are_rejected(self):
+        value=self.transport()
+        with patch.object(common.time,'time',return_value=2201):
+            with self.assertRaisesRegex(ValueError,'Expired'):common.draft_transport(json.dumps(value),VERSION,value['tag'])
+        for url in ['http://release-assets.githubusercontent.com/a?sig=x','https://evil.example/a?sig=x','https://user@release-assets.githubusercontent.com/a?sig=x','https://release-assets.githubusercontent.com/a?sig=x#fragment','https://release-assets.githubusercontent.com:8443/a?sig=x']:
+            value=self.transport();value['assets']['SHA256SUMS']['url']=url
+            with patch.object(common.time,'time',return_value=1001),self.subTest(url=url),self.assertRaisesRegex(ValueError,'Unsafe'):common.draft_transport(json.dumps(value),VERSION,value['tag'])
+    def test_capability_download_enforces_hash_size_and_no_redirects(self):
+        asset={'url':'https://release-assets.githubusercontent.com/a?sig=never-log-me','size':4,'sha256':hashlib.sha256(b'data').hexdigest()}
+        self.assertIsNone(common.NoRedirect().redirect_request(None,None,None,None,None,None))
+        for payload,valid in [(b'data',True),(b'bad!',False),(b'excess',False),(b'cut',False)]:
+            with tempfile.TemporaryDirectory() as directory,patch.object(common.urllib.request,'build_opener') as opener:
+                opener.return_value.open.return_value=io.BytesIO(payload)
+                if valid:common.download_capability(asset,Path(directory)/'asset')
+                else:
+                    with self.assertRaises(ValueError) as error:common.download_capability(asset,Path(directory)/'asset')
+                    self.assertNotIn('never-log-me',str(error.exception))
     def test_intel_runner_preserves_macos_and_arm64_verification(self):
         workflow=(BASE.parent/'workflows/desktop-publish.yml').read_text()
         validation=workflow.split('\n  validate:\n',1)[1].split('\n  publish:\n',1)[0]
@@ -66,7 +99,9 @@ class PublicationTests(unittest.TestCase):
         self.assertIn('inputs.verify_only == false',write)
         self.assertIn('environment: desktop-release',write)
         self.assertNotIn('TrustTool',write);self.assertNotIn('swiftc',write);self.assertNotIn('publish_release.py',write)
-        self.assertNotIn('secrets.',text)
+        self.assertEqual(text.count('secrets.'),1)
+        self.assertIn('secrets.DESKTOP_DRAFT_TRANSPORT',text)
+        self.assertNotIn('PRIVATE_KEY',text)
     def test_offline_or_injected_validation_receipt_is_not_publishable(self):
         value={'format':1,'repository':common.REPO,'onlineChecks':False,'toolingCommit':common.policy()['toolingCommit']}
         with tempfile.TemporaryDirectory() as directory:

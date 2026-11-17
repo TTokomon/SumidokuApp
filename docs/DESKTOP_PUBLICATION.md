@@ -50,6 +50,36 @@ The macOS Rust CI compile gate uses the same runner with an explicit
 Stable/Beta/recovery evidence still comes from disposable native ARM64 installations.
 An unassigned or abandoned runner is an infrastructure failure, never a passed gate.
 
+## Unpublished draft transport without a write token
+
+GitHub requires push access to enumerate drafts. A contents-read verifier cannot
+see an unpublished release, and must never receive a repository write token to
+work around that restriction. After local signing and staging, the maintainer
+prepares an exact nine-file manifest of GitHub asset-scoped HTTPS download URLs:
+
+```sh
+python3 .github/desktop-release/prepare_transport.py --version '1.3.0+community.1' --output draft-transport.json
+gh secret set DESKTOP_DRAFT_TRANSPORT --repo TTokomon/SumidokuApp < draft-transport.json
+rm draft-transport.json
+```
+
+This GET-only helper uses the existing local GitHub CLI login to obtain download
+redirects. It never reads a signing key, changes a release or exports a repository
+token. Its file has mode 0600. The manifest is accepted for only 20 minutes; it
+binds the exact draft tag/source, file set, sizes/digests and approved archive.
+URLs are restricted to `release-assets.githubusercontent.com` over HTTPS, with
+no credentials, fragments, alternate ports or subsequent redirects. The verifier
+checks bounded downloads and hashes, then independently authenticates signatures,
+archive paths and complete bundle contents. Download exceptions withhold URLs.
+The temporary secret conveys read access to those package bytes only. It cannot
+write a release or access the account. The publisher still independently checks
+the actual draft identity and asset state using its separate main-only token.
+
+Run the workflow with `verify_only=true`, `policy_test=false`, and the matching
+version/tag, then remove `DESKTOP_DRAFT_TRANSPORT` with `gh secret delete` after the
+run completes. Recreate expired transport rather than extending its lifetime.
+Published feeds/assets remain accessible directly with the read-only token.
+
 ## First Stable, then Beta
 
 The first Stable is `1.3.0+community.1` (build 9), not a relabelled Beta. Its audited
