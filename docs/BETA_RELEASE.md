@@ -81,7 +81,7 @@ Configure the public key, trusted HTTPS appcast and catalog URLs before building
 `macos/build-fork.sh`; native-only packaging is `macos/build-app.sh`. Neither
 command installs unless an explicitly supported installation option is supplied.
 Use `SUMIDOKU_CERTIFIED_COORDINATION=1` only for an approved, qualified artifact;
-the candidate workflow deliberately leaves it off until qualification.
+the candidate workflow defaults it off; enabling an unpublished qualification candidate does not authorize publication.
 
 `macos/Distribution/prepare-release.sh APP OUTPUT [--previous-catalog FILE]`
 verifies the selected trust policy and emits an unpublished ZIP, SHA256SUMS,
@@ -141,7 +141,8 @@ The native community test passed with real SwiftUI/WKWebView application bundles
 the bundled helper, actual LaunchAgent-managed backends and Ed25519-signed archives:
 **1.3.0+community.1 (9) → 1.3.1-beta.1 (10) → 1.3.0+community.1 (9)**.
 It checked the authenticated native window acknowledgement, single listener,
-current account, library, local source, reading progress advanced during Beta,
+current account, persistent WKWebView cookies without re-injecting login credentials,
+library, local source, reading progress advanced during Beta,
 a completed CBZ download and its database row, existing backup and enabled backup
 schedule. The disposable service was removed afterward. No original application,
 user library or managed service was replaced.
@@ -150,7 +151,7 @@ The exercise caught and corrected equivalent filesystem-alias comparisons in the
 archive/helper/relaunch path, and stale pending-handoff UI after the helper recorded
 `verified`. Restore Stable becomes available without reopening the application.
 Native policy checks passed 48 assertions, archive/recovery checks 52, actual
-native bundle seal checks 11, and Python packaging/publication guards 45 tests.
+native bundle seal checks 11, and Python packaging/publication/build guards 52 tests.
 Frontend/Rust sources did not change in this work; reuse passing evidence for those
 unchanged inputs instead of repeatedly rebuilding them. The preceding CI run's
 Rust tests, Clippy and web checks passed; its macOS build was cancelled because no
@@ -162,5 +163,44 @@ was created in the dedicated local Keychain account. Public GitHub variables and
 maintainer approval environments are configured; the private key has **not** been
 exported to GitHub Actions. CI signing needs explicit approval for that credential
 transfer, or continued local signing. No desktop tag or public release was created.
-The first public Stable artifact still needs exact-artifact qualification and the
-complete release gate; fixture success alone does not publish or qualify an archive.
+The exact local Stable bootstrap provenance is pinned in `stable-baselines.json`.
+Overall release qualification still requires reviewed-head CI and approval; fixture
+success alone does not publish a release. The staged Beta is a clean exact-source
+app/backend pair from `6f92874`; the distinct Stable baseline uses the audited base
+with its sealed updater-only overlay. Later changes affect tooling/tests, not these
+staged production app inputs.
+
+## Default free publication route: keep the private key on the Mac
+
+Local signing is sufficient; exporting the signing key to GitHub is **optional**.
+The `desktop-local-draft.yml` workflow creates only an empty, unpublished desktop
+draft after maintainer approval. It creates the tag/release through CI, independently
+of the server/Docker publisher. It does not need a signing secret.
+
+After all qualification checks pass, prepare the artifact set locally with Keychain.
+Create and sign its exact qualification document as described in
+`macos/Distribution/qualifications/README.md`. Use
+`publish_release.py ARTIFACTS --trust-tool TOOL --stage-local` to upload only public
+signed artifacts to the matching CI-created draft. This command refuses published
+releases and wrong-source drafts; it never creates a tag or publishes a release.
+
+Run `desktop-publish.yml` with `staged_tag` to authenticate and publish that draft
+under the protected `desktop-release` environment. Alternatively, the workflow can
+consume `candidate_run_id` from the optional CI-signing route. Exactly one input is
+required. Publication requires an Ed25519-signed qualification binding the precise
+version, build, archive, catalog, appcast and checksum inventory. The archive is
+re-authenticated and safely extracted for production policy verification. Prior
+published entries are preserved; Beta cannot publish before an authenticated
+published Stable feed exists. Publication never installs an application.
+
+The optional CI-signing route needs separately authorized credential provisioning.
+Build/compiler processes reject a production signing seed in their environment;
+community sealing happens afterward in its own step. Verification children do not
+inherit a CI seed, and `sign_update` receives it only through stdin. Both community
+and publication environments require maintainer approval. No production private
+key has been exported in this verification.
+
+The new manual workflows remain proposed in the draft PR until workflow registration
+is available on the default branch. Do not bypass that availability requirement by
+creating tags/releases manually. Do not merge the draft PR to enable them without
+approval. For now, inspect the fully signed local candidates and their evidence.

@@ -24,6 +24,7 @@ def release_version(value):
     return value
 
 def prepare(app, output, sparkle, trust_tool, previous=None):
+    secret=os.environ.pop('SUMIDOKU_SPARKLE_PRIVATE_KEY',None)
     app, output, sparkle = Path(app), Path(output), Path(sparkle)
     info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
     version = release_version(info.get('SumidokuReleaseVersion') or info['CFBundleShortVersionString'])
@@ -53,7 +54,7 @@ def prepare(app, output, sparkle, trust_tool, previous=None):
         subprocess.run(['xcrun','stapler','validate',str(app)],check=True)
     for relative in ['Contents/MacOS/Sumidoku','Contents/Resources/sumidoku-server','Contents/MacOS/SumidokuUpdateHelper']:
         executable=app/relative
-        if executable.exists():subprocess.run(['lipo','-verify_arch','arm64',str(executable)],check=True)
+        if executable.exists():subprocess.run(['/usr/bin/lipo',str(executable),'-verify_arch','arm64'],check=True)
     server = app/'Contents/Resources/sumidoku-server'
     manifest = json.loads((app/'Contents/Resources/server-build.json').read_text())
     if manifest['sha256'] != digest(server) or manifest['variant'] != 'fork':
@@ -75,7 +76,6 @@ def prepare(app, output, sparkle, trust_tool, previous=None):
     archive=output/f'Sumidoku-Desktop-{version}-macOS-arm64.zip'
     subprocess.run(['ditto','-c','-k','--norsrc','--noextattr','--keepParent',str(app),str(archive)],check=True)
     # A CI secret travels on stdin only. Locally Sparkle reads its Keychain account.
-    secret=os.environ.pop('SUMIDOKU_SPARKLE_PRIVATE_KEY',None)
     def sign(path, verify=None):
         args=[str(sparkle/'bin/sign_update')]
         args += ['--ed-key-file','-'] if secret else ['--account',os.environ.get('SUMIDOKU_SPARKLE_KEY_ACCOUNT','app.sumidoku.desktop.community.release')]
@@ -116,9 +116,9 @@ def prepare(app, output, sparkle, trust_tool, previous=None):
         ET.SubElement(item,'enclosure',{'url':e['url'],'length':str(e['length']),'type':'application/octet-stream',f'{{{SPARKLE}}}edSignature':e['signature']})
     feed_path=output/'appcast.xml';ET.ElementTree(rss).write(feed_path,encoding='utf-8',xml_declaration=True)
     sign(feed_path);sign(feed_path,'')
-    (output/'SHA256SUMS').write_text(''.join(f'{digest(p)}  {p.name}\n' for p in sorted(output.iterdir()) if p.is_file()))
     (output/'release-plan.json').write_text(json.dumps({'tag':'desktop-v'+version,'prerelease':entry['channel']=='beta','draft':True,'published':False,'sourceRevision':entry['sourceRevision'],'baselineRequired':entry['channel']=='beta'},indent=2)+'\n')
     (output/'RELEASE_NOTES.md').write_text(f'# Sumidoku Desktop {version}\n\nUnpublished candidate from `{entry["sourceRevision"]}`. Native navigation and grouped settings; paired app/server update and explicit Restore Stable with current-data compatibility checks. No database rollback or automatic chapter downloads. A one-time approved updater-capable Stable installation may be required.\n\nPublishing requires successful signed Stable-to-Beta-to-Stable testing and explicit approval.\n')
+    (output/'SHA256SUMS').write_text(''.join(f'{digest(p)}  {p.name}\n' for p in sorted(output.iterdir()) if p.is_file()))
     return entry
 
 if __name__=='__main__':

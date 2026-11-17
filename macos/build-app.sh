@@ -6,6 +6,10 @@ case "${1:-}" in
   *) echo 'Usage: build-app.sh [--install]' >&2; exit 1 ;;
 esac
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+if [[ -n ${SUMIDOKU_SPARKLE_PRIVATE_KEY:-} && -z ${SUMIDOKU_E2E_ROOT:-} ]]; then
+  echo 'Keep production signing credentials out of build processes. Use Keychain or the separate publisher sealing step.' >&2
+  exit 2
+fi
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 if [[ "$DEVELOPER_DIR" == /Library/Developer/CommandLineTools ]]; then
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
@@ -41,18 +45,18 @@ if fixture:
  identity+='static let fixtureRoot: String? = '+json.dumps(str(Path(fixture).resolve()))+'\nstatic let fixtureLabel: String? = '+json.dumps(os.environ['SUMIDOKU_E2E_LABEL'])+'\nstatic let fixturePort: Int? = '+str(int(os.environ['SUMIDOKU_E2E_PORT']))+'\n'
 Path(sys.argv[1]).write_text(identity+'}\n')
 PYIDENTITY
-SWIFT_FLAGS=()
+SWIFT_FLAGS=(-swift-version 5)
 [[ -z ${SUMIDOKU_E2E_ROOT:-} ]] || SWIFT_FLAGS+=(-D COMMUNITY_E2E)
 APP_SOURCES=()
 for source in "$ROOT"/macos/App/*.swift; do
   [[ "$source" == */ReleaseIdentity.swift ]] || APP_SOURCES+=("$source")
 done
 
-xcrun --sdk macosx swiftc "${SWIFT_FLAGS[@]}" -swift-version 5 -O -whole-module-optimization -parse-as-library -target arm64-apple-macosx13.0 \
+xcrun --sdk macosx swiftc "${SWIFT_FLAGS[@]}" -O -whole-module-optimization -parse-as-library -target arm64-apple-macosx13.0 \
   -module-cache-path "$OUT/ModuleCache" -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -framework SwiftUI -framework WebKit -framework AppKit -framework ScreenCaptureKit \
   "${APP_SOURCES[@]}" "$STAGING/ReleaseIdentity.swift" \
   -o "$APP/Contents/MacOS/Sumidoku"
-xcrun --sdk macosx swiftc "${SWIFT_FLAGS[@]}" -swift-version 5 -O -whole-module-optimization -parse-as-library -target arm64-apple-macosx13.0 \
+xcrun --sdk macosx swiftc "${SWIFT_FLAGS[@]}" -O -whole-module-optimization -parse-as-library -target arm64-apple-macosx13.0 \
   -module-cache-path "$OUT/ModuleCache" \
   "$ROOT/macos/App/UpdatePolicy.swift" "$ROOT/macos/App/ReleaseTrust.swift" \
   "$ROOT/macos/App/CommunityBundleTrust.swift" "$STAGING/ReleaseIdentity.swift" "$ROOT/macos/App/InstallationContext.swift" "$ROOT/macos/App/CommunityEndToEndDownload.swift" \
@@ -158,7 +162,7 @@ else
   codesign --force --sign - "$APP/Contents/MacOS/SumidokuUpdateHelper"
   codesign --force --sign - --identifier app.sumidoku.desktop "$APP"
 fi
-if [[ ${SUMIDOKU_DISTRIBUTION_MODE:-developer-id} == community && ${SUMIDOKU_RELEASE_BUILD:-0} == 1 ]]; then
+if [[ ${SUMIDOKU_DISTRIBUTION_MODE:-developer-id} == community && ${SUMIDOKU_RELEASE_BUILD:-0} == 1 && ${SUMIDOKU_DEFER_COMMUNITY_SEAL:-0} != 1 ]]; then
   "$ROOT/macos/Distribution/build-trust-tool.sh"
   python3 "$ROOT/macos/Distribution/seal_bundle.py" "$APP" --sparkle "$SPARKLE" --trust-tool "$OUT/ReleaseTrustTool"
 fi

@@ -124,7 +124,7 @@ jobs:
         env:
           SIGNING_IDENTITY: ${{ inputs.distribution_mode == 'developer-id' && vars.DESKTOP_SIGNING_IDENTITY || '-' }}
           SUMIDOKU_DISTRIBUTION_MODE: ${{ inputs.distribution_mode }}
-          SUMIDOKU_SPARKLE_PRIVATE_KEY: ${{ secrets.DESKTOP_SPARKLE_PRIVATE_KEY }}
+          SUMIDOKU_DEFER_COMMUNITY_SEAL: '1'
           SUMIDOKU_RELEASE_TEAM: ${{ vars.DESKTOP_TEAM_ID }}
           SUMIDOKU_UPDATE_PUBLIC_KEY: ${{ vars.DESKTOP_ED25519_PUBLIC_KEY }}
           SUMIDOKU_UPDATE_FEED: ${{ vars.DESKTOP_FEED_URL }}
@@ -141,12 +141,21 @@ jobs:
           fi
           export SUMIDOKU_MARKETING_VERSION="${SUMIDOKU_RELEASE_VERSION%%[-+]*}"
           ./macos/build-fork.sh
+          ./macos/Distribution/build-trust-tool.sh
           python3 - <<'PY'
           import json,os
           from pathlib import Path
           app=json.loads(Path('dist/fork/native-build.json').read_text())['appPath']
           Path(os.environ['GITHUB_ENV']).open('a').write('DESKTOP_CANDIDATE_APP='+app+'\n')
           PY
+      - name: Seal community candidate with the protected publisher key
+        if: inputs.distribution_mode == 'community'
+        env:
+          SUMIDOKU_SPARKLE_PRIVATE_KEY: ${{ secrets.DESKTOP_SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SUMIDOKU_SPARKLE_PRIVATE_KEY"
+          python3 macos/Distribution/seal_bundle.py "$DESKTOP_CANDIDATE_APP" --sparkle /private/tmp/sumidoku-sparkle-2.10.1 --trust-tool dist/native/ReleaseTrustTool
       - name: Notarize and staple optional Developer ID candidate
         if: inputs.distribution_mode == 'developer-id'
         env:
@@ -165,7 +174,7 @@ jobs:
           SUMIDOKU_SPARKLE_PRIVATE_KEY: ${{ secrets.DESKTOP_SPARKLE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          args=()
+          set --
           if [[ -n "$PREVIOUS_CATALOG_URL" ]]; then
             python3 - <<'PY'
           import os
@@ -175,9 +184,9 @@ jobs:
           PY
             curl --fail --proto '=https' --max-redirs 0 --max-filesize 2000000 "$PREVIOUS_CATALOG_URL" -o "$RUNNER_TEMP/prior-catalog.json"
             curl --fail --proto '=https' --max-redirs 0 --max-filesize 256 "$PREVIOUS_CATALOG_URL.sig" -o "$RUNNER_TEMP/prior-catalog.json.sig"
-            args=(--previous-catalog "$RUNNER_TEMP/prior-catalog.json")
+            set -- --previous-catalog "$RUNNER_TEMP/prior-catalog.json"
           fi
-          ./macos/Distribution/prepare-release.sh "$DESKTOP_CANDIDATE_APP" "$RUNNER_TEMP/desktop-distribution" "${args[@]}"
+          python3 macos/Distribution/prepare_release.py "$DESKTOP_CANDIDATE_APP" "$RUNNER_TEMP/desktop-distribution" --sparkle /private/tmp/sumidoku-sparkle-2.10.1 --trust-tool dist/native/ReleaseTrustTool "$@"
       - name: Preserve unpublished signed distribution candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

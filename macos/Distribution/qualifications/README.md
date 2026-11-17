@@ -6,7 +6,8 @@ publisher key. Missing or mismatched evidence blocks publication without needing
 any Apple certificate.
 
 The exact-byte signed document must contain format `1`, status `passed`, the
-reviewed `sourceRevision`, SHA-256 of the final `desktop-releases.json` and
+reviewed `sourceRevision`, exact `version` and numeric `build`, `archiveSha256`,
+`inventorySha256` for SHA256SUMS, and SHA-256 of the final `desktop-releases.json` and
 `appcast.xml` as `catalogSha256` / `appcastSha256`, and successful `checks` for:
 `native-community-roundtrip`, `package-security`, `update-policy`, `packaging`,
 `frontend`, `required-ci`.

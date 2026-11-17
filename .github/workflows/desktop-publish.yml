@@ -4,7 +4,10 @@ on:
     inputs:
       candidate_run_id:
         description: Successful desktop candidate run with signed exact-artifact qualification
-        required: true
+        required: false
+      staged_tag:
+        description: CI-created draft containing locally signed artifacts (no CI signing secret needed)
+        required: false
 permissions:
   contents: write
   actions: read
@@ -19,7 +22,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - name: Select exactly one publication input
+        env:
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          STAGED_TAG: ${{ inputs.staged_tag }}
+        run: |
+          python3 - <<'PY'
+          import os
+          assert bool(os.environ['CANDIDATE_RUN_ID']) != bool(os.environ['STAGED_TAG'])
+          PY
       - name: Retrieve only a successful candidate from this repository
+        if: inputs.candidate_run_id != ''
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
@@ -38,6 +51,7 @@ jobs:
           subprocess.run(['gh','run','download',run,'--repo',repo,'--name',candidates[0]['name'],'--dir',os.environ['RUNNER_TEMP']+'/desktop-publish'],check=True)
           PY
       - name: Require reviewed exact-artifact qualification from the repository
+        if: inputs.candidate_run_id != ''
         run: |
           python3 - <<'PY'
           import json,os,re,shutil
@@ -49,6 +63,25 @@ jobs:
               source=Path('macos/Distribution/qualifications')/(tag+extension)
               assert source.is_file() and not source.is_symlink(), 'Qualification is incomplete; publication blocked'
               shutil.copyfile(source,root/('release-qualification'+extension))
+          PY
+      - name: Retrieve locally signed artifacts from an unpublished draft
+        if: inputs.staged_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGED_TAG: ${{ inputs.staged_tag }}
+        run: |
+          python3 - <<'PY'
+          import json,os,re,subprocess
+          from pathlib import Path
+          tag=os.environ['STAGED_TAG']
+          assert re.fullmatch(r'desktop-v\d+\.\d+\.\d+(?:-beta\.[1-9]\d*|\+community\.[1-9]\d*)?',tag)
+          repo='TTokomon/SumidokuApp'
+          value=json.loads(subprocess.check_output(['gh','release','view',tag,'--repo',repo,'--json','isDraft,tagName']))
+          assert value['isDraft'] and value['tagName']==tag
+          root=Path(os.environ['RUNNER_TEMP'])/'desktop-publish';root.mkdir()
+          names=['Sumidoku-Desktop-'+tag[len('desktop-v'): ]+'-macOS-arm64.zip','SHA256SUMS','appcast.xml','desktop-releases.json','desktop-releases.json.sig','RELEASE_NOTES.md','release-plan.json','release-qualification.json','release-qualification.json.sig']
+          for name in names:
+              subprocess.run(['gh','release','download',tag,'--repo',repo,'--pattern',name,'--dir',str(root)],check=True)
           PY
       - name: Verify publisher trust and release qualification, then publish
         env:

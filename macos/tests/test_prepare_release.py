@@ -72,6 +72,12 @@ class PrepareReleaseTests(unittest.TestCase):
             with patch.object(module.subprocess,'run') as command:
                 with self.assertRaises(ValueError):self.prepare(self.root/'catalog.json')
                 command.assert_not_called()
+    def test_private_signing_seed_is_not_inherited_by_verification_processes(self):
+        self.info['SumidokuDistributionMode']='community';self.info['SumidokuReleaseVersion']='1.3.0';self.write()
+        def verify(*args,**kwargs):
+            self.assertNotIn('SUMIDOKU_SPARKLE_PRIVATE_KEY',module.os.environ)
+        with patch.dict(module.os.environ,{'SUMIDOKU_SPARKLE_PRIVATE_KEY':'disposable-test-value'}),patch.object(module.subprocess,'run',side_effect=verify):
+            with self.assertRaisesRegex(ValueError,'provenance is not qualified'):self.prepare()
     def test_tag_versions_cannot_inject_paths_or_server_tags(self):
         for value in ['v1.3.0','desktop-v1.3.0','1.3.1-beta.0','1.3.1-beta.1/../../other','1.3.1-rc.1','1.3.0\n']:
             with self.assertRaises(ValueError):module.release_version(value)

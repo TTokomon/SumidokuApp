@@ -2,6 +2,10 @@
 # Explicit fork build: never writes the installed official executable.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+if [[ -n ${SUMIDOKU_SPARKLE_PRIVATE_KEY:-} && -z ${SUMIDOKU_E2E_ROOT:-} ]]; then
+  echo 'Keep production signing credentials out of build processes. Use Keychain or the separate publisher sealing step.' >&2
+  exit 2
+fi
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-${TMPDIR:-/tmp}/sumidoku-fork-target}
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
 npm --prefix "$ROOT/webui" run check
@@ -27,7 +31,12 @@ info={'variant':'fork','featureSet':'source-integrations-v1','upstreamVersion':'
 PY
 APP_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/sumidoku-fork-app.XXXXXX")
 export SUMIDOKU_APP_OUTPUT="$APP_STAGE/Sumidoku.app"
-SUMIDOKU_SERVER_VARIANT=fork SUMIDOKU_SERVER_BINARY="$ROOT/dist/fork/sumidoku-server" "$ROOT/macos/build-app.sh"
+if ! SUMIDOKU_SERVER_VARIANT=fork SUMIDOKU_SERVER_BINARY="$ROOT/dist/fork/sumidoku-server" "$ROOT/macos/build-app.sh"; then
+  echo 'Native client build failed; no successful build receipt was written.' >&2
+  exit 1
+fi
+test -x "$SUMIDOKU_APP_OUTPUT/Contents/MacOS/Sumidoku"
+codesign --verify --deep --strict "$SUMIDOKU_APP_OUTPUT"
 python3 - "$ROOT/dist/fork/native-build.json" "$SUMIDOKU_APP_OUTPUT" <<'PYAPP'
 from pathlib import Path
 import json,sys

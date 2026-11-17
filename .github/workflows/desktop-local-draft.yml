@@ -1,0 +1,37 @@
+name: Prepare desktop draft for local signing
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed source commit (40 hex characters)
+        required: true
+      version:
+        description: Qualified Stable or numbered Beta desktop version
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: desktop-publish
+  cancel-in-progress: false
+jobs:
+  prepare-draft:
+    runs-on: ubuntu-latest
+    environment: desktop-release
+    steps:
+      - name: Create an empty unpublished draft only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          DESKTOP_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os,re,subprocess
+          source=os.environ['SOURCE_SHA'];version=os.environ['DESKTOP_VERSION']
+          assert re.fullmatch('[a-f0-9]{40}',source)
+          assert re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-beta\.[1-9]\d*|\+community\.[1-9]\d*)?',version)
+          repo='TTokomon/SumidokuApp';tag='desktop-v'+version
+          subprocess.run(['gh','api',f'repos/{repo}/commits/{source}'],check=True,stdout=subprocess.DEVNULL)
+          existing=subprocess.run(['gh','release','view',tag,'--repo',repo],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+          assert existing.returncode != 0, 'Existing releases and drafts are preserved'
+          subprocess.run(['gh','release','create',tag,'--repo',repo,'--target',source,'--draft','--title','Sumidoku Desktop '+version,'--notes','Unpublished draft awaiting locally signed artifacts and complete exact-artifact qualification. No application is available for installation.']+(['--prerelease'] if '-beta.' in version else []),check=True)
+          PY

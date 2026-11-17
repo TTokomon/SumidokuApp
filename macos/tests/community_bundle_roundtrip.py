@@ -92,6 +92,7 @@ def main(root):
         route=f'/api/v1/chapter/{chapters[0]["id"]}';request(route,{'lastPageRead':1,'pageCount':3},'PATCH');original=reading()
         subprocess.run(['open','-n',str(application)],check=True)
         first=wait(lambda:status(entries[0]['version']),'Stable native window/login/install readiness')
+        (root/'session.json').rename(root/'test-fixture-account.private.json')
         (root/'command.txt').write_text('update');second=wait(lambda:status(entries[1]['version'],first['pid']),'Beta real helper relaunch')
         wait(lambda:journals_verified(1),'Verified Beta handoff journal');assert second['canRestore'];assert reading()==original
         assert digest(runtime)==entries[1]['serverSha256']
@@ -103,7 +104,7 @@ def main(root):
         assert all(digest(Path(p))==h for p,h in protected.items());assert 'backup_enabled = true' in (config/'config.toml').read_text()
         assert request('/api/v1/auth/login',session,'POST').get('username')==session['username'] or request('/api/v1/auth/status').get('username')==session['username']
         listeners=subprocess.check_output(['lsof','-nP',f'-tiTCP:{port}','-sTCP:LISTEN'],text=True).split();assert len(listeners)==1
-        receipt={'format':1,'status':'passed','kind':'community-disposable-native-roundtrip','stable':entries[0],'beta':entries[1],'preserved':['library','account login','advanced reading progress','local source','downloads','existing backup','backup schedule'],'nativePids':[first['pid'],second['pid'],third['pid']],'testTransport':'compiled local signed-byte fixture; live HTTPS and Gatekeeper first-run not certified','productionInstallationTouched':False}
+        receipt={'format':1,'status':'passed','kind':'community-disposable-native-roundtrip','stable':entries[0],'beta':entries[1],'preserved':['library','account login','advanced reading progress','local source','downloads','existing backup','backup schedule'],'nativePids':[first['pid'],second['pid'],third['pid']],'testTransport':'compiled local signed-byte fixture; live HTTPS and Gatekeeper first-run not certified','productionInstallationTouched':False,'relaunchAuthentication':'persisted WKWebView cookies; credential injection removed after first launch'}
         (root/'roundtrip-result.json').write_text(json.dumps(receipt,indent=2)+'\n');print('PASS: actual community Stable → Beta → Restore Stable, real native windows/helper/server, preserved advanced progress/account/downloads/backups; no production installation touched')
     finally:
         (root/'command.txt').write_text('quit');time.sleep(1)

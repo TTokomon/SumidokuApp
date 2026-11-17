@@ -8,12 +8,12 @@ import subprocess
 
 
 def seal(app, sparkle, tool):
+    secret=os.environ.pop('SUMIDOKU_SPARKLE_PRIVATE_KEY',None)
     info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
     if info.get('SumidokuDistributionMode')!='community':
         raise ValueError('Bundle sealing requires explicit community distribution mode')
     subprocess.run([str(tool),'seal',str(app)],check=True)
     manifest=app/'Contents/Resources/community-seal.json'
-    secret=os.environ.pop('SUMIDOKU_SPARKLE_PRIVATE_KEY',None)
     args=[str(sparkle/'bin/sign_update')]
     args+=['--ed-key-file','-'] if secret else ['--account',os.environ.get('SUMIDOKU_SPARKLE_KEY_ACCOUNT','app.sumidoku.desktop.community.release')]
     result=subprocess.run(args+['-p',str(manifest)],input=secret+'\n' if secret else None,capture_output=True,text=True)

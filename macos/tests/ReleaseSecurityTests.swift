@@ -151,7 +151,7 @@ struct ReleaseSecurityTests {
         try expect(recovery.count == 2,"both cold recovery snapshots retained")
         try expect(try recovery.allSatisfy { try JSONDecoder().decode(PairedJournal.self,from:Data(contentsOf:$0.appendingPathComponent("update-journal.json"))).phase == "verified" },"recoverable journals record verified pairs")
         let aliased = try Fixture();defer { aliased.cleanup() }
-        let aliasPath = aliased.root.path.replacingOccurrences(of:"/private/var/",with:"/var/").replacingOccurrences(of:"/private/tmp/",with:"/tmp/")
+        let aliasPath = aliased.root.path.hasPrefix("/private/") ? String(aliased.root.path.dropFirst(8)) : "/private"+aliased.root.path
         let unpacked = try ReleaseArchive.extract(aliased.root.appendingPathComponent("incoming/Beta/archive.zip"),entry:aliased.betaEntry,key:aliased.key.publicKey.rawRepresentation,to:URL(fileURLWithPath:aliasPath).appendingPathComponent("AliasExtracted"))
         try expect(FileManager.default.fileExists(atPath:unpacked.appendingPathComponent("Contents/Info.plist").path),"authenticated extraction accepts equivalent macOS root aliases without weakening containment")
         let failure = try Fixture();defer { failure.cleanup() }
