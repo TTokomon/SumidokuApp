@@ -70,8 +70,10 @@ Developer ID/notarization is optional, never a community release gate.
 
 1. Review and land only this focused bootstrap. The product PR remains draft.
 2. Test the registered workflow on the focused branch with `verify_only=true` and
-   `policy_test=true`. This exercises hashes/compiler/permission guards with a
-   read-only token. The publication job must be skipped. No release or draft is
+   `policy_test=true`. This exercises source-hash and permission guards with a
+   read-only token on Ubuntu. It has its own verification concurrency group so it
+   cannot block draft staging. Actual archive validation still compiles the verifier
+   on macOS (already exercised locally). The publication job must be skipped. No release or draft is
    created by that test. Local validation may additionally consume signed files
    directly through `validate.py --artifacts`; it only reads GitHub for CI/feed state.
 3. When draft staging is approved, run the main-owned `desktop-local-draft.yml` for
