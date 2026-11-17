@@ -6,6 +6,15 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**A successful build receipt requires a verified artifact, not just command status.**
+The system Bash treats an empty optional array differently under nounset from a
+newer shell. Keep required compiler flags in the array, test the system shell,
+and verify the native executable and strict bundle signature before writing a
+successful build receipt. Preserve a previous receipt if a new build fails.
+- Evidence: community candidate preparation caught a system-shell expansion
+  failure; a disposable false-success child fixture now verifies that a missing
+  native bundle cannot produce a success receipt.
+
 **Normalize filesystem aliases before deriving signed relative paths.**
 Foundation enumeration can spell the same temporary root through a different
 system alias. Verify parent containment and normalize the parent before removing
