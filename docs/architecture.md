@@ -2600,6 +2600,22 @@ its own.
 
 ## CI/CD (`.github/workflows`)
 
+Desktop publication has an isolated read-only verification stage and main-only
+write stage. The verifier sources and approved artifacts are pinned in main's
+`.github/desktop-release/policy.json`; PR/product code never runs with publication
+permissions. Local signing uses Keychain, not CI credential export. See the
+[trusted desktop publication contract](DESKTOP_PUBLICATION.md) for artifact,
+permission, hosting and first-Stable sequencing.
+Unpublished draft retrieval uses a temporary 20-minute manifest of asset-only
+GitHub download capabilities, not a repository write token in the verifier.
+The manifest and downloads are bounded and package-bound; the signed contents
+are authenticated independently and the main-only writer rechecks draft state.
+Publication never uploads application assets. The first feed is fully staged as
+a draft before the app visibility flip; original approved-job retries accept
+only exact public application assets and prior/new authenticated feed states.
+The same-run verified artifact is retained for 90 days for idempotent completion.
+
+
 - `ci.yml`: a paths-filter gates the legs — rust legs (clippy, nextest,
   compile on ubuntu + macOS) skip web-only changes; the web leg (tsc +
   build) skips rust-only ones. The docker leg always runs: it is the only
@@ -2608,6 +2624,10 @@ its own.
   aggregates every leg (skipped counts as filtered-out, failure fails it);
   branch protection pins `changes` and `ci` because a skipped matrix leg
   never reports its expanded `build (os)` name.
+  The macOS compile check keeps its name but uses `macos-26-intel` with
+  an explicit `aarch64-apple-darwin` target to preserve ARM64 coverage during
+  hosted ARM64 runner shortages. Desktop archive verification uses native
+  macOS 26 tools on that runner without executing the downloaded application.
 - `release.yml`: a push to `main` touching `Cargo.toml` reads the
   workspace version and skips when that release already exists
   (`workflow_dispatch` is the manual fallback). Builds cross-compile the
