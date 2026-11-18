@@ -99,9 +99,36 @@ class PublicationTests(unittest.TestCase):
         self.assertIn('inputs.verify_only == false',write)
         self.assertIn('environment: desktop-release',write)
         self.assertNotIn('TrustTool',write);self.assertNotIn('swiftc',write);self.assertNotIn('publish_release.py',write)
-        self.assertEqual(text.count('secrets.'),1)
+        self.assertEqual(before.count('secrets.'),1)
         self.assertIn('secrets.DESKTOP_DRAFT_TRANSPORT',text)
         self.assertNotIn('PRIVATE_KEY',text)
+    def test_release_credential_is_confined_to_final_protected_step(self):
+        text = (BASE.parent / 'workflows/desktop-publish.yml').read_text()
+        staging, release = text.split('      - name: Publish using main-owned code only after environment approval\n', 1)
+        self.assertNotIn('DESKTOP_RELEASE_TOKEN', staging)
+        self.assertNotIn('contents: write', text)
+        self.assertIn('GH_TOKEN: ${{ github.token }}', staging.split('  publish:\n', 1)[1])
+        self.assertEqual(release.count('secrets.DESKTOP_RELEASE_TOKEN'), 1)
+        self.assertNotIn('github.token', release)
+        self.assertNotIn('      - ', release)
+
+    def test_missing_release_credential_refuses_to_invoke_writer(self):
+        import subprocess
+        import textwrap
+
+        text = (BASE.parent / 'workflows/desktop-publish.yml').read_text()
+        step = text.split('      - name: Publish using main-owned code only after environment approval\n', 1)[1]
+        command = textwrap.dedent(step.split('        run: |\n', 1)[1])
+        for credential, status in [('', 1), ('fixture-only', 0)]:
+            with self.subTest(credential_present=bool(credential)):
+                result = subprocess.run(
+                    ['bash', '-e', '-c', 'python3() { echo writer-called; }\n' + command],
+                    env={'GH_TOKEN': credential, 'RUNNER_TEMP': '/fixture'},
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, status, result.stderr)
+                self.assertEqual('writer-called' in result.stdout, bool(credential))
+
     def test_offline_or_injected_validation_receipt_is_not_publishable(self):
         value={'format':1,'repository':common.REPO,'onlineChecks':False,'toolingCommit':common.policy()['toolingCommit']}
         with tempfile.TemporaryDirectory() as directory:

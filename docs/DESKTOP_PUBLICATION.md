@@ -20,8 +20,8 @@ main's policy are eligible. Updating a tooling or artifact pin requires review.
 
 A separate publication job is reachable only with `verify_only: false`, from
 `refs/heads/main`, after validation and protected `desktop-release` approval. That
-job has contents write but runs **main-owned code only**. It downloads the immutable
-verified artifact from the same workflow run, checks all hashes again and treats
+job runs **main-owned code only**. Its automatic token has contents and Actions read access. The job downloads the
+immutable verified artifact from the same workflow run, checks all hashes again and treats
 its contents as data. It never compiles or imports PR/product code, runs an app,
 extracts its app ZIP, or receives a signing key. Branch runs cannot execute this
 job. The draft-creation workflow is also restricted to main.
@@ -51,6 +51,25 @@ The macOS Rust CI compile gate uses the same runner with an explicit
 `aarch64-apple-darwin` target for the entire workspace and all targets. Runtime
 Stable/Beta/recovery evidence still comes from disposable native ARM64 installations.
 An unassigned or abandoned runner is an infrastructure failure, never a passed gate.
+
+## Protected release credential
+
+A release targeting a historical commit whose workflow files differ from the
+default branch needs **Contents: Read and write** and **Workflows: Read and write**.
+GitHub does not let the built-in Actions token acquire Workflows write access.
+Use a short-lived fine-grained PAT scoped only to `TTokomon/SumidokuApp` or a
+GitHub App installation token scoped to that repository with those two permissions.
+Use the shortest practical lifetime. No signing or personal data access is needed.
+
+Before setting a credential, restrict the existing `desktop-release` environment
+to the **main branch only** in its deployment branches and tags settings. Retain
+its required reviewers and use the normal approval process. Add the token as
+an **environment secret** named `DESKTOP_RELEASE_TOKEN` in that environment.
+The final writer step is the only step that receives it. Checkout, artifact
+download and validation use the automatic read-only token. Without the secret
+the writer stops before any release operation. Keep the secret out of repository
+secrets, inputs, logs and local files. Delete the environment secret and revoke
+the PAT (or let the short-lived installation token expire) when the run finishes.
 
 ## Unpublished draft transport without a write token
 
