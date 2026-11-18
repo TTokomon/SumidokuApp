@@ -6,6 +6,12 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Select the GitHub download media type by API endpoint.**
+Use GitHub's JSON media type for an Actions artifact ZIP request and follow its
+download redirect. Release asset binary requests still require octet-stream.
+- Evidence: the first protected desktop publish reached the verified artifact
+  download, where the Actions endpoint rejected octet-stream with HTTP 415.
+
 **Verify required notices in the downloadable archive.**
 A repository LICENSE and third-party notices do not establish that the packaged
 software carries its own MIT notice. Copy the original license before signing

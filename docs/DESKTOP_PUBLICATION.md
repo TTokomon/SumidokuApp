@@ -85,7 +85,9 @@ Published feeds/assets remain accessible directly with the read-only token.
 ## Recoverable publication and retry authority
 
 The writer uses the exact immutable artifact/receipt produced by this workflow's
-read-only validation job. The archive must also match main's pinned approved
+read-only validation job. Its Actions artifact ZIP request uses GitHub’s JSON
+media type and follows the download redirect. Release asset binary downloads
+use octet-stream. The archive must also match main's pinned approved
 hash and length. It accepts an already-public application only when the complete
 nine-file asset set, every digest/size, source, tag and release channel match that
 same receipt. Missing or altered public application files stop recovery without
