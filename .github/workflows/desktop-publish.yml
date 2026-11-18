@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: desktop-release
     permissions:
-      contents: write
+      contents: read
       actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -139,5 +139,10 @@ jobs:
           PY
       - name: Publish using main-owned code only after environment approval
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 .github/desktop-release/publish.py "$RUNNER_TEMP/desktop-publish" --execute
+          GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Set DESKTOP_RELEASE_TOKEN in the protected desktop-release environment."
+            exit 1
+          fi
+          python3 .github/desktop-release/publish.py "$RUNNER_TEMP/desktop-publish" --execute
