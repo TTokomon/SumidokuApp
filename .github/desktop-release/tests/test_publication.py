@@ -22,11 +22,11 @@ class PublicationTests(unittest.TestCase):
         entry=common.selected(VERSION)
         assets={n:{'url':'https://release-assets.githubusercontent.com/package/file?sig=read-only-fixture','size':4,'sha256':'a'*64} for n in common.filenames(VERSION)}
         assets['Sumidoku-Desktop-'+VERSION+'-macOS-arm64.zip'].update(size=entry['length'],sha256=entry['sha256'])
-        return {'format':1,'repository':common.REPO,'tag':'desktop-v'+VERSION,'sourceRevision':entry['sourceRevision'],'draft':True,'created':1000,'expires':2200,'assets':assets}
+        return {'format':1,'repository':common.REPO,'tag':'desktop-v'+VERSION,'sourceRevision':entry['sourceRevision'],'draft':True,'releaseId':123,'created':1000,'expires':2200,'assets':assets}
     def test_draft_capabilities_are_exact_short_lived_and_package_bound(self):
         value=self.transport()
         with patch.object(common.time,'time',return_value=1001):
-            self.assertEqual(common.draft_transport(json.dumps(value),VERSION,value['tag']),value['assets'])
+            self.assertEqual(common.draft_transport(json.dumps(value),VERSION,value['tag']),value)
             for field,replacement in [('draft',False),('sourceRevision','b'*40),('expires',9999),('assets',{})]:
                 changed=copy.deepcopy(value);changed[field]=replacement
                 with self.subTest(field=field),self.assertRaises(ValueError):common.draft_transport(json.dumps(changed),VERSION,value['tag'])
@@ -90,7 +90,7 @@ class PublicationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'main workflow'):common.require_main()
     def test_local_or_pr_execution_cannot_publish(self):
         with patch.dict(os.environ,{},clear=True),patch.object(writer,'write') as write:
-            with self.assertRaisesRegex(ValueError,'main workflow'):writer.publish(Path('.'))
+            with self.assertRaisesRegex(ValueError,'main workflow'):writer.publish(Path('.'),{})
             write.assert_not_called()
     def test_workflow_privileges_are_separate(self):
         text=(BASE.parent/'workflows/desktop-publish.yml').read_text();before,write=text.split('\n  publish:\n',1)
@@ -98,7 +98,7 @@ class PublicationTests(unittest.TestCase):
         self.assertIn("github.ref == 'refs/heads/main'",write)
         self.assertIn('inputs.verify_only == false',write)
         self.assertIn('environment: desktop-release',write)
-        self.assertNotIn('TrustTool',write);self.assertNotIn('swiftc',write);self.assertNotIn('publish_release.py',write)
+        self.assertIn('--prepare-tool',write);self.assertNotIn('publish_release.py',write)
         self.assertEqual(before.count('secrets.'),1)
         self.assertIn('secrets.DESKTOP_DRAFT_TRANSPORT',text)
         self.assertNotIn('PRIVATE_KEY',text)
@@ -186,9 +186,9 @@ fi
         value={'format':1,'repository':common.REPO,'onlineChecks':False,'toolingCommit':common.policy()['toolingCommit']}
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);p=root/'verified.json';p.write_text(json.dumps(value))
-            with self.assertRaisesRegex(ValueError,'Untrusted'):writer.descriptor(root)
+            with self.assertRaisesRegex(ValueError,'Untrusted'):writer.read_receipt(p)
             entry=common.selected(VERSION);value.update({'onlineChecks':True,'version':VERSION,'tag':'desktop-v'+VERSION,'sourceRevision':entry['sourceRevision'],'prerelease':False,'files':{'../outside':'a'*64},'priorFeed':None});p.write_text(json.dumps(value))
-            with self.assertRaisesRegex(ValueError,'Unexpected files'):writer.descriptor(root)
+            with self.assertRaisesRegex(ValueError,'Untrusted'):writer.read_receipt(p)
     def test_read_only_test_cannot_publish(self):
         text=(BASE.parent/'workflows/desktop-publish.yml').read_text()
         self.assertIn('default: true',text);self.assertIn('inputs.policy_test == false && inputs.verify_only == false',text)
@@ -207,12 +207,26 @@ fi
             (root/'injected.py').write_bytes(b'print("not executed")')
             with self.assertRaisesRegex(ValueError,'Unexpected'):common.file_set(root,VERSION)
     def test_only_matching_drafts_can_be_modified(self):
-        for value in [{'draft':False,'target_commitish':'a'*40,'tag_name':'desktop-v'+VERSION,'assets':[]},{'draft':True,'target_commitish':'wrong','tag_name':'desktop-v'+VERSION,'assets':[]}]:
-            with patch.object(common,'maybe_release',return_value=value):
-                with self.assertRaisesRegex(ValueError,'immutable'):writer.checked_release('desktop-v'+VERSION,'a'*40,{})
+        plan={'tag':'desktop-v'+VERSION,'sourceRevision':'a'*40,'files':{'expected':'b'*64},'sizes':{'expected':4},'prerelease':False,'releaseId':123}
+        release={'id':123,'draft':True,'prerelease':False,'target_commitish':'a'*40,'tag_name':plan['tag'],'assets':[]}
+        with patch.object(common,'maybe_release',return_value=release):
+            with self.assertRaisesRegex(ValueError,'complete'):writer.checked_release(plan)
+            release['target_commitish']='wrong'
+            with self.assertRaisesRegex(ValueError,'identity'):writer.checked_release(plan)
+
     def test_new_feed_may_not_appear_between_validation_and_write(self):
-        with patch.object(writer,'checked_release',return_value=None),patch.object(common,'maybe_release',return_value={'draft':False,'tag_name':'desktop-updates','target_commitish':'a'*40,'assets':[]}):
+        with patch.object(writer,'checked_release',return_value={'draft':True}),patch.object(common,'maybe_release',return_value={'draft':False,'tag_name':'desktop-updates','target_commitish':'a'*40,'assets':[]}):
             with self.assertRaisesRegex(ValueError,'changed'):writer.inspect_remote({'tag':'desktop-v'+VERSION,'sourceRevision':'a'*40,'files':{},'priorFeed':None})
+
+    def test_workflow_uploads_only_the_receipt(self):
+        text=(BASE.parent/'workflows/desktop-publish.yml').read_text()
+        before,protected=text.split('\n  publish:\n',1)
+        paths=[line.strip() for line in before.splitlines() if line.strip().startswith('path:')]
+        self.assertEqual(paths,['path: ${{ runner.temp }}/desktop-verified/verified.json'])
+        self.assertEqual(before.count('actions/upload-artifact@'),1)
+        self.assertNotIn('actions/upload-artifact@',protected)
+        self.assertIn('environment: desktop-release',protected)
+
     def test_beta_requires_public_stable(self):
         with patch.object(common,'maybe_release',return_value=None),patch.object(common,'selected',return_value={'channel':'beta'}):
             with self.assertRaisesRegex(ValueError,'Stable'):validate.prior_feed(None,'1.3.1-beta.1',None)

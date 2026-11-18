@@ -2647,8 +2647,10 @@ read-only. Local signing uses Keychain, not CI credential export. See the
 permission, hosting and first-Stable sequencing.
 Unpublished draft retrieval uses a temporary 20-minute manifest of asset-only
 GitHub download capabilities, not a repository write token in the verifier.
-The manifest and downloads are bounded and package-bound; the signed contents
-are authenticated independently and the main-only writer rechecks draft state.
+The manifest and downloads are bounded and package-bound. The validator uploads
+only a same-run receipt. The protected writer supplies the scoped credential to
+re-fetch and reauthenticate the exact draft bytes after approval. It verifies the
+signed notes as the release body before switching visibility.
 The packager and read-only verifier check the exact Sumidoku and Sparkle
 licenses in the downloadable ZIP before it can be published.
 Publication never uploads application assets. The first feed is fully staged as

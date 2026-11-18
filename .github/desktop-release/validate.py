@@ -38,14 +38,15 @@ def retrieve(root,version,tag,run):
         if tag!='desktop-v'+version:raise ValueError('Draft tag/version mismatch')
         transport=os.environ.get('SUMIDOKU_DRAFT_TRANSPORT','')
         if transport:
-            assets=common.draft_transport(transport,version,tag)
-            for name,asset in assets.items():common.download_capability(asset,root/name)
-            return
+            manifest=common.draft_transport(transport,version,tag)
+            for name,asset in manifest['assets'].items():common.download_capability(asset,root/name)
+            return manifest['releaseId']
         release=common.maybe_release(tag)
         if release is None or not release['draft'] or release['target_commitish']!=common.selected(version)['sourceRevision']:raise ValueError('Expected the matching unpublished draft')
         assets={a['name']:a for a in release['assets']}
         if len(assets)!=len(release['assets']) or set(assets)!=set(common.filenames(version)):raise ValueError('Unexpected or missing draft assets')
         for name,limit in common.filenames(version).items():common.download_asset(assets[name],root/name,limit)
+        return release['id']
     else:
         if not re.fullmatch('[1-9][0-9]*',run):raise ValueError('Invalid candidate run')
         value=common.gh_json('api',f'repos/{common.REPO}/actions/runs/{run}')
@@ -89,20 +90,35 @@ def prior_feed(tool,version,work):
     assets={a['name']:a for a in feed['assets']};names=['desktop-releases.json','desktop-releases.json.sig','appcast.xml']
     if any(n not in assets for n in names):raise ValueError('Published feed is incomplete')
     for name in names:common.download_asset(assets[name],work/name,common.META[name])
-    subprocess.run([str(tool),'catalog',str(work/'desktop-releases.json'),str(work/'desktop-releases.json.sig'),common.policy()['publicKey']],check=True)
+    verifier_env={key:value for key,value in os.environ.items() if key not in {'GH_TOKEN','GITHUB_TOKEN'}}
+    subprocess.run([str(tool),'catalog',str(work/'desktop-releases.json'),str(work/'desktop-releases.json.sig'),common.policy()['publicKey']],check=True,env=verifier_env)
     return {name:common.sha(work/name) for name in names}
 
 
+def prepare_tool(repo,work):
+    work.mkdir(mode=0o700)
+    source=materialize(repo,work/'reviewed-source')
+    tool=work/'TrustTool'
+    build_tool(source,tool)
+    return source,tool
+
+
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--repo',type=Path,required=True);p.add_argument('--version',required=True);p.add_argument('--artifacts',type=Path);p.add_argument('--staged-tag',default='');p.add_argument('--candidate-run-id',default='');p.add_argument('--output',type=Path);p.add_argument('--offline',action='store_true');p.add_argument('--check-policy',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--repo',type=Path,required=True);p.add_argument('--version');p.add_argument('--artifacts',type=Path);p.add_argument('--staged-tag',default='');p.add_argument('--candidate-run-id',default='');p.add_argument('--output',type=Path);p.add_argument('--offline',action='store_true');p.add_argument('--check-policy',action='store_true');p.add_argument('--prepare-tool',type=Path);a=p.parse_args()
+    if a.prepare_tool is not None:
+        prepare_tool(a.repo,a.prepare_tool)
+        return
+    if not a.version:p.error('--version is required for validation')
     common.selected(a.version)
     with tempfile.TemporaryDirectory(prefix='desktop-readonly-validation-') as temporary:
-        work=Path(temporary);source=materialize(a.repo,work/'reviewed-source');tool=work/'TrustTool';build_tool(source,tool)
+        work=Path(temporary);source,tool=prepare_tool(a.repo,work/'tool')
         if a.check_policy:
             print('PASS: reviewed tooling hashes and verifier compilation; no artifact or write permission used');return
         if a.output is None:raise ValueError('An output directory is required')
-        root=a.artifacts
-        if root is None:root=work/'input';root.mkdir();retrieve(root,a.version,a.staged_tag,a.candidate_run_id)
+        root=a.artifacts;release_id=None
+        if root is None:
+            root=work/'input';root.mkdir()
+            release_id=retrieve(root,a.version,a.staged_tag,a.candidate_run_id)
         plan,entry,hashes=verify(root,a.version,source,tool)
         if a.offline:
             prior=None
@@ -120,9 +136,13 @@ def main():
                 old=json.loads((work/'prior/desktop-releases.json').read_text())['releases'];new=json.loads((root/'desktop-releases.json').read_text())['releases']
                 if any(item not in new for item in old) or (entry['channel']=='beta' and not any(item['channel']=='stable' for item in old)):raise ValueError('Published Stable/release entries must be preserved')
         a.output.mkdir(mode=0o700)
-        import shutil
-        for name in hashes:shutil.copyfile(root/name,a.output/name)
-        descriptor={'format':1,'repository':common.REPO,'version':a.version,'tag':plan['tag'],'sourceRevision':entry['sourceRevision'],'prerelease':entry['channel']=='beta','files':hashes,'priorFeed':prior,'onlineChecks':not a.offline,'toolingCommit':common.policy()['toolingCommit']}
-        (a.output/'verified.json').write_text(json.dumps(descriptor,sort_keys=True)+'\n')
+        descriptor={
+            'format':2,'repository':common.REPO,'version':a.version,'tag':plan['tag'],
+            'sourceRevision':entry['sourceRevision'],'prerelease':entry['channel']=='beta',
+            'releaseId':release_id,'files':hashes,'sizes':{name:(root/name).stat().st_size for name in hashes},
+            'priorFeed':prior,'onlineChecks':not a.offline,'policySha256':common.policy_digest(),
+            'toolingCommit':common.policy()['toolingCommit'],'run':common.run_identity(),
+        }
+        (a.output/common.RECEIPT_NAME).write_text(json.dumps(descriptor,sort_keys=True)+'\n')
         print('PASS: authenticated reviewed release; no publication permission or signing key used')
 if __name__=='__main__':main()
