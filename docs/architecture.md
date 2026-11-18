@@ -2640,7 +2640,8 @@ Desktop publication has an isolated read-only verification stage and main-only
 write stage. The verifier sources and approved artifacts are pinned in main's
 `.github/desktop-release/policy.json`; PR/product code never runs with publication
 permissions. GitHub release writes use a short-lived repository credential only
-in the final step of the protected main deployment. The automatic token remains
+in the final write step of a protected main deployment for draft creation or
+publication. The automatic token remains
 read-only. Local signing uses Keychain, not CI credential export. See the
 [trusted desktop publication contract](DESKTOP_PUBLICATION.md) for artifact,
 permission, hosting and first-Stable sequencing.

@@ -7,9 +7,9 @@ certificate nor notarization is a release blocker for `community` mode.
 
 ## First installation
 
-Use only the desktop ZIP attached to a verified release in
-[TTokomon/SumidokuApp](https://github.com/TTokomon/SumidokuApp/releases), and check
-its SHA256SUMS. Extract Sumidoku.app and drag it into Applications. The native app
+Download the Apple silicon ZIP and `SHA256SUMS` from the public
+[Stable 1.3.0+community.1 (build 9)](https://github.com/TTokomon/SumidokuApp/releases/tag/desktop-v1.3.0%2Bcommunity.1)
+release and verify the ZIP against the inventory. Extract Sumidoku.app and drag it into Applications. The native app
 contains the matching server; it keeps an existing managed library and service.
 Do not overwrite an existing installation until its backup and compatibility have
 been reviewed. The original 1.3.0 (6) cannot perform this bootstrap itself.
@@ -57,8 +57,9 @@ The existing installed **1.3.0 (6)** remains untouched and is not republished wi
 invented provenance. Its recorded backend revision is `9fd09f5`, schema 37. Its
 recorded source-tree digest does not equal that commit's tracked tree.
 
-The updater bootstrap is distinctly named **1.3.0+community.1**, with its own build
-number. `macos/Distribution/assemble-stable-bootstrap.py` overlays only updater
+The public updater bootstrap is **1.3.0+community.1 (build 9)**.
+The authenticated [desktop update feeds](https://github.com/TTokomon/SumidokuApp/releases/tag/desktop-updates)
+reference this exact Stable archive. `macos/Distribution/assemble-stable-bootstrap.py` overlays only updater
 support on a clean, separate worktree at the audited Stable revision. The Stable
 DesktopShell, web interface, logo and existing preferences remain at that base.
 The assembly receipt records both the base and updater overlay. Current Beta UI
@@ -152,23 +153,15 @@ archive/helper/relaunch path, and stale pending-handoff UI after the helper reco
 `verified`. Restore Stable becomes available without reopening the application.
 Native policy checks passed 48 assertions, archive/recovery checks 52, actual
 native bundle seal checks 11, and Python packaging/publication/build guards 52 tests.
-Frontend/Rust sources did not change in this work; reuse passing evidence for those
-unchanged inputs instead of repeatedly rebuilding them. The preceding CI run's
-Rust tests, Clippy and web checks passed; its macOS build was cancelled because no
-hosted runner could acquire the job. A new reviewed-head CI result remains required.
+The build 10 qualification below records the fresh suite results and the reviewed
+application CI. The original packaging and rollback evidence remains tied to the
+exact app and server payloads tested.
 
 Production public-key configuration is recorded in
-`macos/Distribution/community-release-public-key.txt`. The production private key
-was created in the dedicated local Keychain account. Public GitHub variables and
-maintainer approval environments are configured; the private key has **not** been
-exported to GitHub Actions. CI signing needs explicit approval for that credential
-transfer, or continued local signing. No desktop tag or public release was created.
-The exact local Stable bootstrap provenance is pinned in `stable-baselines.json`.
-Overall release qualification still requires reviewed-head CI and approval; fixture
-success alone does not publish a release. The staged Beta is a clean exact-source
-app/backend pair from `6f92874`; the distinct Stable baseline uses the audited base
-with its sealed updater-only overlay. Later changes affect tooling/tests, not these
-staged production app inputs.
+`macos/Distribution/community-release-public-key.txt`. The private signing key
+remains in the dedicated local Keychain account. The published Stable baseline
+uses the audited base with its sealed updater-only overlay. Build 10 uses the
+clean app and backend pair from `6f92874`.
 
 ## Default free publication route: keep the private key on the Mac
 
@@ -184,10 +177,12 @@ Create and sign its exact qualification document as described in
 signed artifacts to the matching CI-created draft. This command refuses published
 releases and wrong-source drafts; it never creates a tag or publishes a release.
 
-Run `desktop-publish.yml` with `staged_tag` to authenticate and publish that draft
-under the protected `desktop-release` environment. Alternatively, the workflow can
-consume `candidate_run_id` from the optional CI-signing route. Exactly one input is
-required. Publication requires an Ed25519-signed qualification binding the precise
+With the matching `staged_tag`, run `desktop-publish.yml` with `verify_only=true`
+and `policy_test=false` to authenticate the unpublished draft. The publication
+job is skipped. Only a separate approved run from `main` with `verify_only=false`
+can publish, following `desktop-release` environment approval. Alternatively,
+the workflow can consume `candidate_run_id` from the optional CI-signing route.
+Supply exactly one artifact input. Publication requires an Ed25519-signed qualification binding the precise
 version, build, archive, catalog, appcast and checksum inventory. The archive is
 re-authenticated and safely extracted for production policy verification. Prior
 published entries are preserved; Beta cannot publish before an authenticated
@@ -200,7 +195,55 @@ inherit a CI seed, and `sign_update` receives it only through stdin. Both commun
 and publication environments require maintainer approval. No production private
 key has been exported in this verification.
 
-The new manual workflows remain proposed in the draft PR until workflow registration
-is available on the default branch. Do not bypass that availability requirement by
-creating tags/releases manually. Do not merge the draft PR to enable them without
-approval. For now, inspect the fully signed local candidates and their evidence.
+The manual workflows are registered on `main`. Protected draft creation at a
+historical source requires the short-lived release credential described in the
+[desktop publication runbook](DESKTOP_PUBLICATION.md). Create desktop drafts
+through the protected workflow.
+
+## Build 10 qualification against the public Stable baseline
+
+The corrected `1.3.1-beta.1` archive retains the production app and server code
+from `6f92874` and both original source receipts. The publisher seal and ad-hoc
+signature envelope were refreshed to include the original Sumidoku MIT license.
+Sparkle's notice and every other unsigned payload were preserved. The local
+Keychain signed the archive, appcast, catalog and exact qualification.
+
+- Beta ZIP SHA-256: `072298f4c8bce6fb136d7e303e1a48259561887df4c10106163b9e4a41290aa6`.
+- Public Stable ZIP SHA-256: `d445eaa7e72f355cedfa0cb6924d4b80f3cec379860ba62e250a33acd7b77340`.
+- The public Stable assets and all three update feed files matched the approved
+  bytes over HTTPS. Stable's signed build 9 entry is unchanged in the Beta catalog.
+- [Exact signed qualification](../macos/Distribution/qualifications/desktop-v1.3.1-beta.1.json)
+  binds the new archive, catalog, appcast and checksum inventory.
+
+### Fresh qualification results
+
+| Check | Result |
+| --- | --- |
+| Rust workspace | 1,278 passed, 2 skipped across 78 binaries. Includes backup export/restore, source lists, auth, downloads and library progress. Clippy and compilation passed. |
+| Formatting | `git diff --check` passed. `cargo fmt --all --check` reported formatting differences in 219 unchanged Rust files. No Rust source was edited in this PR. |
+| Frontend | 380 passed. TypeScript and production web build passed. |
+| Python | 52 macOS tests and 37 publication tests passed. |
+| Swift and native | 12 navigation cases, 48 update/material assertions, 52 release-security/recovery assertions, 9 source-bootstrap assertions, 32 isolated onboarding assertions, and 11 production bundle-seal checks passed. All 11 native destinations resolved, with 13 unique current and 13 unique fallback symbols. Welcome view rendering passed. |
+| Disposable WKWebView | Passed 11 destinations, 9 legacy routes, both footer controls, Settings persistence, library organization and Aidoku recovery. Tracker UI used a local fixture. A follow-up native run captured and verified both light and dark sidebar appearances. |
+| Actual native fixture round trip | Stable build 9 → Beta build 10 → Restore Stable build 9 passed with the exact release server binaries. Preserved persisted WKWebView login, current library and advanced progress, local source, external subscription and source settings, existing download and backup, and backup schedule. No extra download jobs were created. |
+| Exact production package | Swift archive verification, Ed25519 archive/catalog/qualification verification, signed appcast, SHA256SUMS, both license notices, strict ad-hoc signature and publisher inventory passed. |
+
+The first fresh round trip timed out at the harness's 100-second handoff deadline
+and recovered to the prior Stable app. A reset disposable run with a 300-second
+deadline verified both transitions. Fixture transport uses real signed ZIPs and
+does not claim live download of the unpublished Beta or Gatekeeper first-launch
+certification. The final production bundle was verified separately and was never
+installed. The nonce-scoped fixture service was removed after testing.
+
+The native sidebar harness now reads actual candidate bundle metadata and uses a
+temporary localhost port, checking that the disposable child owns the listener
+before making requests. The round trip checks source-list persistence
+and rejects any download rows beyond the known completed fixture. The runtime
+source and prior reviewed application CI remain unchanged.
+
+The protected draft workflow on `main` rejected historical-source draft creation
+with HTTP 403 in [run 44254832530](https://github.com/TTokomon/SumidokuApp/actions/runs/44254832530).
+The reviewed path uses the short-lived `DESKTOP_RELEASE_TOKEN` in the single
+protected draft-creation step and pins both version and source to main's policy.
+GitHub staging and remote read-only validation follow review and merge of those
+changes. No manual release creation substitutes for the protected workflow.

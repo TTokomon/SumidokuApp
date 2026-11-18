@@ -15,6 +15,13 @@ to main before adding the secret.
 - Evidence: run 44246231609 authenticated and downloaded the Stable artifact but
   received HTTP 403 when creating the feed draft at the historical source.
 
+**Apply the historical-source permission rule to draft staging as well.**
+Creating an unpublished release at a historical source is still a GitHub
+release write. Use the protected release credential only in the draft creation
+step, check the version and source against main's approved policy, and refuse
+existing releases or tags. GitHub ignores the target commit when the tag exists.
+- Evidence: draft-only run 44254832530 received HTTP 403 with the automatic token.
+
 **Select the GitHub download media type by API endpoint.**
 Use GitHub's JSON media type for an Actions artifact ZIP request and follow its
 download redirect. Release asset binary requests still require octet-stream.

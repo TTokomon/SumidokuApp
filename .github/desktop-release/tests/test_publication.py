@@ -112,6 +112,59 @@ class PublicationTests(unittest.TestCase):
         self.assertNotIn('github.token', release)
         self.assertNotIn('      - ', release)
 
+    def test_draft_creation_requires_protected_credential_and_exact_policy_source(self):
+        import subprocess
+        import textwrap
+
+        workflow = BASE.parent / 'workflows/desktop-local-draft.yml'
+        workflow_text = workflow.read_text()
+        self.assertIn("github.ref == 'refs/heads/main'", workflow_text)
+        self.assertIn('environment: desktop-release', workflow_text)
+        self.assertNotIn('contents: write', workflow_text)
+        before, step = workflow_text.split('      - name: Create an empty unpublished draft only\n', 1)
+        self.assertNotIn('secrets.', before)
+        self.assertIn('persist-credentials: false', before)
+        self.assertEqual(step.count('secrets.DESKTOP_RELEASE_TOKEN'), 1)
+        command = textwrap.dedent(step.split('        run: |\n', 1)[1])
+        stub = r"""#!/bin/bash
+if [ "$1 $2" = 'release create' ]; then printf '%s\n' "$@"; exit; fi
+if [ "$2" = 'repos/TTokomon/SumidokuApp/releases' ]; then
+    if [ "$FAKE_LIST" = 'denied' ]; then exit 1; fi
+    printf '%s\n' "$FAKE_LIST"
+fi
+if [[ "$2" == repos/TTokomon/SumidokuApp/git/matching-refs/tags/* ]]; then
+    printf '%s\n' "$FAKE_REF"
+fi
+"""
+        source = common.selected(VERSION)['sourceRevision']
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / 'gh'
+            executable.write_text(stub)
+            executable.chmod(0o700)
+            for token, revision, listed, ref, succeeds in [
+                ('', source, '', '', False),
+                ('test-only', '0' * 40, '', '', False),
+                ('test-only', source, 'denied', '', False),
+                ('test-only', source, 'desktop-v' + VERSION, '', False),
+                ('test-only', source, '', 'refs/tags/desktop-v' + VERSION, False),
+                ('test-only', source, '', '', True),
+            ]:
+                with self.subTest(credential=bool(token), source_pinned=revision == source, listed=listed, ref=ref):
+                    result = subprocess.run(
+                        ['bash', '-e', '-c', command], cwd=BASE.parent.parent,
+                        env={**os.environ, 'PATH': directory + os.pathsep + os.environ['PATH'],
+                             'GH_TOKEN': token, 'SOURCE_SHA': revision, 'DESKTOP_VERSION': VERSION,
+                             'FAKE_LIST': listed, 'FAKE_REF': ref},
+                        capture_output=True, text=True,
+                    )
+                    self.assertEqual(result.returncode == 0, succeeds, result.stderr)
+                    args = result.stdout.splitlines()
+                    self.assertEqual(bool(args), succeeds)
+                    if succeeds:
+                        self.assertIn('--draft', args)
+                        self.assertNotIn('--draft=false', args)
+                        self.assertEqual(args[args.index('--target') + 1], source)
+
     def test_missing_release_credential_refuses_to_invoke_writer(self):
         import subprocess
         import textwrap
