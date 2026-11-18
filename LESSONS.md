@@ -6,6 +6,13 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Verify required notices in the downloadable archive.**
+A repository LICENSE and third-party notices do not establish that the packaged
+software carries its own MIT notice. Copy the original license before signing
+and reject an archive unless its bundle contains the full, exact notice.
+- Evidence: Stable build 9 was correctly signed and staged, but its ZIP included
+  only the Sparkle license. The missing Sumidoku notice blocked publication.
+
 **Keep signing authority separate from compilation and publication.**
 A local signing key does not imply permission to export it to CI. Support local
 Keychain signing and let CI authenticate the resulting public artifacts. If CI
