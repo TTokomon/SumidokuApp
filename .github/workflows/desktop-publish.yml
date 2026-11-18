@@ -93,7 +93,8 @@ jobs:
         with:
           name: desktop-verified
           path: ${{ runner.temp }}/desktop-verified/
-          retention-days: 7
+          # Preserve the exact authenticated receipt for approved-job recovery.
+          retention-days: 90
   publish:
     if: inputs.policy_test == false && inputs.verify_only == false && github.ref == 'refs/heads/main'
     needs: validate

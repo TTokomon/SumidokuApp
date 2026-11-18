@@ -9,6 +9,8 @@ from pathlib import Path
 import subprocess
 import common
 
+FEED_FILES=('appcast.xml','desktop-releases.json','desktop-releases.json.sig')
+
 
 def descriptor(root):
     value=json.loads((root/'verified.json').read_text())
@@ -23,48 +25,99 @@ def descriptor(root):
     for name,limit in common.filenames(value['version']).items():
         p=root/name
         if not p.is_file() or p.is_symlink() or not 0<p.stat().st_size<=limit or common.sha(p)!=value['files'].get(name):raise ValueError('Verified artifact changed in transport')
+    archive='Sumidoku-Desktop-'+value['version']+'-macOS-arm64.zip'
+    if value['files'][archive]!=entry['sha256'] or (root/archive).stat().st_size!=entry['length']:raise ValueError('Archive is not the reviewed approved release')
     return value
 
 
-def checked_release(tag,source,expected_names):
+def assets(release):
+    items={a['name']:a for a in release['assets']}
+    if len(items)!=len(release['assets']):raise ValueError('Duplicate remote assets')
+    return items
+
+
+def matches(asset,digest,size=None):
+    return asset.get('digest')=='sha256:'+digest and (size is None or asset.get('size')==size)
+
+
+def checked_release(tag,source,expected_names,root=None):
     release=common.maybe_release(tag)
-    if release and (not release['draft'] or release['target_commitish']!=source or release['tag_name']!=tag):raise ValueError('Published release or wrong-source draft is immutable')
-    if release and any(a['name'] not in expected_names for a in release['assets']):raise ValueError('Draft contains unexpected assets')
+    if release:
+        if release['target_commitish']!=source or release['tag_name']!=tag:raise ValueError('Wrong-source release is immutable')
+        remote=assets(release)
+        if set(remote)-set(expected_names):raise ValueError('Release contains unexpected assets')
+        if root is None:
+            if not release['draft']:raise ValueError('Published release is immutable without exact artifact verification')
+        else:
+            if any(not matches(a,expected_names[n],(root/n).stat().st_size) for n,a in remote.items()):raise ValueError('Release asset digest or size changed; immutable')
+            if not release['draft'] and set(remote)!=set(expected_names):raise ValueError('Published release is incomplete and immutable')
     return release
 
 
-def inspect_remote(plan):
-    release=checked_release(plan['tag'],plan['sourceRevision'],plan['files'])
+def inspect_remote(plan,root=None):
+    release=checked_release(plan['tag'],plan['sourceRevision'],plan['files'],root)
+    if release is not None and root is not None and release.get('prerelease') is not plan['prerelease']:raise ValueError('Release channel differs from the verified transaction')
     feed=common.maybe_release('desktop-updates');prior=plan['priorFeed']
-    if bool(feed)!=bool(prior):raise ValueError('Published feed changed since validation')
+    recovering=root is not None and release is not None and not release['draft']
+    if prior and not feed:raise ValueError('Published feed disappeared since validation')
     if feed:
-        if feed['draft']:raise ValueError('Existing feed is not public')
-        assets={a['name']:a for a in feed['assets']}
-        for name,digest in prior.items():
-            if name not in assets or assets[name].get('digest')!='sha256:'+digest:raise ValueError('Published feed digest changed or unavailable')
+        if feed['tag_name']!='desktop-updates':raise ValueError('Unexpected feed identity')
+        remote=assets(feed)
+        if set(remote)-set(FEED_FILES):raise ValueError('Unexpected feed assets')
+        if prior:
+            if feed['draft']:raise ValueError('Existing public feed became a draft')
+            for name in FEED_FILES:
+                item=remote.get(name)
+                if item is None:
+                    if not recovering:raise ValueError('Published feed is incomplete')
+                elif not matches(item,prior[name]):
+                    if not recovering or not matches(item,plan['files'][name],(root/name).stat().st_size):raise ValueError('Published feed changed outside this transaction')
+        else:
+            # Only the first feed's same-source draft may be staged in advance.
+            # A public feed is accepted only to finish the identical public app.
+            if feed['target_commitish']!=plan['sourceRevision'] or (not feed['draft'] and not recovering):raise ValueError('Published feed changed since validation')
+            if root is None or any(not matches(item,plan['files'][name],(root/name).stat().st_size) for name,item in remote.items()):raise ValueError('Feed contains unauthenticated transaction bytes')
     if plan['prerelease'] and not prior:raise ValueError('Public Stable must precede Beta')
     return release,feed
 
 
 def write(*args):subprocess.run(['gh',*args],check=True)
 
+
+def complete_feed(root,plan):
+    _,feed=inspect_remote(plan,root)
+    for name in FEED_FILES:
+        # Recheck all state before each write, including an interrupted clobber.
+        # Only prior authenticated or exact new feed bytes are accepted.
+        _,feed=inspect_remote(plan,root);item=assets(feed).get(name)
+        if item and matches(item,plan['files'][name],(root/name).stat().st_size):continue
+        write('release','upload','desktop-updates',str(root/name),'--repo',common.REPO,*(['--clobber'] if item else []))
+        _,feed=inspect_remote(plan,root);item=assets(feed).get(name)
+        if item is None or not matches(item,plan['files'][name],(root/name).stat().st_size):raise ValueError('Feed upload digest or size mismatch')
+    return feed
+
+
 def publish(root):
     common.require_main()
-    plan=descriptor(root);release,feed=inspect_remote(plan);tag=plan['tag']
-    if release is None:
-        write('release','create',tag,'--repo',common.REPO,'--target',plan['sourceRevision'],'--draft','--title','Sumidoku Desktop '+plan['version'],'--notes-file',str(root/'RELEASE_NOTES.md'),*(['--prerelease'] if plan['prerelease'] else []))
-    # Upload only the exact bytes validated in the read-only job, then verify the
-    # GitHub asset digests before making the draft public.
-    write('release','upload',tag,*[str(root/name) for name in plan['files']],'--repo',common.REPO,'--clobber')
-    uploaded=checked_release(tag,plan['sourceRevision'],plan['files'])
-    assets={a['name']:a for a in uploaded['assets']}
-    if set(assets)!=set(plan['files']) or any(assets[n].get('digest')!='sha256:'+digest or assets[n]['size']!=(root/n).stat().st_size for n,digest in plan['files'].items()):raise ValueError('Staged GitHub bytes do not match verified files; draft remains unpublished')
-    # An operator may have changed the feed while the draft uploaded. Recheck.
-    inspect_remote(plan)
-    write('release','edit',tag,'--repo',common.REPO,'--draft=false','--prerelease='+str(plan['prerelease']).lower(),'--latest=false' if plan['prerelease'] else '--latest=true')
+    plan=descriptor(root);release,feed=inspect_remote(plan,root);tag=plan['tag']
+    # Draft creation/local staging is a separate reviewed operation. This writer
+    # never uploads application assets, even to a draft: a visibility race cannot
+    # make an archive upload touch a public release.
+    if release is None or set(assets(release))!=set(plan['files']):raise ValueError('Stage the complete matching application draft before publication')
     if feed is None:
-        write('release','create','desktop-updates','--repo',common.REPO,'--target',plan['sourceRevision'],'--title','Desktop signed update feeds','--notes','Publisher-authenticated desktop appcasts and catalogs.','--latest=false')
-    write('release','upload','desktop-updates',*[str(root/n) for n in ['appcast.xml','desktop-releases.json','desktop-releases.json.sig']],'--repo',common.REPO,'--clobber')
+        write('release','create','desktop-updates','--repo',common.REPO,'--target',plan['sourceRevision'],'--draft','--title','Desktop signed update feeds','--notes','Publisher-authenticated desktop appcasts and catalogs.','--latest=false')
+        _,feed=inspect_remote(plan,root)
+    # Fully stage the first feed privately before the app visibility flip.
+    if feed['draft']:complete_feed(root,plan)
+    release,_=inspect_remote(plan,root)
+    if release['draft']:
+        write('release','edit',tag,'--repo',common.REPO,'--draft=false','--prerelease='+str(plan['prerelease']).lower(),'--latest=false' if plan['prerelease'] else '--latest=true')
+    release,_=inspect_remote(plan,root)
+    if release['draft']:raise ValueError('Application visibility change did not complete')
+    feed=complete_feed(root,plan)
+    if feed['draft']:write('release','edit','desktop-updates','--repo',common.REPO,'--draft=false','--latest=false')
+    _,feed=inspect_remote(plan,root)
+    if feed['draft'] or any(not matches(assets(feed).get(n,{}),plan['files'][n],(root/n).stat().st_size) for n in FEED_FILES):raise ValueError('Publication remains incomplete; rerun the approved write job')
 
 
 def main():
@@ -72,6 +125,6 @@ def main():
     if a.execute:publish(a.artifacts)
     else:
         value=descriptor(a.artifacts)
-        if a.inspect_remote:inspect_remote(value)
+        if a.inspect_remote:inspect_remote(value,a.artifacts)
         print('PASS: publication preflight; no write performed')
 if __name__=='__main__':main()

@@ -131,7 +131,7 @@ class PublicationTests(unittest.TestCase):
             with patch.object(common,'maybe_release',return_value=value):
                 with self.assertRaisesRegex(ValueError,'immutable'):writer.checked_release('desktop-v'+VERSION,'a'*40,{})
     def test_new_feed_may_not_appear_between_validation_and_write(self):
-        with patch.object(writer,'checked_release',return_value=None),patch.object(common,'maybe_release',return_value={'draft':False}):
+        with patch.object(writer,'checked_release',return_value=None),patch.object(common,'maybe_release',return_value={'draft':False,'tag_name':'desktop-updates','target_commitish':'a'*40,'assets':[]}):
             with self.assertRaisesRegex(ValueError,'changed'):writer.inspect_remote({'tag':'desktop-v'+VERSION,'sourceRevision':'a'*40,'files':{},'priorFeed':None})
     def test_beta_requires_public_stable(self):
         with patch.object(common,'maybe_release',return_value=None):

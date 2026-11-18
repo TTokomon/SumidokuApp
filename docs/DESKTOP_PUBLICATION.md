@@ -31,10 +31,12 @@ files, duplicate paths and symlinks. GitHub authentication, transport and rate-l
 errors are not treated as missing releases. A tag-endpoint 404 triggers an exact-tag
 search of the authenticated releases list, bounded to 20 pages of 100 entries;
 incomplete pagination fails closed. This also finds unpublished drafts that the
-tag endpoint does not expose. Published releases are immutable. The
-publisher uploads exactly the verified bytes to a matching draft, checks GitHub's
-asset SHA-256 values and rechecks the existing feed before publishing. A concurrent
-feed change stops publication. Beta requires the authenticated public Stable feed
+tag endpoint does not expose. Published application assets are immutable. The
+publisher requires a complete separately staged draft, checks all nine GitHub
+asset SHA-256 values/sizes and never uploads application assets itself. It stages
+the first feed privately before exposing the app and supports verified completion
+of the identical approved transaction after interruption. A foreign feed digest
+stops publication. Beta requires the authenticated public Stable feed
 and publicly verified previously advertised assets. New catalogs retain prior entries.
 
 ## macOS runner requirements
@@ -79,6 +81,44 @@ Run the workflow with `verify_only=true`, `policy_test=false`, and the matching
 version/tag, then remove `DESKTOP_DRAFT_TRANSPORT` with `gh secret delete` after the
 run completes. Recreate expired transport rather than extending its lifetime.
 Published feeds/assets remain accessible directly with the read-only token.
+
+## Recoverable publication and retry authority
+
+The writer uses the exact immutable artifact/receipt produced by this workflow's
+read-only validation job. The archive must also match main's pinned approved
+hash and length. It accepts an already-public application only when the complete
+nine-file asset set, every digest/size, source, tag and release channel match that
+same receipt. Missing or altered public application files stop recovery without
+writes. The writer never creates, uploads, replaces or deletes application assets;
+draft creation and local staging remain separate operations.
+
+For the first Stable, the writer creates `desktop-updates` as a draft and uploads
+and verifies each of the three feed files before making the application public.
+It then makes the complete feed public and verifies the final state. Failure during
+staging leaves the application private. If a visibility operation committed but its
+response was lost, the next attempt checks the actual state and skips that operation.
+It can also complete the earlier application's public-with-missing-feed state,
+provided all application assets match the original authenticated transaction.
+
+For an existing public feed, its assets may be unchanged prior authenticated bytes,
+the exact new bytes, or temporarily missing after an interrupted replacement.
+Partial progress is accepted only after the identical application is public.
+The writer checks all remote state before each individual feed write, skips exact
+matches, verifies each upload and verifies the complete final public feed. It refuses
+foreign digests, extra/duplicate assets, changed source/channel or a missing prior
+feed release. A completed retry performs no writes. GitHub cannot atomically commit
+an app visibility flip and several feed assets: an interrupted feed can temporarily
+be unavailable; its signatures fail closed and the same authorized job can finish it.
+
+Recover by re-running **only the failed publication job in the original approved
+workflow run**, using its original immutable verified artifact. Main-only execution,
+the protected `desktop-release` environment, explicit `verify_only=false` and the
+same-run artifact checks still apply. This does not authorize another version,
+archive, source or workflow. Do not start a fresh validation against a partial feed
+or hand-edit a receipt to manufacture a baseline. Artifacts are retained for 90 days;
+missing/expired artifacts fail closed and require a separately reviewed recovery
+qualification rather than an automatic bypass. No real publication is part of the
+failure-injection tests, which mock every GitHub operation and prohibit subprocesses.
 
 ## First Stable, then Beta
 
@@ -130,6 +170,8 @@ Developer ID/notarization is optional, never a community release gate.
 5. Request explicit first-publication approval. Only then run the main workflow with
    **verify_only=false** and approve the protected publication job. Verify the public
    archive, appcast and signed catalog before making Beta eligible.
+   If interrupted, follow the original-job recovery procedure above; never upload
+   over a published application archive.
 
 No publication is implied by a passing test or a signed qualification document.
 The bootstrap's local tests and workflow policy test do not claim that unpublished

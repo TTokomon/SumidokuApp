@@ -2610,6 +2610,10 @@ Unpublished draft retrieval uses a temporary 20-minute manifest of asset-only
 GitHub download capabilities, not a repository write token in the verifier.
 The manifest and downloads are bounded and package-bound; the signed contents
 are authenticated independently and the main-only writer rechecks draft state.
+Publication never uploads application assets. The first feed is fully staged as
+a draft before the app visibility flip; original approved-job retries accept
+only exact public application assets and prior/new authenticated feed states.
+The same-run verified artifact is retained for 90 days for idempotent completion.
 
 
 - `ci.yml`: a paths-filter gates the legs — rust legs (clippy, nextest,
