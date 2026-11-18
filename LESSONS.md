@@ -6,6 +6,15 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Publishing a release at a historical source can require workflow permission.**
+A built-in Actions token can write release contents but cannot obtain Workflows
+write access. Use a short-lived, single-repository credential only in the final
+writer step of a reviewed protected main job. Keep artifact validation and
+download on the read-only automatic token. Restrict the protected environment
+to main before adding the secret.
+- Evidence: run 44246231609 authenticated and downloaded the Stable artifact but
+  received HTTP 403 when creating the feed draft at the historical source.
+
 **Select the GitHub download media type by API endpoint.**
 Use GitHub's JSON media type for an Actions artifact ZIP request and follow its
 download redirect. Release asset binary requests still require octet-stream.
