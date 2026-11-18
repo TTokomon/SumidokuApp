@@ -6,6 +6,16 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Publishing several remote resources needs an authenticated recovery path.**
+A visibility flip can succeed even when the client receives an error. Stage and
+verify the first feed before exposing an app, and let an approved retry accept
+only the identical published application asset set. Never upload, clobber or edit
+published app assets during recovery; reject foreign feed digests rather than
+assuming a partially committed transaction is safe. Test failures before and
+after each write, including feed creation, each asset and both visibility flips.
+- Evidence: publication exposed the application before creating its feed, then
+  rejected every retry because the now-public application was immutable.
+
 **Read-only repository tokens cannot enumerate unpublished releases.**
 Draft visibility requires push access, even when the operation only reads. Do not
 solve a verifier's draft 404 by giving it publication permission. Transfer only
