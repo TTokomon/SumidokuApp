@@ -9,12 +9,15 @@ on:
         description: Qualified Stable or numbered Beta desktop version
         required: true
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: desktop-publish
   cancel-in-progress: false
 jobs:
   prepare-draft:
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     environment: desktop-release
     steps:

@@ -33,6 +33,52 @@ copy bytes into owned writable storage first.
 - Evidence: community publisher-seal probes found truncated inventory paths and a
   protected-memory fault during re-sign verification; disposable bundle inventory
   and re-signing checks exercise both cases.
+**Publishing several remote resources needs an authenticated recovery path.**
+A visibility flip can succeed even when the client receives an error. Stage and
+verify the first feed before exposing an app, and let an approved retry accept
+only the identical published application asset set. Never upload, clobber or edit
+published app assets during recovery; reject foreign feed digests rather than
+assuming a partially committed transaction is safe. Test failures before and
+after each write, including feed creation, each asset and both visibility flips.
+- Evidence: publication exposed the application before creating its feed, then
+  rejected every retry because the now-public application was immutable.
+
+**Read-only repository tokens cannot enumerate unpublished releases.**
+Draft visibility requires push access, even when the operation only reads. Do not
+solve a verifier's draft 404 by giving it publication permission. Transfer only
+short-lived, asset-scoped HTTPS download capabilities; verify their exact file
+set, age, bounds and digests, then authenticate the signed package independently.
+The write stage must still recheck the actual draft before any publication.
+- Evidence: the native cloud verifier ran successfully on its assigned runner,
+  but its contents-read token could not see the existing nine-asset Stable draft.
+
+**An abandoned hosted job is not a compiler or verifier failure.**
+Check runner assignment, steps and annotations before changing verification. When
+the ARM64 pool cannot provision a runner, preserve the OS and target requirements:
+macOS 26 Intel can run the native verifier without launching a candidate, while
+Rust's explicit ARM64 target preserves the macOS compile gate. Never replace
+macOS codesign verification with a Linux-only check or silently compile x86 only.
+- Evidence: both cloud draft validation and macOS CI ended with no runner and no
+  steps; annotations reported hosted ARM64 capacity constraints. Other CI legs passed.
+
+**A tag lookup cannot prove that an unpublished draft is absent.**
+GitHub can return 404 for a draft through the release-by-tag endpoint while the
+same authenticated caller can retrieve it from the releases list. On 404, search
+a bounded, paginated authenticated list for the exact tag before treating it as
+absent. Authentication, pagination and transport errors must still fail closed.
+- Evidence: first community Stable draft staging uploaded all nine assets, but
+  the direct tag lookup returned 404; the release list exposed the matching draft.
+
+**Default-branch registration does not supply a workflow's execution dependencies.**
+Registering a release workflow is insufficient if its scripts exist only in an
+unmerged product branch. Keep the privileged driver on main, authenticate immutable
+reviewed verifier sources in a read-only job, and pass only verified artifact data
+into the write job. A branch policy test must have read-only permissions and skip
+publication; never fix a missing script by checking out an arbitrary PR with a
+publication token.
+- Evidence: desktop publication registration lacked its distribution scripts. The
+  focused bootstrap pins verifier source hashes, separates validation/publication
+  jobs and tests the main-only write boundary without merging the product PR.
 
 **Uninstall a package without deleting its persistent source identity.**
 Foreign-key deletion of a source can cascade into manga, categories and reading
