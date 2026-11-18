@@ -1,6 +1,12 @@
 {
   "settings": {
     "groupNav": "Sections des paramètres",
+    "categoryAutomation": "Automatisation",
+    "categoryStorage": "Stockage et sauvegardes",
+    "categoryAccounts": "Comptes et intégrations",
+    "categoryDiagnostics": "Serveur et diagnostic",
+    "categoryDownloadsBackups": "Téléchargements et sauvegardes",
+    "categoryServerAccount": "Serveur et compte",
     "groupGeneral": "Général",
     "groupReader": "Lecteur",
     "groupLibrary": "Bibliothèque",

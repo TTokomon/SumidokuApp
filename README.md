@@ -40,7 +40,7 @@ The desktop implementation and its verified local setup are documented on the ac
 - [Source integration contracts, fork build/update process and tests](docs/SOURCE_INTEGRATIONS.md)
 - [Draft PR #1: development progress](https://github.com/TTokomon/SumidokuApp/pull/1)
 
-The current local build targets Apple Silicon macOS. It uses **ad-hoc code signing** for development and is **not notarized for public distribution**. There is no public downloadable macOS installer yet.
+The desktop targets Apple Silicon macOS. Free community distribution uses GitHub Releases, pinned Sparkle Ed25519 signatures and ad-hoc Apple code signing; paid Developer ID signing/notarization is optional. No unverified release is published. See [community installation and update verification](docs/BETA_RELEASE.md), including macOS’s per-app **Open Anyway** procedure.
 
 ## Principles
 

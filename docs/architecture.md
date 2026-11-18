@@ -46,16 +46,32 @@ Offline failures leave no marker and retry at most once a minute while authentic
 Subscription creates no packages or chapters. A desktop event invalidates Source
 Lists queries without replacing the document or losing an import preview.
 
-`DesktopShell.swift` now owns native NavigationSplitView, toolbar/menu routing and
-application update status. The WebKit document retains existing library/source/reader
+`DesktopShell.swift` owns native NavigationSplitView with five Collection destinations
+and six Preferences entries, beginning with General, toolbar/menu routing and application update status. Its native
+footer opens App Updates and Local Server controls without changing service state. The WebKit document retains existing library/source/reader
 logic; an origin-checked desktop bridge routes local paths and appearance. Actual
 SwiftUI Liquid Glass is guarded at macOS 26; older systems use native materials and
 accessibility modes can request opaque controls. `AppUpdates.swift` checks explicitly
 published desktop releases with cached daily polling and separate native states.
-Sparkle 2 is pinned/embedded, but installation remains hard-gated pending signing,
-feed infrastructure and a certified paired-server handoff. The separately tested
-transaction stage retains cold recovery snapshots and never automatically downgrades
-a migrated database. See [design boundaries, release contract and checks](DESKTOP_DESIGN.md).
+Sparkle 2 remains pinned for appcast/archive signing compatibility. Release discovery
+is separate from installation authority: a signed companion catalog and archive
+bind exact client/server hashes, source, version and schema. The bundled native
+`CommunityBundleTrust.swift` binds a signed inventory of bundle contents to the
+compiled Ed25519 trust root. `ReleaseIdentity.swift` is replaced by generated
+public-only identity code at build time. Community verification uses publisher
+signatures and strict ad-hoc resource validation; optional Developer ID mode retains
+Apple team/Gatekeeper requirements. Compile-gated disposable GUI scopes have no
+production command or download-redirect entry point and are rejected by packaging.
+
+`SumidokuUpdateHelper` revalidates explicitly configured publisher-sealed community trust (or optional Developer ID/Gatekeeper trust) and owned-service
+paths, receives session credentials through a pipe, journals a cold snapshot and
+coordinates the pair after GUI termination. `PairedInstallation.swift` owns the
+same-schema transaction; failures never automatically restore a database. Confirmed
+Restore Stable uses an authenticated retained Stable pair and keeps current data.
+A relaunch acknowledgement and explicit interrupted-update recovery complete the
+handoff contract. Unsigned/unprovisioned builds remain blocked, and unattended
+installation remains disabled. See [desktop release and rollback contract](BETA_RELEASE.md)
+for provenance/signing blockers and qualification gates.
 
 ## Server (`crates/server`)
 
@@ -2189,10 +2205,10 @@ page's title.
 When authentication is on, the
 login page takes the admin username + password with an initially empty username
 field, browser API requests use the login cookie, CLI clients may send a
-bearer header, and any `401` lands on `/login`. Desktop navigation keeps library,
-browse and updates at the top level; activity and settings start collapsed and
-open on an active route. The browse page keeps cross-source search above its
-installed/repository views, with `/search` redirecting to its search view.
+bearer header, and any `401` lands on `/login`. Desktop navigation exposes library,
+sources, history, downloads, chapter updates and six grouped Preferences destinations. The native
+WKWebView hides the browser sidebar to avoid duplicated navigation. The browse page keeps cross-source search above its
+Installed, Discover, Source Lists and Trash views, with `/search` redirecting to its search view.
 Remote source and cross-source searches run on explicit submission; local-source
 filtering uses a 500ms debounce. Clearing a source's search box resubmits an
 empty query so the unsearched results return without waiting for submission.
@@ -2209,9 +2225,29 @@ and shows each field's source as follow-the-source, written by a provider, or
 manual, with per-field unlock and a restore-to-source action. Both live in
 `webui/src/pages/manga/`, share `metadata.css`, and are only offered while the
 entry is in the library or its source is local.
-Settings sections are linked from the settings group, while mobile keeps the
-settings page's own tabs. The settings page shows the admin account and
-all management controls; there is no Users page or role-dependent UI. The
+Settings exposes General, Reader, Automation, Storage & Backups, Accounts &
+Integrations and Server & Diagnostics. Storage and Accounts have two subsections;
+other categories have a single page. A small keyword search links directly to
+these groups and contextual management. Desktop uses the sidebar without a second
+category bar; compact browser layouts retain their own category controls.
+`pages/settings/navigation.ts` owns category and legacy-route mapping.
+
+Library owns the reused category/filter editors in Organize and display settings
+in View Options (`LibraryManagement.tsx`). Legacy `section=library` redirects to
+`/library?panel=organize`. Legacy `section=source-lists` redirects to
+`/browse?view=lists`; subscriptions and manual package actions live there, while
+source refresh/update policies live in Automation. Accounts owns password/API-key
+security and all trackers (`section=trackers` remains valid). Downloads and backups
+retain their original section URLs within Storage. General, Reader and System URLs
+also remain valid, with the new `automation` and `accounts` sections added.
+
+`AidokuImportSessionProvider`, keyed to the authenticated user around AppLayout,
+retains the original File, preview, skip confirmation and exact source-package
+selection in memory across page unmounts. Native and web Source Lists shortcuts
+use SPA navigation. Returning to Backups explicitly resumes that same file; logout
+or layout teardown clears the session. No new persistent storage format is used.
+The settings page shows the admin account and all management controls; there is
+no Users page or role-dependent UI. The
 System section lists the cover cache above the chapter-page cache: the cover
 cache shows cached entries, its entry cap and usage plus a confirmed clear,
 while the chapter-page cache shows its automatic LRU budget, usage, last error
@@ -2610,6 +2646,8 @@ Unpublished draft retrieval uses a temporary 20-minute manifest of asset-only
 GitHub download capabilities, not a repository write token in the verifier.
 The manifest and downloads are bounded and package-bound; the signed contents
 are authenticated independently and the main-only writer rechecks draft state.
+The packager and read-only verifier check the exact Sumidoku and Sparkle
+licenses in the downloadable ZIP before it can be published.
 Publication never uploads application assets. The first feed is fully staged as
 a draft before the app visibility flip; original approved-job retries accept
 only exact public application assets and prior/new authenticated feed states.

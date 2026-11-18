@@ -26,25 +26,10 @@ class AidokuSymbolTests(unittest.TestCase):
             with self.subTest(destination=destination):
                 self.assertIn(f'{destination}, symbol: "{symbol}"', self.code)
 
-    def test_settings_symbols_follow_aidoku(self):
-        mapping = {
-            "source-lists": "globe",
-            "reader": "book.fill",
-            "library": "books.vertical.fill",
-            "downloads": "arrow.down.circle.fill",
-            "backups": "externaldrive.fill",
-            "system": "info.circle.fill",
-        }
-        for section, symbol in mapping.items():
-            with self.subTest(section=section):
-                self.assertIn(f'id: "/settings?section={section}",', self.code)
-                self.assertIn(
-                    f'id: "/settings?section={section}", title: ',
-                    self.code
-                )
-                line = next(line for line in self.code.splitlines()
-                            if f'id: "/settings?section={section}",' in line)
-                self.assertIn(f'symbol: "{symbol}"', line)
+    def test_general_first_preferences_uses_aidoku_gear(self):
+        settings = self.code.split("static let settings = [", 1)[1].split("\n    ]", 1)[0]
+        self.assertEqual(settings.count("Self(id:"), 6)
+        self.assertIn('id: "/settings?section=general", title: "General", symbol: "gear"', settings)
 
     def test_original_sumidoku_app_logo_is_retained(self):
         self.assertIn("NSImage.applicationIconName", self.code)

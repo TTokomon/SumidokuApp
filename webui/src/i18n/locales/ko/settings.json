@@ -1,6 +1,12 @@
 {
   "settings": {
     "groupNav": "설정 섹션",
+    "categoryAutomation": "자동화",
+    "categoryStorage": "저장소 및 백업",
+    "categoryAccounts": "계정 및 연동",
+    "categoryDiagnostics": "서버 및 진단",
+    "categoryDownloadsBackups": "다운로드 및 백업",
+    "categoryServerAccount": "서버 및 계정",
     "groupGeneral": "일반",
     "groupReader": "리더",
     "groupLibrary": "라이브러리",

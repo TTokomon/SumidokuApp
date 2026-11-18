@@ -33,7 +33,7 @@ async function renderBrowse(path = '/browse'): Promise<string> {
 
 test('browse keeps global search directly above the source views', async () => {
 	const markup = await renderBrowse();
-	assert.match(markup, /role="tab" aria-selected="true"[^>]*>Installed sources<\/button>/);
+	assert.match(markup, /role="tab" aria-selected="true"[^>]*>Installed<\/button>/);
 	assert.match(markup, /type="search"[^>]*placeholder="Search all sources…"/);
 	assert.doesNotMatch(markup, /Cross-source search/);
 });

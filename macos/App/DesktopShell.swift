@@ -15,18 +15,32 @@ struct DesktopDestination: Identifiable, Hashable {
         Self(id: "/downloads", title: "Downloads", symbol: "arrow.down.circle.fill"),
         Self(id: "/updates", title: "Chapter Updates", symbol: "clock.arrow.2.circlepath")
     ]
+    // Six concise Preferences destinations. The existing eight Settings
+    // sections and every historical deep link remain available.
     static let settings = [
-        Self(id: "/settings", title: "General", symbol: "gear"),
+        Self(id: "/settings?section=general", title: "General", symbol: "gear"),
         Self(id: "/settings?section=reader", title: "Reader", symbol: "book.fill"),
-        Self(id: "/settings?section=library", title: "Library & Categories", symbol: "books.vertical.fill"),
-        Self(id: "/settings?section=trackers", title: "Trackers", symbol: "clock.arrow.2.circlepath"),
-        Self(id: "/settings?section=downloads", title: "Download Preferences", symbol: "arrow.down.circle.fill"),
-        Self(id: "/settings?section=source-lists", title: "Source Lists", symbol: "globe"),
-        Self(id: "/settings?section=backups", title: "Backups & Imports", symbol: "externaldrive.fill"),
-        Self(id: "native:server", title: "Server & Account", symbol: "gearshape.2.fill"),
-        Self(id: "native:updates", title: "Application Updates", symbol: "clock.arrow.2.circlepath"),
-        Self(id: "/settings?section=system", title: "System", symbol: "info.circle.fill")
+        Self(id: "/settings?section=automation", title: "Automation", symbol: "calendar.badge.clock"),
+        Self(id: "/settings?section=downloads", title: "Storage & Backups", symbol: "externaldrive.fill"),
+        Self(id: "/settings?section=accounts", title: "Accounts & Integrations", symbol: "person.crop.circle.fill"),
+        Self(id: "/settings?section=system", title: "Server & Diagnostics", symbol: "gearshape.2.fill")
     ]
+    var iconColor: Color {
+        switch id {
+        case "/library": return DesktopBrand.accent
+        case "/browse": return .green
+        case "/history": return .orange
+        case "/downloads": return .blue
+        case "/updates": return .purple
+        case "/settings?section=reader": return .indigo
+        case "/settings?section=automation": return .purple
+        case "/settings?section=accounts": return .teal
+        case "/settings?section=downloads": return .orange
+        case "/settings?section=general": return .secondary
+        case "/settings?section=system": return .secondary
+        default: return .secondary
+        }
+    }
 }
 
 struct DesktopShell: View {
@@ -34,34 +48,112 @@ struct DesktopShell: View {
     @ObservedObject var updates: AppUpdates
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visibility: NavigationSplitViewVisibility = .all
-    var selection: Binding<String?> { Binding(get: { controller.nativePanel.map { "native:" + $0 } ?? (controller.route.hasPrefix("/browse") ? "/browse" : controller.route.hasPrefix("/manga/") ? "/library" : controller.route.hasPrefix("/library") ? "/library" : controller.route) }, set: { if let value = $0 { select(value) } }) }
+    private var footerUpdateLabel: String {
+        switch updates.state {
+        case .notChecked: return "Not checked"
+        case .checking: return "Checking"
+        case .current: return "Up to date"
+        case .available: return "Available"
+        case .offline: return "Offline"
+        case .error: return "Error"
+        case .unavailable: return "Unverified"
+        }
+    }
+
+    var selection: Binding<String?> {
+        Binding(
+            get: {
+                if controller.nativePanel == "server" { return "/settings?section=system" }
+                if controller.nativePanel == "updates" { return "/settings?section=general" }
+                if controller.route.hasPrefix("/settings") {
+                    let section = URLComponents(string: controller.route)?.queryItems?.first(where: { $0.name == "section" })?.value
+                    switch section {
+                    case "reader": return "/settings?section=reader"
+                    case "library": return "/library"
+                    case "source-lists": return "/browse"
+                    case "accounts", "trackers": return "/settings?section=accounts"
+                    case "automation": return "/settings?section=automation"
+                    case "downloads", "backups": return "/settings?section=downloads"
+                    case "system": return "/settings?section=system"
+                    default: return "/settings?section=general"
+                    }
+                }
+                if controller.route.hasPrefix("/browse") { return "/browse" }
+                if controller.route.hasPrefix("/manga/") || controller.route.hasPrefix("/library") { return "/library" }
+                return controller.route
+            },
+            set: { if let value = $0 { select(value) } }
+        )
+    }
     func select(_ route: String) {
         if route.hasPrefix("native:") { controller.nativePanel = String(route.dropFirst(7)) }
         else { controller.navigate(route) }
     }
     private func destinationRow(_ item: DesktopDestination) -> some View {
-        Label(item.title, systemImage: NativeSymbol.resolve(item.symbol)).tag(item.id).contextMenu {
-            Button("Open \(item.title)") { select(item.id) }
+        Label {
+            Text(item.title).font(.system(size: 15, weight: .medium))
+        } icon: {
+            Image(systemName: NativeSymbol.resolve(item.symbol))
+                .font(.system(size: 18, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(item.iconColor)
+                .frame(width: 26, height: 28)
+                .accessibilityHidden(true)
         }
+        .frame(minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+        .tag(item.id)
+        .contextMenu { Button("Open \(item.title)") { select(item.id) } }
     }
     var body: some View {
         NavigationSplitView(columnVisibility: $visibility) {
             List(selection: selection) {
                 Section("Collection") { ForEach(DesktopDestination.collection) { item in destinationRow(item) } }
-                Section("Settings") { ForEach(DesktopDestination.settings) { item in Label(item.title, systemImage: NativeSymbol.resolve(item.symbol)).tag(item.id) } }
+                Section("Preferences") { ForEach(DesktopDestination.settings) { item in destinationRow(item) } }
             }.safeAreaInset(edge: .top, alignment: .leading) {
-                HStack(spacing: 10) {
+                HStack(spacing: 14) {
                     Image(nsImage: NSImage(named: NSImage.applicationIconName)!)
-                        .resizable().frame(width: 30, height: 30).accessibilityHidden(true)
-                    Text("Sumidoku").font(.headline)
-                }.padding(.horizontal, 16).padding(.vertical, 10)
-            }.listStyle(.sidebar).navigationSplitViewColumnWidth(min: 185, ideal: 215, max: 270)
+                        .resizable().interpolation(.high)
+                        .frame(width: 48, height: 48).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Sumidoku").font(.system(size: 21, weight: .bold))
+                        Text("Desktop").font(.caption).foregroundStyle(.secondary)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.top, 18).padding(.bottom, 20)
+            }.listStyle(.sidebar).navigationSplitViewColumnWidth(min: 235, ideal: 270, max: 320)
                 .safeAreaInset(edge: .bottom) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        UpdateStatusButton(updates: updates) { controller.nativePanel = "updates" }.buttonStyle(.plain).padding(8).modifier(NativeControlSurface())
-                        Label(controller.available ? "Local server running" : "Server unavailable", systemImage: "circle.fill")
-                            .font(.caption).foregroundStyle(.secondary).accessibilityLabel(controller.available ? "Local server running" : "Local server unavailable")
-                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button { controller.nativePanel = "updates" } label: {
+                            HStack(spacing: 9) {
+                                Image(systemName: NativeSymbol.resolve("arrow.clockwise")).foregroundStyle(.secondary)
+                                    .frame(width: 20)
+                                Text("App Updates").font(.callout)
+                                Spacer(minLength: 4)
+                                Circle().fill(updates.color).frame(width: 8, height: 8)
+                                Text(footerUpdateLabel).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }.contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel("App Updates: \(updates.label). Open update settings.")
+                        Button { controller.nativePanel = "server" } label: {
+                            HStack(spacing: 9) {
+                                Image(systemName: NativeSymbol.resolve("server.rack")).foregroundStyle(.secondary)
+                                    .frame(width: 20)
+                                Text("Local Server").font(.callout)
+                                Spacer(minLength: 4)
+                                Circle().fill(controller.checking ? Color.gray : controller.available ? Color.green : Color.orange)
+                                    .frame(width: 8, height: 8)
+                                Text(controller.checking ? "Checking" : controller.available ? "Running" : "Offline")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }.contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel(controller.available ? "Local server running. Open server controls." : "Local server unavailable. Open server controls.")
+                    }
+                    .padding(13)
+                    .modifier(NativeControlSurface())
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .navigationTitle("Sumidoku")
         } detail: {
@@ -73,7 +165,7 @@ struct DesktopShell: View {
                 if controller.nativePanel == "server" { ServerSettings(embedded: true, controller: controller) }
             }
             .background(Color(nsColor: .windowBackgroundColor))
-            .navigationTitle(controller.nativePanel == "updates" ? "Application Updates" : controller.nativePanel == "server" ? "Server & Account" : controller.routeTitle)
+            .navigationTitle(controller.nativePanel == "updates" ? "Application Updates" : controller.nativePanel == "server" ? "Server & Diagnostics" : controller.routeTitle)
             .toolbar {
                 ToolbarItemGroup(placement: .navigation) {
                     Button { controller.nativePanel = nil; controller.webView.goBack() } label: { Image(systemName: "chevron.left") }.disabled(!controller.canGoBack).help("Back")
@@ -111,20 +203,19 @@ struct DesktopShell: View {
 struct NativePreferences: View {
     @ObservedObject var controller: ServerController
     @ObservedObject var updates: AppUpdates
-    @State private var tab = "general"
+    @Environment(\.openWindow) private var openWindow
     var body: some View {
-        TabView(selection: $tab) {
-            Form {
-                Section("Application") {
-                    LabeledContent("Version", value: updates.installed)
-                    UpdateStatusButton(updates: updates) { tab = "updates" }
-                    Button("Check Now") { updates.check() }.disabled(updates.state == .checking)
-                    Text(updates.detail).foregroundStyle(.secondary)
+        Form {
+            Section("Preferences") {
+                ForEach(DesktopDestination.settings) { item in
+                    Button(item.title) {
+                        controller.navigate(item.id)
+                        NSApp.keyWindow?.close()
+                        openWindow(id: "main")
+                    }
                 }
-                Section("Appearance") { Text("The native window follows your library's light/dark appearance. System contrast, reduced transparency and reduced motion are respected.") }
-            }.formStyle(.grouped).padding().tabItem { Label("General", systemImage: "gear") }.tag("general")
-            ServerSettings(controller: controller).tabItem { Label("Server & Account", systemImage: "gearshape.2.fill") }.tag("server")
-            ApplicationUpdatesView(updates: updates).tabItem { Label("Updates", systemImage: NativeSymbol.resolve("clock.arrow.2.circlepath")) }.tag("updates")
-        }.tint(DesktopBrand.accent).frame(width: 640, height: 690)
+            }
+            Text("Preferences open in the main window. Application updates and local server controls remain available in its footer.").foregroundStyle(.secondary)
+        }.formStyle(.grouped).padding().frame(width: 440)
     }
 }

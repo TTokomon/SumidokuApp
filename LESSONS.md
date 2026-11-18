@@ -6,6 +6,40 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Verify required notices in the downloadable archive.**
+A repository LICENSE and third-party notices do not establish that the packaged
+software carries its own MIT notice. Copy the original license before signing
+and reject an archive unless its bundle contains the full, exact notice.
+- Evidence: Stable build 9 was correctly signed and staged, but its ZIP included
+  only the Sparkle license. The missing Sumidoku notice blocked publication.
+
+**Keep signing authority separate from compilation and publication.**
+A local signing key does not imply permission to export it to CI. Support local
+Keychain signing and let CI authenticate the resulting public artifacts. If CI
+signing is explicitly provisioned, give the seed only to the signing step through
+stdin; compiler, package-manager and verification children must not inherit it.
+- Evidence: community distribution now supports a protected publisher for locally
+  signed artifacts, rejects production signing seeds in build processes, and tests
+  that verification children cannot inherit the seed.
+
+**A successful build receipt requires a verified artifact, not just command status.**
+The system Bash treats an empty optional array differently under nounset from a
+newer shell. Keep required compiler flags in the array, test the system shell,
+and verify the native executable and strict bundle signature before writing a
+successful build receipt. Preserve a previous receipt if a new build fails.
+- Evidence: community candidate preparation caught a system-shell expansion
+  failure; a disposable false-success child fixture now verifies that a missing
+  native bundle cannot produce a success receipt.
+
+**Normalize filesystem aliases before deriving signed relative paths.**
+Foundation enumeration can spell the same temporary root through a different
+system alias. Verify parent containment and normalize the parent before removing
+the root prefix; preserve leaf symlinks for explicit verification. Never mutate a
+read-only memory-mapped Mach-O buffer while canonicalizing its signing envelope;
+copy bytes into owned writable storage first.
+- Evidence: community publisher-seal probes found truncated inventory paths and a
+  protected-memory fault during re-sign verification; disposable bundle inventory
+  and re-signing checks exercise both cases.
 **Publishing several remote resources needs an authenticated recovery path.**
 A visibility flip can succeed even when the client receives an error. Stage and
 verify the first feed before exposing an app, and let an approved retry accept
@@ -2030,3 +2064,40 @@ eligibility is accepted.
   register manga or disable updates mid-flight. Both cases retained the old package.
   The ownership regression caught a direct settings-table read; typed access within
   the source metadata transaction passed the complete workspace suite.
+
+**Freeze shared compiler inputs until the build process has completed.**
+A native fixture build reads production and driver sources together. Editing its
+driver while the compiler is running can produce an explicit modified-input
+error and invalidates evidence about which revision was rendered. Wait for the
+process to finish, then edit and rerun against immutable inputs. Serialize cold
+Rust compilers when concurrent debug/release builds cause memory pressure.
+- Evidence: 2026-11-15, the 1.3.1 verification driver was rejected with
+  `input file ... was modified during the build`; subsequent validation freezes
+  the native inputs and completes the cold Rust profiles sequentially.
+
+**Query-selected destinations must own their active accessibility state.**
+React Router NavLink matches the pathname, so multiple Settings links that differ
+only by query can all inherit aria-current. Use the existing query-aware selection
+with Link and assert exactly one current destination, including legacy aliases.
+- Evidence: 2026-11-15, reverting the sidebar link fix from committed green made
+  the focused Preferences regression report six current links instead of one;
+  restoring that single file returned the test to green.
+
+**Recovery state must outlive every page visited during recovery.**
+Keeping Settings panels mounted protects tab changes, not navigation to a different
+page. Own the original File, preview and exact package selections above those
+routes, in a session scoped to the authenticated user. Use SPA shortcuts and clear
+the draft on session teardown rather than persisting private backup bytes.
+- Evidence: 2026-11-16, the navigation review moved Source Lists out of Settings.
+  The disposable native fixture crossed that page boundary, resumed byte-identical
+  Aidoku input and retained its exact-ID package selection after Settings remounted.
+
+**Recovery journals compare normalized filesystem paths, not URL directory flags.**
+A file URL created before a directory exists can serialize differently from one
+created after it exists even when both address the same directory. Validate the
+owned recovery namespace using normalized paths, then verify sealed previous
+artifacts before replacing anything. Never use a loose runtime backup as trust.
+- Evidence: 2026-11-16, the native failed-handoff fixture initially rejected its own
+  valid recovery journal and left the new runtime in place. Path normalization
+  restored both artifacts; a separate hard-exit fixture recovered between runtime
+  replacement and app swap, ignoring a tampered loose runtime backup.

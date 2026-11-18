@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { useImportAidoku, useInstallRepoSource, useRepoSources, useSources } from '../../api/hooks';
 import type { AidokuImportResponse } from '../../api/types';
 import { Button, Modal } from '../../components';
@@ -7,13 +8,16 @@ export function missingAidokuIds(preview: AidokuImportResponse): string[] {
 	return [...new Set(preview.skipped.filter((item) => item.reason === 'source not installed').map((item) => item.sourceKey))].sort();
 }
 
-export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists }: {
+export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, selection, onSelectionChange }: {
+	selection?: string[]; onSelectionChange?: Dispatch<SetStateAction<string[]>>;
 	file: File; preview: AidokuImportResponse; onPreview: (value: AidokuImportResponse) => void; onManageLists: () => void;
 }) {
 	const ids = missingAidokuIds(preview);
 	const packages = useRepoSources({ query: '' }); const installed = useSources();
 	const install = useInstallRepoSource(); const recheck = useImportAidoku();
-	const [selected, setSelected] = useState<string[]>([]); const [confirm, setConfirm] = useState(false);
+	const [localSelection, setLocalSelection] = useState<string[]>([]);
+	const selected = selection ?? localSelection; const setSelected = onSelectionChange ?? setLocalSelection;
+	const [confirm, setConfirm] = useState(false);
 	const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
 	const matches = (packages.data ?? []).filter((entry) => ids.includes(entry.key));
 	async function refreshPreview() {
@@ -43,7 +47,7 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists }
 			<Button disabled={!selected.length || busy} onClick={() => setConfirm(true)}>Install Selected Matching Sources…</Button>
 			<Button loading={recheck.isPending} disabled={busy} onClick={() => void refreshPreview()}>Recheck Backup</Button>
 		</div>
-		<p className="muted">To add a GitHub list, open Source Lists, paste its repository/index URL, then return to Backups and resume this import. Recheck always previews the same original file.</p>
+		<p className="muted">To add a GitHub list, open Source Lists, paste its repository/index URL, then return to Storage & Backups and resume this import. Recheck always previews the same original file.</p>
 		{error && <p role="alert">{error}</p>}
 		<Modal open={confirm} title="Confirm Source Installation" onClose={() => setConfirm(false)} footer={<Button loading={busy} onClick={() => void installSelected()}>Install and Recheck Backup</Button>}>
 			<p>Only the selected packages will be installed. Manga import still requires your separate confirmation after the new preview.</p>

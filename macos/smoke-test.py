@@ -4,6 +4,7 @@ import argparse
 from functools import partial
 import http.server
 import json
+import os
 from pathlib import Path
 import signal
 import socket
@@ -16,7 +17,7 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-BINARY = Path.home() / 'Library/Application Support/Sumidoku/bin/sumidoku-server'
+BINARY = Path(os.environ.get('SUMIDOKU_SERVER_BINARY', Path.home() / 'Library/Application Support/Sumidoku/bin/sumidoku-server'))
 
 
 def main():

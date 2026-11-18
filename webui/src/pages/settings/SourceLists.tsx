@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Switch } from '../../components';
 import { api } from '../../api/client';
@@ -15,21 +16,12 @@ export function SourceLists() {
 		return () => window.removeEventListener('sumidoku:source-lists', changed);
 	}, []);
 	const [adding, setAdding] = useState(false);
-	const [confirmUpdates, setConfirmUpdates] = useState(false);
 	const [message, setMessage] = useState('');
 	const [checking, setChecking] = useState(false);
 	const client = useQueryClient();
 	const repos = useSourceRepos();
 	const refresh = useRefreshSourceRepo();
 	const updateAll = useUpdateAllSources();
-	const preferences = useQuery({
-		queryKey: ['source-refresh-preferences'],
-		queryFn: () => api<SourceRefreshPreferences>('/source-repos/preferences')
-	});
-	const save = useMutation({
-		mutationFn: (body: SourceRefreshPreferences) => api<SourceRefreshPreferences>('/source-repos/preferences', { method: 'PUT', body }),
-		onSuccess: (value) => { client.setQueryData(['source-refresh-preferences'], value); setConfirmUpdates(false); }
-	});
 	async function checkUpdates() {
 		setChecking(true);
 		let failures = 0;
@@ -58,8 +50,32 @@ export function SourceLists() {
 		<h2>Source Lists</h2>
 		<p className="muted">Manage your subscribed Aidoku-compatible source lists here. Built-in connections do not need a source list. Installed packages and repository subscriptions are separate.</p>
 		{bootstrap === 'deferred' && <p role="status">Aidoku Community setup is deferred while its list is unavailable. The desktop will retry; your existing library remains usable.</p>}
-		<section className="card settings-section" aria-label="Source update preferences">
-			<h3>Source Updates</h3>
+		<section className="card settings-section" aria-label="Manual source updates">
+			<h3>Manual source updates</h3>
+			<p>Automatic policies are managed in <Link to="/settings?section=automation">Preferences → Automation</Link>. These actions never download manga chapters.</p>
+			<Button disabled={repos.isPending || !repos.data?.length || checking} onClick={() => void checkUpdates()}>Check for Source Updates</Button>
+			<Button disabled={updateAll.isPending} onClick={() => void updateInstalledSources()}>Update All Sources</Button>
+			{message && <p role="status">{message}</p>}
+		</section>
+		<Button variant="primary" onClick={() => setAdding(true)}>Add Source List</Button>
+		<ReposPanel />
+		<AddRepoModal open={adding} onClose={() => setAdding(false)} />
+	</section>;
+}
+
+export function SourceAutomation() {
+	const [confirmUpdates, setConfirmUpdates] = useState(false);
+	const client = useQueryClient();
+	const preferences = useQuery({
+		queryKey: ['source-refresh-preferences'],
+		queryFn: () => api<SourceRefreshPreferences>('/source-repos/preferences')
+	});
+	const save = useMutation({
+		mutationFn: (body: SourceRefreshPreferences) => api<SourceRefreshPreferences>('/source-repos/preferences', { method: 'PUT', body }),
+		onSuccess: (value) => { client.setQueryData(['source-refresh-preferences'], value); setConfirmUpdates(false); }
+	});
+
+	return <section className="card settings-section" aria-label="Source update preferences"><h2>Source Automation</h2>
 			{preferences.isPending && <p role="status">Loading source update preferences…</p>}
 			{preferences.isError && <p role="alert">Source update preferences could not be loaded. <Button onClick={() => void preferences.refetch()}>Retry</Button></p>}
 			{preferences.data && <>
@@ -69,12 +85,6 @@ export function SourceLists() {
 				{confirmUpdates && <div role="group" aria-label="Confirm automatic source updates"><p>Allow eligible unused source packages to update automatically? Existing manga and reading progress will not be migrated unattended.</p><Button onClick={() => save.mutate({ ...preferences.data!, autoUpdatePackages: true })} disabled={save.isPending}>Enable automatic source updates</Button><Button onClick={() => setConfirmUpdates(false)}>Cancel</Button></div>}
 			</>}
 			{save.isError && <p role="alert">Preferences were not saved. Retry the change.</p>}
-			<Button disabled={repos.isPending || !repos.data?.length || checking} onClick={() => void checkUpdates()}>Check for Source Updates</Button>
-			<Button disabled={updateAll.isPending} onClick={() => void updateInstalledSources()}>Update All Sources</Button>
-			{message && <p role="status">{message}</p>}
-		</section>
-		<Button variant="primary" onClick={() => setAdding(true)}>Add Source List</Button>
-		<ReposPanel />
-		<AddRepoModal open={adding} onClose={() => setAdding(false)} />
+
 	</section>;
 }

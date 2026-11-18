@@ -66,7 +66,7 @@ and forced native fallback checks; it still needs testing on an actual older Mac
 | Orange | A newer published desktop release is found; installation still requires authenticity/compatibility checks |
 | Gray | Not checked, checking, offline, no compatible published release, or an unreleased development build |
 | Red | Actual malformed/failed release information requiring attention; offline is not falsely shown as red |
-| One-click or unattended download/installation | **Not enabled**: release signing/feed/notarization and the coordinated Sparkle handoff need signed end-to-end certification |
+| One-click or unattended download/installation | **Not enabled**: publisher signing, HTTPS feeds and the coordinated handoff need end-to-end qualification; paid Apple signing is optional |
 
 The small status control has text and accessibility labels, opens Updates and never
 calls an older version “expired.” Application/source/chapter update states are separate.
@@ -74,50 +74,14 @@ No push, commit, branch or draft PR is treated as a release. No public release o
 appcast is published by these build tools. The repository currently has no production
 update feed/key configured; an empty catalog cannot produce a false green status.
 
-`Sparkle.framework` is embedded and linked through its supported SwiftUI controller.
-The current build does not start Sparkle's scheduler/installer. A non-configurable
-coordinated-installation safety gate additionally prevents an Info.plist flag alone
-from enabling an unsafe GUI-only update. Disabled automatic-install controls explain
-this limitation rather than pretending unattended installation works.
-
-## Paired application/server update contract
-
-`macos/Distribution/update_transaction.py` implements the independently tested
-activation stage behind the release gate:
-
-1. Require a trusted Developer ID team, valid complete application signature and
-   successful Gatekeeper assessment; reject ad-hoc/unsigned artifacts.
-2. Validate application identity/version, matching bundled fork-server digest and
-   known database schema compatibility. Reject unknown or backward schema changes.
-3. Stop the existing service; retain a private cold Server snapshot, client, runtime
-   and LaunchAgent, and verify database/user/library/source/preferences fingerprints.
-4. Replace matching app/server artifacts without changing the data directory or
-   creating a second service. Start the same service and require health **and**
-   authenticated owner verification before recording success.
-5. Keep recovery copies and a private phase journal. Cancellation or unchanged-schema
-   failure can restore artifacts without replacing the database. A migrated/changed
-   database stays stopped for explicit review; no automatic database downgrade or
-   unsafe “reversible migration” promise is made.
-
-This stage is tested using disposable applications, SQLite databases and injected
-service/authentication fixtures. It is not yet certified as a live Sparkle termination,
-installer/relaunch and paired-server upgrade on signed public releases. That certification
-and signing/feed infrastructure are explicit blockers to enabling installation. No
-existing personal library is used to simulate an update.
-
-For a future approved release, provision Developer ID/notarization and an Ed25519 key
-in the owner's Keychain. Use a dedicated `app.sumidoku.desktop.release` account with
-Sparkle's `generate_keys`; embed **only the public key** and an HTTPS feed URL through
-`SUMIDOKU_UPDATE_PUBLIC_KEY`, `SUMIDOKU_UPDATE_FEED`, and `SUMIDOKU_RELEASE_TEAM`.
-Versioned release builds use `SUMIDOKU_RELEASE_BUILD=1` and may set the full prerelease
-identifier with `SUMIDOKU_RELEASE_VERSION`. Never commit private keys or Apple credentials.
-
-`macos/Distribution/prepare-release.sh APP OUTPUT` refuses unprovisioned/ad-hoc bundles,
-creates a local paired-app archive and uses Sparkle's supported `sign_update` and
-`generate_appcast`. Review, notarization and explicit publication approval remain
-separate. Neither this script nor the application disables Gatekeeper, TLS verification
-or library validation. The native build signs nested Sparkle executable leaves/bundles
-before the parent framework/application for a supplied Developer ID identity.
+`Sparkle.framework` is embedded for the signed appcast/archive contract. The generic
+Sparkle GUI-only installer is not used to replace an app independently of its server.
+A dedicated native helper now owns the paired transaction and explicit Restore Stable.
+Actual configured distribution-trust verification, authenticated catalog/archive, matching
+payload and release qualification are required; unsigned local builds remain blocked.
+Unattended installation remains disabled. See [Stable/Beta release infrastructure](BETA_RELEASE.md)
+for implementation files, compatibility guards, signing/hosting requirements,
+bootstrap/provenance blockers and disposable verification limits.
 
 ## Local verification and screenshots
 
@@ -175,7 +139,7 @@ server, account or backup information. Public examples must use disposable fixtu
   actual glass, forced material fallback, reduced transparency and increased contrast.
   Native compositor captures and separate embedded-view snapshots were inspected;
   fixture data is disposable and original.
-- Older macOS hardware, public Developer ID/notarization, signed feeds and live
+- Older macOS hardware, optional Developer ID/notarization, production signed feeds and live
   Sparkle paired installation are not certified by these local checks.
 
 ### Native-window examples

@@ -25,10 +25,11 @@ async function renderSettings(section: string): Promise<string> {
 
 test('settings deep link selects the requested group and hides only the other panels', async () => {
 	const markup = await renderSettings('downloads');
-	for (const group of ['general', 'reader', 'library', 'trackers', 'downloads', 'backups', 'system']) {
-		assert.match(markup, new RegExp(`data-settings-group="${group}"`));
+	for (const group of ['general', 'reader', 'automation', 'trackers', 'downloads', 'backups', 'accounts', 'system']) {
 		assert.match(markup, new RegExp(`data-settings-panel="${group}"`));
 	}
+	assert.equal((markup.match(/data-settings-category=/g) ?? []).length, 6);
+	assert.match(markup, /data-settings-category="storage"[^>]*aria-pressed="true"/);
 	assert.match(markup, /data-settings-group="downloads"[^>]*aria-current="page"/);
 	assert.doesNotMatch(markup, /data-settings-panel="downloads" hidden=""/);
 	assert.match(markup, /data-settings-panel="general" hidden=""/);
@@ -36,6 +37,6 @@ test('settings deep link selects the requested group and hides only the other pa
 
 test('unknown settings group falls back to general', async () => {
 	const markup = await renderSettings('not-a-group');
-	assert.match(markup, /data-settings-group="general"[^>]*aria-current="page"/);
+	assert.match(markup, /data-settings-category="general"[^>]*aria-pressed="true"/);
 	assert.doesNotMatch(markup, /data-settings-panel="general" hidden=""/);
 });

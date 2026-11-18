@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import sys
 import common
 
 
@@ -64,7 +65,9 @@ def verify(root,version,source,tool):
     rules=common.policy();hashes=common.file_set(root,version)
     spec=importlib.util.spec_from_file_location('reviewed_verifier',source/'macos/Distribution/publish_release.py')
     verifier=importlib.util.module_from_spec(spec);spec.loader.exec_module(verifier)
-    plan,entry,_=verifier.verify(root,tool,rules['publicKey'])
+    plan,entry,archive=verifier.verify(root,tool,rules['publicKey'])
+    notices = Path(__file__).resolve().parents[2] / "macos/Distribution/release_notices.py"
+    subprocess.run([sys.executable, str(notices), str(archive)], check=True)
     if entry!=common.selected(version):raise ValueError('Artifact is not the reviewed approved release')
     catalog=json.loads((root/'desktop-releases.json').read_text())
     if any(item!=rules['approvedReleases'].get(item['version']) for item in catalog['releases']):raise ValueError('Catalog advertises an unreviewed release')

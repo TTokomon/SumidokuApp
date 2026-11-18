@@ -54,34 +54,41 @@ test('expanded sidebar keeps visible labels and collapse control', async () => {
 	assert.match(markup, /aria-expanded="true"/);
 });
 
-test('frequent destinations stay outside collapsible groups', async () => {
+test('sidebar shows five Collection items and six Preferences shortcuts', async () => {
 	const markup = await renderSidebar(false);
-	const topLevel = markup.slice(markup.indexOf('<nav'), markup.indexOf('data-nav-group='));
+	const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
 	assert.deepEqual(
-		[...topLevel.matchAll(/href="([^"]+)"/g)].map((match) => match[1]),
-		['/library', '/browse', '/updates']
+		[...navigation.matchAll(/href="([^"]+)"/g)].map((match) => match[1]),
+		[
+			'/library', '/browse', '/history', '/downloads', '/updates',
+			'/settings?section=general',
+			'/settings?section=reader',
+			'/settings?section=automation',
+			'/settings?section=downloads',
+			'/settings?section=accounts',
+			'/settings?section=system'
+		]
 	);
-});
-
-test('sidebar groups start collapsed outside their routes', async () => {
-	const markup = await renderSidebar(false);
-	assert.equal(markup.match(/class="side-nav__children" hidden="" style="display:none"/g)?.length, 2);
-	for (const group of ['common.nav.activity', 'common.nav.settings']) {
-		assert.match(markup, new RegExp(`data-nav-group="${group}"[^>]*aria-expanded="false"`));
+	for (const heading of ['Collection', 'Preferences', 'General', 'Reader', 'Automation', 'Storage &amp; Backups', 'Accounts &amp; Integrations', 'Server &amp; Diagnostics']) {
+		assert.ok(navigation.includes(heading), heading);
 	}
+	assert.doesNotMatch(navigation, /data-nav-group/);
 });
 
-test('settings deep link opens only the settings group and exposes section links', async () => {
-	const markup = await renderSidebar(false, '/settings?section=downloads');
-	assert.equal(markup.match(/class="side-nav__children" hidden="" style="display:none"/g)?.length, 1);
-	assert.match(markup, /data-nav-group="common.nav.settings"[^>]*aria-expanded="true"/);
-	assert.match(markup, /data-nav-group="common.nav.activity"[^>]*aria-expanded="false"/);
-	assert.match(markup, /href="\/settings\?section=downloads"/);
-	assert.match(markup, /href="\/settings\?section=trackers"/);
-	const activeHrefs = [...markup.matchAll(/<a\b[^>]*>/g)]
-		.filter(([anchor]) => anchor.includes('side-nav__item--active'))
-		.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
-	assert.deepEqual(activeHrefs, ['/settings?section=downloads']);
+test('legacy Settings section links select the correct consolidated Preferences shortcut', async () => {
+	const sections: Record<string, string> = {
+		downloads: 'downloads', backups: 'downloads',
+		trackers: 'accounts', accounts: 'accounts', automation: 'automation',
+		reader: 'reader',
+		system: 'system', general: 'general'
+	};
+	for (const [section, destination] of Object.entries(sections)) {
+		const markup = await renderSidebar(false, `/settings?section=${section}`);
+		const activeHrefs = [...markup.matchAll(/<a\b[^>]*>/g)]
+			.filter(([anchor]) => anchor.includes('side-nav__item--active'))
+			.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
+		assert.deepEqual(activeHrefs, [`/settings?section=${destination}`], section);
+	}
 });
 
 test('sidebar preference round-trips and rejects unknown values', () => {
@@ -126,9 +133,67 @@ test('collapsing keeps the sidebar toggle at the same spot', async () => {
 });
 
 
-test('desktop Settings exposes the dedicated Source Lists destination', async () => {
-	const markup = await renderSidebar(false, '/settings?section=source-lists');
-	assert.match(markup, /href="\/settings\?section=source-lists"/);
-	assert.match(markup, /side-nav__item--active[^>]*href="\/settings\?section=source-lists"/);
-	assert.match(markup, />Source Lists</);
+test('Accounts groups trackers and retains inactive canonical panels', async () => {
+	const vite = await createServer({
+		root: fileURLToPath(new URL('../', import.meta.url)),
+		configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true }
+	});
+	try {
+		const { SettingsLayout, SETTINGS_GROUPS } = await vite.ssrLoadModule('/src/pages/settings/SettingsLayout.tsx');
+		const panels = Object.fromEntries(SETTINGS_GROUPS.map(([id]: [string]) => [id, createElement('span', null, id)]));
+		const markup = renderToStaticMarkup(createElement(SettingsLayout, {
+			current: 'trackers', onSelect: () => {}, panels
+		}));
+		assert.equal((markup.match(/data-settings-category=/g) ?? []).length, 6);
+		assert.match(markup, /data-settings-group="trackers"[^>]*aria-current="page"/);
+		assert.match(markup, /data-settings-group="accounts"/);
+		assert.equal((markup.match(/data-settings-panel=/g) ?? []).length, 8);
+		assert.match(markup, /data-settings-panel="trackers">/);
+	} finally { await vite.close(); }
+});
+
+test('six Settings categories cover canonical sections and contextual legacy routes', async () => {
+	const vite = await createServer({
+		root: fileURLToPath(new URL('../', import.meta.url)),
+		configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true }
+	});
+	try {
+		const { SETTINGS_GROUPS, SETTINGS_CATEGORIES, settingsCategoryFor, contextualSettingsRoute } =
+			await vite.ssrLoadModule('/src/pages/settings/navigation.ts');
+		assert.equal(SETTINGS_CATEGORIES.length, 6);
+		const all = SETTINGS_CATEGORIES.flatMap((group: { sections: string[] }) => group.sections);
+		assert.deepEqual(new Set(all), new Set(SETTINGS_GROUPS.map(([id]: [string]) => id)));
+		assert.equal(contextualSettingsRoute('library'), '/library?panel=organize');
+		assert.equal(contextualSettingsRoute('source-lists'), '/browse?view=lists');
+		assert.equal(contextualSettingsRoute('trackers'), null);
+		assert.equal(settingsCategoryFor('trackers').id, 'accounts');
+		assert.equal(settingsCategoryFor('system').id, 'server');
+		assert.equal(settingsCategoryFor('general').id, 'general');
+		assert.equal(settingsCategoryFor('reader').id, 'reader');
+		assert.equal(settingsCategoryFor('automation').id, 'automation');
+	} finally { await vite.close(); }
+});
+
+test('query-based Preferences expose exactly one current destination', async () => {
+	for (const [route, expected] of [
+		['/settings?section=general', 'general'],
+		['/settings?section=reader', 'reader'],
+		['/settings?section=trackers', 'accounts'],
+		['/settings?section=backups', 'downloads']
+	]) {
+		const markup = await renderSidebar(false, route);
+		const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
+		const current = [...navigation.matchAll(/<a\b[^>]*>/g)]
+			.filter(([anchor]) => anchor.includes('aria-current="page"'))
+			.map(([anchor]) => anchor.match(/href="([^"]+)"/)?.[1]);
+		assert.deepEqual(current, [`/settings?section=${expected}`], route);
+	}
+});
+
+test('all browser destination icons are distinct', async () => {
+	const markup = await renderSidebar(false);
+	const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
+	const icons = [...navigation.matchAll(/class="lucide ([^"]+)"/g)].map((match) => match[1]);
+	assert.equal(icons.length, 11);
+	assert.equal(new Set(icons).size, 11);
 });

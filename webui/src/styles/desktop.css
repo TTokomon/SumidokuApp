@@ -364,6 +364,7 @@ button svg,a svg {
 	margin: 0 auto;
 	padding-top: 24px;
 }
+/* Native Preferences already provide the category navigation. */
 [data-native-shell='true'] .settings-nav {
 	display: none;
 }
@@ -430,3 +431,6 @@ button svg,a svg {
 	background: var(--bg-elev);
 	border-color: var(--border);
 }
+
+.settings-search-results { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (min-width: 768px) { .settings-nav { display: none; } }

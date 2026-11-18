@@ -94,12 +94,12 @@ protocol LibraryService: AnyObject {
 final class LaunchAgentService: LibraryService {
     let helper: URL
     init(helper: URL) { self.helper = helper }
-    func loaded() -> Bool { (try? Self.run("/bin/launchctl", ["print", "gui/\(getuid())/app.sumidoku.server"])) == 0 }
+    func loaded() -> Bool { (try? Self.run("/bin/launchctl", ["print", "gui/\(getuid())/\(InstallationContext.label)"])) == 0 }
     func start(plist: URL) throws { try action("start") }
     func stop() throws { try action("stop") }
     func restart() throws { try action("restart") }
     private func action(_ action: String) throws {
-        guard try Self.run("/bin/bash", [helper.path, action]) == 0 else {
+        guard try Self.run("/bin/bash", [helper.path, action]+InstallationContext.serviceArguments) == 0 else {
             throw LibraryFailure(text: "Server control failed. Your files are preserved; check the server logs.")
         }
     }
@@ -138,7 +138,7 @@ final class LibraryManager: @unchecked Sendable {
         self.home = home
         support = home.appendingPathComponent("Library/Application Support/Sumidoku")
         descriptor = support.appendingPathComponent("desktop-library.json")
-        agent = home.appendingPathComponent("Library/LaunchAgents/app.sumidoku.server.plist")
+        agent = home.appendingPathComponent("Library/LaunchAgents/\(InstallationContext.label).plist")
         self.binary = binary; self.runner = runner; self.service = service; api = LocalAPI(port: port)
         let local = api
         self.sourceListRequest = sourceListRequest ?? { method, body, cookie in
@@ -327,7 +327,7 @@ final class LibraryManager: @unchecked Sendable {
         try privateDirectory(agent.deletingLastPathComponent())
         let logs = home.appendingPathComponent("Library/Logs/Sumidoku")
         try privateDirectory(logs)
-        let plist: [String: Any] = ["Label": "app.sumidoku.server",
+        let plist: [String: Any] = ["Label": InstallationContext.label,
             "ProgramArguments": ["/bin/bash", runner.path, library.config.path, binary.path],
             "WorkingDirectory": library.config.path, "RunAtLoad": true, "KeepAlive": true,
             "ThrottleInterval": 10, "ExitTimeOut": 30, "ProcessType": "Background", "Umask": 0o077,

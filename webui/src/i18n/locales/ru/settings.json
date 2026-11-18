@@ -1,6 +1,12 @@
 {
   "settings": {
     "groupNav": "Разделы настроек",
+    "categoryAutomation": "Автоматизация",
+    "categoryStorage": "Хранилище и резервные копии",
+    "categoryAccounts": "Аккаунты и интеграции",
+    "categoryDiagnostics": "Сервер и диагностика",
+    "categoryDownloadsBackups": "Загрузки и резервные копии",
+    "categoryServerAccount": "Сервер и учётная запись",
     "groupGeneral": "Общие",
     "groupReader": "Читалка",
     "groupLibrary": "Библиотека",

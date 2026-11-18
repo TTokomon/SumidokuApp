@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "qualified": [
+    {
+      "version": "1.3.0+community.1",
+      "build": 9,
+      "sourceRevision": "9fd09f5c1e5c01f2061d6a00945867e62108c3a4",
+      "clientSha256": "87183a3faf7d125f234fbd49e7db9d80a7ee27474d5476b1fa96dfd0e905d121",
+      "serverSha256": "fcbb5614c210eac59dc044707716e5560048518afda7b5c7238b84db54b87b61",
+      "schema": 37
+    }
+  ]
+}

@@ -1,6 +1,12 @@
 {
   "settings": {
     "groupNav": "设置分组",
+    "categoryAutomation": "自动化",
+    "categoryStorage": "存储与备份",
+    "categoryAccounts": "账户与集成",
+    "categoryDiagnostics": "服务器与诊断",
+    "categoryDownloadsBackups": "下载与备份",
+    "categoryServerAccount": "服务器与账户",
     "groupGeneral": "通用",
     "groupReader": "阅读器",
     "groupLibrary": "书库",

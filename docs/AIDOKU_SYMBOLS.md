@@ -18,9 +18,10 @@ implementation, or compiled icon file has been copied or embedded.
   (Downloads).
 
 Our native sidebar uses those original symbol *names* instead of inventing
-new pictograms. Chapter Updates/Application Updates reuse Aidoku's circular
-update symbol as a visual analogy; they are not Aidoku navigation tabs.
-Server & Account reuses Aidoku's advanced-settings symbol.
+new pictograms. Chapter Updates uses the circular update symbol as a visual analogy; App Updates
+uses the distinct `arrow.clockwise`. Automation uses `calendar.badge.clock`,
+Accounts uses `person.crop.circle.fill`, and Server & Diagnostics uses
+`gearshape.2.fill`. These are native desktop choices, not copied mobile tabs.
 
 The native shell continues to use genuine system Liquid Glass where
 supported. Its bundled **Sumidoku logo and red accent remain unchanged**.
@@ -45,11 +46,13 @@ supported. Its bundled **Sumidoku logo and red accent remain unchanged**.
 A lightweight regression suite:
 `python3 -m unittest macos/tests/test_aidoku_symbols.py`
 
-Integration review resolved all 15 preferred identifiers through AppKit on the
-current Mac, and tests force two older-system fallback cases. `NativeSymbol.resolve`
-checks the running system before rendering; unsupported update symbols use
-`clock.arrow.circlepath`, with a generic system glyph for other missing names.
-Actual older macOS hardware remains a separate certification step.
+`./macos/test-symbols.sh` resolves all eleven destinations through AppKit and
+checks all thirteen sidebar/footer identifiers for collisions. A forced
+preferred-symbol-unavailable case resolves thirteen distinct available fallback
+glyphs. Each registered destination has its own fallback chain rather than sharing
+a generic circle. The current Mac passes both checks; actual older macOS hardware
+remains a separate certification step. Symbols remain 18pt with consistent colors.
+See [1.3.1 verification](SIDEBAR_131.md) for the complete destination map.
 
 The integrated native build and own-window inspection results are recorded in
 [final integration review](INTEGRATION_REVIEW.md). Original Sumidoku icon assets

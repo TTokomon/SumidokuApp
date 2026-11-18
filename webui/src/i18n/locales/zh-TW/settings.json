@@ -1,6 +1,12 @@
 {
   "settings": {
     "groupNav": "設定區段",
+    "categoryAutomation": "自動化",
+    "categoryStorage": "儲存與備份",
+    "categoryAccounts": "帳號與整合",
+    "categoryDiagnostics": "伺服器與診斷",
+    "categoryDownloadsBackups": "下載與備份",
+    "categoryServerAccount": "伺服器與帳號",
     "groupGeneral": "一般",
     "groupReader": "閱讀器",
     "groupLibrary": "書庫",

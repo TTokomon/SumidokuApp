@@ -48,20 +48,20 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     init(manager injectedManager: LibraryManager? = nil, dataStore: WKWebsiteDataStore? = nil) {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore ?? .default()
-        configuration.userContentController.addUserScript(WKUserScript(source: Self.shellScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        configuration.userContentController.addUserScript(WKUserScript(source: "window.__sumidokuVersion=\(LibraryManager.quote(Bundle.main.object(forInfoDictionaryKey: "SumidokuReleaseVersion") as? String ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development"));\n" + Self.shellScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView = WKWebView(frame: .zero, configuration: configuration)
         let network = URLSessionConfiguration.ephemeral
         network.timeoutIntervalForRequest = 2
         network.timeoutIntervalForResource = 3
         session = URLSession(configuration: network)
-        let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Sumidoku/bin")
+        let support = InstallationContext.home.appendingPathComponent("Library/Application Support/Sumidoku/bin")
         let helper = Bundle.main.url(forResource: "service", withExtension: "sh")!
         let runtime = Bundle.main.url(forResource: "server-build", withExtension: "json")
             .flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
         let executable = runtime?["variant"] as? String == "fork" ? "sumidoku-server-fork" : "sumidoku-server"
-        manager = injectedManager ?? LibraryManager(binary: support.appendingPathComponent(executable),
+        manager = injectedManager ?? LibraryManager(home:InstallationContext.home,binary: support.appendingPathComponent(executable),
                                  runner: support.appendingPathComponent("run-server.sh"),
-                                 service: LaunchAgentService(helper: helper))
+                                 service: LaunchAgentService(helper: helper),port:InstallationContext.port)
         super.init()
         do { library = try manager.current(); if library != nil { onboarding = "signin" } }
         catch { controlError = error.localizedDescription }
@@ -83,6 +83,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         if message.name == "desktop" {
             if let body = message.body as? [String: String] {
                 if body["action"] == "updates" || body["action"] == "checkUpdates" { showUpdates?() }
+                if body["action"] == "server" { nativePanel = "server" }
                 if body["action"] == "checkUpdates" { checkAppUpdates?() }
                 if let path = body["path"], path.hasPrefix("/"), !path.hasPrefix("//") { route = path }
                 if let title = body["title"] { routeTitle = String(title.prefix(120)).replacingOccurrences(of: " · Sumidoku", with: "") }
@@ -259,14 +260,14 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     func showSourceLists() {
         nativePanel = nil
         guard signedIn else { controlError = "Sign in to manage Source Lists."; return }
-        webView.load(URLRequest(url: URL(string: "settings?section=source-lists", relativeTo: address)!))
+        navigate("/browse?view=lists")
     }
 
     func showBackupRestore() {
         nativePanel = nil
         guard signedIn else { controlError = "Sign in before opening Backup and Restore."; return }
         // Keep the upstream backup UI, its preview and section selectors.
-        webView.load(URLRequest(url: URL(string: "settings?section=backups", relativeTo: address)!))
+        navigate("/settings?section=backups")
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -286,8 +287,8 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
             let process = Process()
             let pipe = Pipe()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = [helper.path, action]
-            process.environment = ["HOME": FileManager.default.homeDirectoryForCurrentUser.path,
+            process.arguments = [helper.path, action]+InstallationContext.serviceArguments
+            process.environment = ["HOME": InstallationContext.home.path,
                                    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
             process.standardOutput = pipe
             process.standardError = pipe
@@ -420,6 +421,24 @@ struct MainWindow: View {
     @Environment(\.openWindow) private var openWindow
     private let refresh = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
+    @MainActor
+    private func configureInstallation() async {
+        guard let library = controller.library else { updates.installer = nil; await updates.refreshInstallation(); return }
+        let manager = controller.manager
+        updates.installer = NativeUpdateInstaller(paths:InstallationPaths(application:Bundle.main.bundleURL,config:library.config,backups:library.backups,runtime:manager.binary,agent:manager.agent,runner:manager.runner,port:manager.api.base.port ?? 3000),support:manager.support,beforeHandoff:{ recovering in
+            guard controller.operation == nil, recovering || controller.signedIn else { throw UpdateFailure("Finish current maintenance and sign in before updating.") }
+            let session = UpdateSession(cookie:await controller.cookieHeader(),username:controller.username)
+            controller.operation = "Preparing application update"
+            do { try await WebSessionQuiescer.suspend(controller.webView) }
+            catch { controller.operation = nil; throw error }
+            return session
+        },handoffFailed:{
+            controller.operation = nil
+            await controller.check(reload:true)
+        })
+        await updates.refreshInstallation()
+    }
+
     var body: some View {
         ZStack {
             if controller.library == nil || (controller.available && !controller.signedIn) {
@@ -455,7 +474,57 @@ struct MainWindow: View {
             controller.checkAppUpdates = { updates.check() }
             if let library = controller.library { updates.loadInstalledHistory(library.backups) }
             updates.checkIfDue()
+            #if COMMUNITY_E2E
+            if let root = ReleaseIdentity.fixtureRoot,
+               let data = try? Data(contentsOf:URL(fileURLWithPath:root).appendingPathComponent("session.json")),
+               let credentials = try? JSONDecoder().decode([String:String].self,from:data) {
+                controller.username = credentials["username"] ?? ""
+                let api = controller.manager.api
+                if let library = controller.library,
+                   let login = try? await Task.detached(operation: { try api.login(username:credentials["username"] ?? "",password:credentials["password"] ?? "") }).value {
+                    await controller.accept(login,library:library)
+                }
+            }
+            #endif
             await controller.check()
+            await configureInstallation()
+            #if COMMUNITY_E2E
+            CommunityEndToEnd.attach(controller:controller,updates:updates)
+            #endif
+            if let index = CommandLine.arguments.firstIndex(of:"--complete-update"), CommandLine.arguments.count > index+1,
+               let library = controller.library, controller.signedIn {
+                let url = URL(fileURLWithPath:CommandLine.arguments[index+1]).standardizedFileURL
+                if url.path.hasPrefix(library.backups.standardizedFileURL.resolvingSymlinksInPath().path+"/ApplicationUpdate-"), url.lastPathComponent == "update-journal.json",
+                   url.resolvingSymlinksInPath().path == url.path,
+                   let data = try? Data(contentsOf:url), let journal = try? JSONDecoder().decode(PairedJournal.self,from:data),
+                   journal.phase == "artifacts-replaced", journal.paths.application.standardizedFileURL.path == Bundle.main.bundleURL.standardizedFileURL.path,
+                   journal.paths.config.standardizedFileURL.path == library.config.standardizedFileURL.path,
+                   journal.version == updates.installed {
+                    for _ in 0..<100 {
+                        if !controller.webView.isLoading, (try? await controller.webView.evaluateJavaScript("document.querySelector('#root')?.childElementCount > 0")) as? Bool == true {
+                            let ack: [String:Any] = ["version":updates.installed,"signedIn":true]
+                            if let bytes = try? JSONSerialization.data(withJSONObject:ack) {
+                                let file = url.deletingLastPathComponent().appendingPathComponent("relaunch-verified.json")
+                                try? bytes.write(to:file,options:.atomic)
+                                try? FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:file.path)
+                                // The helper commits "verified" only after this acknowledgement.
+                                // Refresh once it commits, so Restore Stable is immediately usable.
+                                for _ in 0..<100 {
+                                    if let bytes = try? Data(contentsOf:url),
+                                       let completed = try? JSONDecoder().decode(PairedJournal.self,from:bytes), completed.phase == "verified" {
+                                        await updates.refreshInstallation()
+                                        updates.loadInstalledHistory(library.backups)
+                                        break
+                                    }
+                                    try? await Task.sleep(nanoseconds:200_000_000)
+                                }
+                            }
+                            break
+                        }
+                        try? await Task.sleep(nanoseconds:200_000_000)
+                    }
+                }
+            }
             if let index = CommandLine.arguments.firstIndex(of: "--capture-window"), CommandLine.arguments.count > index + 1 {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if let routeIndex = CommandLine.arguments.firstIndex(of: "--capture-route"), CommandLine.arguments.count > routeIndex + 1 {
@@ -474,6 +543,7 @@ struct MainWindow: View {
                 if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: captureURL.appendingPathExtension("status.json"), options: .atomic) }
             }
         }
+        .onChange(of:controller.signedIn) { _ in Task { await configureInstallation() } }
         .onReceive(refresh) { _ in
             guard controller.operation == nil else { return }
             Task { await controller.check() }
@@ -559,7 +629,6 @@ struct ServerSettings: View {
     var embedded = false
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var controller: ServerController
-    @State private var changingPassword = false
     var body: some View {
         Form {
             Section("Local server") {
@@ -578,7 +647,7 @@ struct ServerSettings: View {
             }
             if controller.signedIn {
                 Section("Owner account") {
-                    Button("Change Password…") { changingPassword = true }
+                    Button("Accounts & Integrations…") { controller.navigate("/settings?section=accounts"); if !embedded { NSApp.keyWindow?.close(); openWindow(id: "main") } }
                     Button("Source Lists") { controller.showSourceLists(); if !embedded { NSApp.keyWindow?.close(); openWindow(id: "main") } }
                     Button("Backup and Restore…") { controller.showBackupRestore(); if !embedded { NSApp.keyWindow?.close(); openWindow(id: "main") } }
                     Button("Sign Out") { Task { await controller.signOut() } }
@@ -590,38 +659,9 @@ struct ServerSettings: View {
                 .font(.footnote).foregroundStyle(.secondary)
         }.formStyle(.grouped).padding().frame(width: 580)
             .disabled(controller.operation != nil)
-            .sheet(isPresented: $changingPassword) { PasswordSheet(controller: controller, presented: $changingPassword) }
     }
 }
 
-struct PasswordSheet: View {
-    @ObservedObject var controller: ServerController
-    @Binding var presented: Bool
-    @State private var current = ""
-    @State private var new = ""
-    @State private var confirmation = ""
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Change Password").font(.title2).bold()
-            Text("The server will stop briefly to save a recovery snapshot. Your new password will stay effective after restart.")
-            SecureField("Current password", text: $current)
-            SecureField("New password (at least 8 characters)", text: $new)
-            SecureField("Confirm new password", text: $confirmation)
-            if let error = controller.controlError { Text(error).foregroundStyle(.red) }
-            HStack {
-                Button("Cancel") { current = ""; new = ""; confirmation = ""; presented = false }
-                Button("Change Password") {
-                    let old = current, secret = new, confirm = confirmation
-                    current = ""; new = ""; confirmation = ""
-                    Task {
-                        await controller.passwordAction(current: old, new: secret, confirmation: confirm, owner: controller.username, recovery: false)
-                        if controller.controlError == nil { presented = false }
-                    }
-                }.keyboardShortcut(.defaultAction)
-            }
-        }.padding(24).frame(width: 430).disabled(controller.operation != nil)
-    }
-}
 
 #if !NATIVE_UI_TESTS
 @main

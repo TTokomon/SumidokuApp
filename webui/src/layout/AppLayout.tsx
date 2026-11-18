@@ -12,6 +12,7 @@ import { authAllowsEvents } from '../lib/auth';
 import { DesktopSidebar } from './DesktopSidebar';
 import { LanguageMenu } from './LanguageMenu';
 import { NAV } from './navigation';
+import { AidokuImportSessionProvider } from '../pages/settings/AidokuImportSession';
 
 function ThemeToggle() {
 	const { t } = useTranslation();
@@ -45,6 +46,7 @@ export function AppLayout() {
 	useEffect(() => eventsAllowed ? subscribeTaskEvents(qc) : undefined, [eventsAllowed, qc]);
 	useEffect(() => eventsAllowed ? subscribeChapterCacheEvents(qc) : undefined, [eventsAllowed, qc]);
 	return (
+		<AidokuImportSessionProvider key={auth.data?.user?.id ?? 'local'}>
 		<div className={sidebarCollapsed ? 'app app--sidebar-collapsed' : 'app'}>
 			<DesktopSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((current) => !current)}>
 				<div className="app__shell-actions">
@@ -86,5 +88,6 @@ export function AppLayout() {
 				))}
 			</nav>
 		</div>
+		</AidokuImportSessionProvider>
 	);
 }

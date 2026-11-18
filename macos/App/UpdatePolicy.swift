@@ -62,18 +62,32 @@ struct ReleaseSelection {
 }
 struct UpdateFailure: LocalizedError { let message: String; init(_ message: String) { self.message = message }; var errorDescription: String? { message } }
 
+enum DistributionMode: String { case community, developerID = "developer-id" }
+
 struct DistributionPolicy {
+    let mode: DistributionMode?
     let feed: URL?
+    let catalog: URL?
     let publicKey: Data?
     let team: String?
     let coordinatedInstallation: Bool
     init(info: [String: Any]) {
+        mode = DistributionMode(rawValue:info["SumidokuDistributionMode"] as? String ?? "developer-id")
         let url = (info["SUFeedURL"] as? String).flatMap(URL.init(string:))
-        feed = url?.host != nil && url?.query == nil && url?.scheme == "https" && url?.user == nil && url?.password == nil && url?.fragment == nil ? url : nil
+        feed = url?.host != nil && url?.query == nil && url?.scheme == "https" && [nil,443].contains(url?.port) && url?.user == nil && url?.password == nil && url?.fragment == nil ? url : nil
+        let catalogURL = (info["SumidokuReleaseCatalogURL"] as? String).flatMap(URL.init(string:))
+        catalog = catalogURL?.scheme == "https" && [nil,443].contains(catalogURL?.port) && catalogURL?.host == feed?.host && catalogURL?.user == nil && catalogURL?.password == nil && catalogURL?.query == nil && catalogURL?.fragment == nil ? catalogURL : nil
         publicKey = (info["SUPublicEDKey"] as? String).flatMap { Data(base64Encoded: $0) }.flatMap { $0.count == 32 ? $0 : nil }
         team = (info["SumidokuReleaseTeam"] as? String).flatMap { $0.count == 10 ? $0 : nil }
         coordinatedInstallation = info["SumidokuCoordinatedUpdatesValidated"] as? Bool == true
     }
-    var provisioned: Bool { feed != nil && publicKey != nil && team != nil && coordinatedInstallation }
-    var blocker: String { "Automatic installation is not enabled in this development build. A signed HTTPS feed, release key, Developer ID/notarization and a validated app-and-server update are required. Checking published releases is available." }
+    var provisioned: Bool { feed != nil && catalog != nil && publicKey != nil && (mode == .community || (mode == .developerID && team != nil)) && coordinatedInstallation }
+    func acceptsReplacement(_ info: [String:Any]) -> Bool {
+        let next = Self(info:info)
+        return provisioned && next.provisioned && next.mode == mode && next.feed == feed && next.catalog == catalog && next.publicKey == publicKey && next.team == team
+            && info["SumidokuDevelopmentBuild"] as? Bool == false
+            && info["SumidokuCoordinatedUpdateProtocolVersion"] as? Int == 1
+            && info["SUAutomaticallyUpdate"] as? Bool == false && info["SUAllowsAutomaticUpdates"] as? Bool == false
+    }
+    var blocker: String { "Installation is not enabled until the application, signed catalog, pinned release key, configured distribution trust and paired recovery are verified. Checking published releases remains available." }
 }

@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-spec=importlib.util.spec_from_file_location('paired_update',Path(__file__).resolve().parents[1]/'Distribution/update_transaction.py')
+spec=importlib.util.spec_from_file_location('paired_update',Path(__file__).with_name('legacy_update_transaction.py'))
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 
 class UpdateTransactionTests(unittest.TestCase):
