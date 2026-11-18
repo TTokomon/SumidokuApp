@@ -56,7 +56,16 @@ def maybe_release(tag):
     return json.loads(result.stdout)
 
 def download_stream(endpoint,destination,limit,expected=None):
-    process=subprocess.Popen(['gh','api',endpoint,'-H','Accept: application/octet-stream'],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+    # Actions returns a ZIP redirect from its JSON API. Release assets need
+    # octet-stream to select binary content instead of asset metadata.
+    accept = "application/octet-stream"
+    if re.fullmatch(rf"repos/{re.escape(REPO)}/actions/artifacts/[0-9]+/zip", endpoint):
+        accept = "application/vnd.github+json"
+    process = subprocess.Popen(
+        ["gh", "api", endpoint, "-H", f"Accept: {accept}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
     count=0
     try:
         with destination.open('xb') as stream:
