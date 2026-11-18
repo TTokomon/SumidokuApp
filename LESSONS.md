@@ -6,6 +6,14 @@ went wrong is kept here as a rule, then why, then the evidence. Read this
 before changing code. A lesson seen again on a later day moves into
 [docs/code-standards.md](docs/code-standards.md).
 
+**Keep draft bytes off public Actions artifact storage.**
+Readers of a public repository can download workflow artifacts even while a
+release remains a draft. Upload only the same-run receipt before approval.
+The protected publisher downloads and reauthenticates the receipt-pinned
+draft bytes, including its notes, after approval.
+- Evidence: read-only run 44352247783 uploaded a full Beta distribution.
+  Its archive was removed after the authenticated receipt was retained.
+
 **Publishing a release at a historical source can require workflow permission.**
 A built-in Actions token can write release contents but cannot obtain Workflows
 write access. Use a short-lived, single-repository credential only in the final
