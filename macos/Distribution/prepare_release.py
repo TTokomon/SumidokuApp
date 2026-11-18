@@ -9,6 +9,7 @@ from pathlib import Path
 import plistlib
 import re
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 
 SPARKLE = 'http://www.andymatuschak.org/xml-namespaces/sparkle'
@@ -84,6 +85,8 @@ def prepare(app, output, sparkle, trust_tool, previous=None):
         else:
             args += ['-p',str(path)]
         return subprocess.run(args,input=secret+'\n' if secret else None,capture_output=True,text=True,check=True).stdout.strip()
+    notice_check = Path(__file__).with_name("release_notices.py")
+    subprocess.run([sys.executable, str(notice_check), str(archive)], check=True)
     signature=sign(archive)
     sign(archive,signature)
     entry={'version':version,'build':int(info['CFBundleVersion']),'channel':'beta' if '-beta.' in version else 'stable',

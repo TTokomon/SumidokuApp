@@ -66,6 +66,7 @@ xcrun --sdk macosx swiftc "${SWIFT_FLAGS[@]}" -O -whole-module-optimization -par
 mkdir -p "$APP/Contents/Frameworks"
 ditto --norsrc --noextattr "$SPARKLE/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 cp "$SPARKLE/LICENSE" "$APP/Contents/Resources/Sparkle-LICENSE.txt"
+cp "$ROOT/LICENSE" "$APP/Contents/Resources/Sumidoku-LICENSE.txt"
 cp "$ROOT/macos/service.sh" "$APP/Contents/Resources/service.sh"
 cp "$ROOT/macos/run-server.sh" "$APP/Contents/Resources/run-server.sh"
 if [[ -f "$ROOT/stable-bootstrap-provenance.json" ]]; then

@@ -2646,6 +2646,8 @@ Unpublished draft retrieval uses a temporary 20-minute manifest of asset-only
 GitHub download capabilities, not a repository write token in the verifier.
 The manifest and downloads are bounded and package-bound; the signed contents
 are authenticated independently and the main-only writer rechecks draft state.
+The packager and read-only verifier check the exact Sumidoku and Sparkle
+licenses in the downloadable ZIP before it can be published.
 Publication never uploads application assets. The first feed is fully staged as
 a draft before the app visibility flip; original approved-job retries accept
 only exact public application assets and prior/new authenticated feed states.

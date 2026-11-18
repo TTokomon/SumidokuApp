@@ -125,14 +125,19 @@ failure-injection tests, which mock every GitHub operation and prohibit subproce
 The first Stable is `1.3.0+community.1` (build 9), not a relabelled Beta. Its audited
 Stable interface/design is based on `9fd09f5`; the sealed updater-only overlay is
 from `6f92874`. It retains the exact original Stable backend payload, schema 37.
-Its signed catalog/app/server hashes and archive bytes are pinned in main's policy.
+Its signed catalog/app/server hashes and archive bytes are pinned in the release policy.
+Build 9 was repackaged while unpublished to include the original Sumidoku MIT
+license. The signed resource envelope changed, and the normalized app executable
+code, helper, server and original assembly provenance remained identical. Both
+packaging and read-only publication validation require the complete matching
+Sumidoku and Sparkle notices inside the ZIP.
 The untouched original 1.3.0 (6) cannot update itself: a separately approved manual
 bootstrap is still necessary. No current installation is replaced by this work.
 
-The prepared `1.3.1-beta.1` (build 10) uses the same verifier and publication boundary.
-Its app/backend are an exact-source pair. Its archive may be verified offline before
-Stable publication, but online Beta publication validation intentionally refuses an
-absent public Stable baseline. Previous native Stable → Beta → Restore Stable,
+The earlier `1.3.1-beta.1` archive predates the notices and refers to the superseded
+Stable hash. Its publication pin was retired. Prepare it with both notices and
+the corrected, publicly verified Stable catalog, then requalify and review its new
+artifact pin. Previous native Stable → Beta → Restore Stable,
 persistent-cookie, progress/download and backup evidence is reused when those
 application inputs have not changed. Publication infrastructure tests are separate.
 

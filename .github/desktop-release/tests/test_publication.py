@@ -134,7 +134,7 @@ class PublicationTests(unittest.TestCase):
         with patch.object(writer,'checked_release',return_value=None),patch.object(common,'maybe_release',return_value={'draft':False,'tag_name':'desktop-updates','target_commitish':'a'*40,'assets':[]}):
             with self.assertRaisesRegex(ValueError,'changed'):writer.inspect_remote({'tag':'desktop-v'+VERSION,'sourceRevision':'a'*40,'files':{},'priorFeed':None})
     def test_beta_requires_public_stable(self):
-        with patch.object(common,'maybe_release',return_value=None):
+        with patch.object(common,'maybe_release',return_value=None),patch.object(common,'selected',return_value={'channel':'beta'}):
             with self.assertRaisesRegex(ValueError,'Stable'):validate.prior_feed(None,'1.3.1-beta.1',None)
     def test_network_failure_is_not_absence(self):
         result=type('Response',(),{'returncode':1,'stdout':'','stderr':'gh: API rate limit exceeded (HTTP 403)'})()
