@@ -22,7 +22,7 @@ def prepare(version,output):
     assets={a['name']:a for a in release['assets']}
     if len(assets)!=len(release['assets']) or set(assets)!=set(common.filenames(version)):raise ValueError('Unexpected draft assets')
     token=subprocess.check_output(['gh','auth','token','--hostname','github.com'],text=True).strip()
-    created=int(time.time());value={'format':1,'repository':common.REPO,'tag':tag,'sourceRevision':entry['sourceRevision'],'draft':True,'created':created,'expires':created+1200,'assets':{}}
+    created=int(time.time());value={'format':1,'repository':common.REPO,'tag':tag,'sourceRevision':entry['sourceRevision'],'draft':True,'releaseId':release['id'],'created':created,'expires':created+1200,'assets':{}}
     opener=urllib.request.build_opener(common.NoRedirect())
     for name,asset in assets.items():
         if type(asset['id']) is not int or not asset.get('digest','').startswith('sha256:'):raise ValueError('Missing GitHub asset identity/digest')

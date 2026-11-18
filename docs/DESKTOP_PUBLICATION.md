@@ -18,13 +18,25 @@ app/server identity, signed bundle seal and inventory are authenticated before a
 publication plan is produced. Only explicitly reviewed Stable/Beta artifacts in
 main's policy are eligible. Updating a tooling or artifact pin requires review.
 
-A separate publication job is reachable only with `verify_only: false`, from
-`refs/heads/main`, after validation and protected `desktop-release` approval. That
-job runs **main-owned code only**. Its automatic token has contents and Actions read access. The job downloads the
-immutable verified artifact from the same workflow run, checks all hashes again and treats
-its contents as data. It never compiles or imports PR/product code, runs an app,
-extracts its app ZIP, or receives a signing key. Branch runs cannot execute this
-job. The draft-creation workflow is also restricted to main.
+The verifier uploads only `verified.json` as the `desktop-verification-receipt`
+Actions artifact. The receipt contains run and workflow identity, the reviewed
+policy digest, draft ID when using a staged draft, source revision, asset
+hashes and byte counts, and hashes of the authenticated public feed baseline.
+The publication workflow keeps packages, feeds, notes, capability URLs and
+credentials out of Actions artifacts, including in verification-only runs.
+Use the locally signed draft route for a confidential candidate. The optional
+CI-signing candidate workflow stores its distribution in an Actions artifact
+available to signed-in repository readers.
+
+A separate publication job runs only from `main` with `verify_only: false`
+after validation and protected `desktop-release` approval. It retrieves the
+same-run receipt with the automatic read-only token and compiles only the
+pinned verifier. The final protected step uses the scoped release credential
+to retrieve the nine files directly from the authenticated release, checks
+their sizes and hashes against the receipt, then repeats native signature,
+provenance, notice and archive validation in temporary storage. Downloaded
+application code never runs. The compiled verifier receives no release token.
+The draft-creation workflow is also restricted to main.
 
 Both release-asset and Actions ZIP transports are size-bounded and reject unexpected
 files, duplicate paths and symlinks. GitHub authentication, transport and rate-limit
@@ -68,8 +80,10 @@ an **environment secret** named `DESKTOP_RELEASE_TOKEN` in that environment.
 Only the final release-write step of each protected main workflow receives it.
 For draft creation, that step also checks the version and source against main’s
 reviewed artifact policy and refuses an existing release or tag before creating
-an empty unpublished draft. Checkout, artifact
-download and validation use the automatic read-only token. Without the secret
+an empty unpublished draft. Checkout and receipt
+download use the automatic read-only token. Draft discovery and binary downloads
+need the protected credential because GitHub only shows drafts to users with
+push access. Without the secret
 the writer stops before any release operation. Keep the secret out of repository
 secrets, inputs, logs and local files. Delete the environment secret and revoke
 the PAT (or let the short-lived installation token expire) when the run finishes.
@@ -106,15 +120,21 @@ Published feeds/assets remain accessible directly with the read-only token.
 
 ## Recoverable publication and retry authority
 
-The writer uses the exact immutable artifact/receipt produced by this workflow's
+The writer uses the exact immutable receipt artifact produced by this workflow's
 read-only validation job. Its Actions artifact ZIP request uses GitHub’s JSON
 media type and follows the download redirect. Release asset binary downloads
 use octet-stream. The archive must also match main's pinned approved
 hash and length. It accepts an already-public application only when the complete
 nine-file asset set, every digest/size, source, tag and release channel match that
-same receipt. Missing or altered public application files stop recovery without
-writes. The writer never creates, uploads, replaces or deletes application assets;
+same receipt. It also requires the exact approved release body for an
+already-public application. Missing or altered public application files stop
+recovery without writes. The writer never creates, uploads, replaces or deletes application assets;
 draft creation and local staging remain separate operations.
+
+The writer saves and reads back the authenticated `RELEASE_NOTES.md` body
+while the release is still a draft. A retry after that write skips it if the
+body already matches exactly. Before and after the visibility change, verify
+the notes and the expected prerelease flag. Application assets stay unchanged.
 
 For the first Stable, the writer creates `desktop-updates` as a draft and uploads
 and verifies each of the three feed files before making the application public.
@@ -122,7 +142,7 @@ It then makes the complete feed public and verifies the final state. Failure dur
 staging leaves the application private. If a visibility operation committed but its
 response was lost, the next attempt checks the actual state and skips that operation.
 It can also complete the earlier application's public-with-missing-feed state,
-provided all application assets match the original authenticated transaction.
+provided its assets and release notes match the original authenticated transaction.
 
 For an existing public feed, its assets may be unchanged prior authenticated bytes,
 the exact new bytes, or temporarily missing after an interrupted replacement.
@@ -135,7 +155,8 @@ an app visibility flip and several feed assets: an interrupted feed can temporar
 be unavailable; its signatures fail closed and the same authorized job can finish it.
 
 Recover by re-running **only the failed publication job in the original approved
-workflow run**, using its original immutable verified artifact. Main-only execution,
+workflow run**, using its original immutable receipt and fetching the same
+release bytes again. Main-only execution,
 the protected `desktop-release` environment, explicit `verify_only=false` and the
 same-run artifact checks still apply. This does not authorize another version,
 archive, source or workflow. Do not start a fresh validation against a partial feed

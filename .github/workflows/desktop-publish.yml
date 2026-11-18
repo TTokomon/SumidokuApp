@@ -87,18 +87,19 @@ jobs:
           SUMIDOKU_DRAFT_TRANSPORT: ${{ secrets.DESKTOP_DRAFT_TRANSPORT }}
         run: |
           python3 .github/desktop-release/validate.py --repo . --version "$DESKTOP_VERSION" --staged-tag "$STAGED_TAG" --candidate-run-id "$CANDIDATE_RUN_ID" --output "$RUNNER_TEMP/desktop-verified"
-      - name: Preserve exactly the authenticated public files
+      - name: Upload the verification receipt only
         id: verified
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: desktop-verified
-          path: ${{ runner.temp }}/desktop-verified/
+          name: desktop-verification-receipt
+          path: ${{ runner.temp }}/desktop-verified/verified.json
+          if-no-files-found: error
           # Preserve the exact authenticated receipt for approved-job recovery.
           retention-days: 90
   publish:
     if: inputs.policy_test == false && inputs.verify_only == false && github.ref == 'refs/heads/main'
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: macos-26-intel
     environment: desktop-release
     permissions:
       contents: read
@@ -108,41 +109,25 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Download only this run's immutable verified artifact
+      - name: Download only this run's immutable verification receipt
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_ID: ${{ needs.validate.outputs.artifact_id }}
+          DESKTOP_VERSION: ${{ inputs.version }}
         run: |
-          python3 - <<'PY'
-          import os,subprocess,sys
-          from pathlib import Path
-          sys.path.insert(0,'.github/desktop-release')
-          import common
-          identifier=os.environ['ARTIFACT_ID'];assert identifier.isdigit()
-          metadata=common.gh_json('api',f'repos/{common.REPO}/actions/artifacts/{identifier}')
-          assert str(metadata['workflow_run']['id'])==os.environ['GITHUB_RUN_ID'] and metadata['name']=='desktop-verified' and not metadata['expired']
-          root=Path(os.environ['RUNNER_TEMP']);package=root/'verified.zip'
-          common.download_stream(f'repos/{common.REPO}/actions/artifacts/{identifier}/zip',package,536870912)
-          # verified.json is main-owned data, not executable input.
-          import zipfile,stat
-          output=root/'desktop-publish';output.mkdir()
-          allowed={n:l for version in common.policy()['approvedReleases'] for n,l in common.filenames(version).items()};allowed['verified.json']=65536
-          with zipfile.ZipFile(package) as archive:
-              seen=set()
-              for entry in archive.infolist():
-                  assert entry.filename in allowed and entry.filename not in seen and not entry.is_dir() and not stat.S_ISLNK(entry.external_attr>>16) and 0<entry.file_size<=allowed[entry.filename]
-                  seen.add(entry.filename)
-                  with archive.open(entry) as source,(output/entry.filename).open('xb') as target:
-                      count=0
-                      while data:=source.read(65536):
-                          count+=len(data);assert count<=allowed[entry.filename];target.write(data)
-          PY
+          python3 .github/desktop-release/publish.py --fetch-receipt "$ARTIFACT_ID" --receipt "$RUNNER_TEMP/verified.json"
+      - name: Compile the pinned native verifier without the release credential
+        run: |
+          revision=$(python3 -c 'import json; print(json.load(open(".github/desktop-release/policy.json"))["toolingCommit"])')
+          git fetch --no-tags --depth=1 origin "$revision"
+          python3 .github/desktop-release/validate.py --repo . --prepare-tool "$RUNNER_TEMP/desktop-tool"
       - name: Publish using main-owned code only after environment approval
         env:
           GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+          DESKTOP_VERSION: ${{ inputs.version }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::Set DESKTOP_RELEASE_TOKEN in the protected desktop-release environment."
             exit 1
           fi
-          python3 .github/desktop-release/publish.py "$RUNNER_TEMP/desktop-publish" --execute
+          python3 .github/desktop-release/publish.py --execute "$RUNNER_TEMP/desktop-tool" --receipt "$RUNNER_TEMP/verified.json"
