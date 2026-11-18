@@ -8,6 +8,7 @@ import argparse
 import base64
 import hashlib
 import http.cookiejar
+import http.server
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ import secrets
 import sqlite3
 import shutil
 import subprocess
+import threading
 import time
 import urllib.request
 import zipfile
@@ -77,11 +79,43 @@ def main(root):
         return len(records)==n and all(json.loads(p.read_text())['phase']=='verified' for p in records)
     def reading():
         doc=request('/api/v1/backups/document');return json.dumps({k:doc.get(k,[]) for k in ['library','progress','categories']},sort_keys=True)
+    class FixtureIndex(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != '/index.json':
+                self.send_error(404)
+                return
+            payload = json.dumps({'name': 'Roundtrip Fixture List', 'sources': [{
+                'id': 'en.roundtrip-fixture', 'name': 'Roundtrip Fixture', 'version': 1,
+                'downloadURL': 'fixture.aix', 'languages': ['en'], 'contentRating': 0,
+            }]}).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    repo = http.server.ThreadingHTTPServer(('127.0.0.1', 0), FixtureIndex)
+    threading.Thread(target=repo.serve_forever, daemon=True).start()
     domain=f'gui/{os.getuid()}'
-    subprocess.run(['launchctl','bootstrap',domain,str(agent)],check=True)
     try:
+        subprocess.run(['launchctl','bootstrap',domain,str(agent)],check=True)
         wait(lambda:request('/health'),'Fixture server health')
         request('/api/v1/auth/login',session,'POST');(config/'config.toml').write_text((config/'config.toml').read_text().split('[auth]')[0])
+        repo_url = f'http://127.0.0.1:{repo.server_port}/index.json'
+        subscription = request('/api/v1/source-repos', {'url': repo_url}, 'POST')
+        preferences = {'autoRefreshLists': False, 'autoUpdatePackages': False}
+        request('/api/v1/source-repos/preferences', preferences, 'PUT')
+
+        def check_external_sources():
+            rows = request('/api/v1/source-repos')
+            assert any(row['id'] == subscription['id'] and row['name'] == 'Roundtrip Fixture List' and row['sourceCount'] == 1 for row in rows)
+            settings = request('/api/v1/source-repos/preferences')
+            assert all(settings[key] is value for key, value in preferences.items())
+
+        check_external_sources()
         source=request('/api/v1/integrations',{'provider':'local','name':'Fixture Local','paths':[str(books.parent)]},'POST');request('/api/v1/local/scan',{'sourceId':source['id']},'POST')
         found=wait(lambda:request(f'/api/v1/sources/{source["id"]}/search',{'query':''},'POST').get('entries',[]),'Fixture scan')
         manga=request('/api/v1/manga',{'sourceId':source['id'],'manga':found[0]},'POST');request('/api/v1/library',{'mangaId':manga['id']},'POST');chapters=request(f'/api/v1/manga/{manga["id"]}/chapters');assert chapters
@@ -93,20 +127,21 @@ def main(root):
         subprocess.run(['open','-n',str(application)],check=True)
         first=wait(lambda:status(entries[0]['version']),'Stable native window/login/install readiness')
         (root/'session.json').rename(root/'test-fixture-account.private.json')
-        (root/'command.txt').write_text('update');second=wait(lambda:status(entries[1]['version'],first['pid']),'Beta real helper relaunch')
+        (root/'command.txt').write_text('update');second=wait(lambda:status(entries[1]['version'],first['pid']),'Beta real helper relaunch', timeout=300)
         wait(lambda:journals_verified(1),'Verified Beta handoff journal');assert second['canRestore'];assert reading()==original
-        assert digest(runtime)==entries[1]['serverSha256']
+        assert digest(runtime)==entries[1]['serverSha256'];check_external_sources()
         request(route,{'lastPageRead':2,'pageCount':3},'PATCH');advanced=reading();assert advanced!=original
-        (root/'command.txt').write_text('restore');third=wait(lambda:status(entries[0]['version'],second['pid']),'Stable real helper restore/relaunch')
-        wait(lambda:journals_verified(2),'Verified Stable restore journal');assert reading()==advanced;assert digest(runtime)==entries[0]['serverSha256']
+        (root/'command.txt').write_text('restore');third=wait(lambda:status(entries[0]['version'],second['pid']),'Stable real helper restore/relaunch', timeout=300)
+        wait(lambda:journals_verified(2),'Verified Stable restore journal');assert reading()==advanced;assert digest(runtime)==entries[0]['serverSha256'];check_external_sources()
         with sqlite3.connect(config/'sumidoku.db') as database:
-            assert database.execute("SELECT status,path FROM download WHERE chapter_id=?",(chapters[0]['id'],)).fetchone()==('finished',str(downloaded))
+            assert database.execute("SELECT chapter_id,status,path FROM download").fetchall()==[(chapters[0]['id'],'finished',str(downloaded))]
         assert all(digest(Path(p))==h for p,h in protected.items());assert 'backup_enabled = true' in (config/'config.toml').read_text()
         assert request('/api/v1/auth/login',session,'POST').get('username')==session['username'] or request('/api/v1/auth/status').get('username')==session['username']
         listeners=subprocess.check_output(['lsof','-nP',f'-tiTCP:{port}','-sTCP:LISTEN'],text=True).split();assert len(listeners)==1
-        receipt={'format':1,'status':'passed','kind':'community-disposable-native-roundtrip','stable':entries[0],'beta':entries[1],'preserved':['library','account login','advanced reading progress','local source','downloads','existing backup','backup schedule'],'nativePids':[first['pid'],second['pid'],third['pid']],'testTransport':'compiled local signed-byte fixture; live HTTPS and Gatekeeper first-run not certified','productionInstallationTouched':False,'relaunchAuthentication':'persisted WKWebView cookies; credential injection removed after first launch'}
+        receipt={'format':1,'status':'passed','kind':'community-disposable-native-roundtrip','stable':entries[0],'beta':entries[1],'preserved':['library','account login','advanced reading progress','local source','external source subscription and preferences','downloads without new automatic jobs','existing backup','backup schedule'],'nativePids':[first['pid'],second['pid'],third['pid']],'testTransport':'compiled local signed-byte fixture; live HTTPS and Gatekeeper first-run not certified','productionInstallationTouched':False,'relaunchAuthentication':'persisted WKWebView cookies; credential injection removed after first launch'}
         (root/'roundtrip-result.json').write_text(json.dumps(receipt,indent=2)+'\n');print('PASS: actual community Stable → Beta → Restore Stable, real native windows/helper/server, preserved advanced progress/account/downloads/backups; no production installation touched')
     finally:
+        repo.shutdown();repo.server_close()
         (root/'command.txt').write_text('quit');time.sleep(1)
         subprocess.run(['launchctl','bootout',domain+'/'+label],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         # Preserve disposable installations and evidence for review. Private fixture

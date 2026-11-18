@@ -65,7 +65,10 @@ Before setting a credential, restrict the existing `desktop-release` environment
 to the **main branch only** in its deployment branches and tags settings. Retain
 its required reviewers and use the normal approval process. Add the token as
 an **environment secret** named `DESKTOP_RELEASE_TOKEN` in that environment.
-The final writer step is the only step that receives it. Checkout, artifact
+Only the final release-write step of each protected main workflow receives it.
+For draft creation, that step also checks the version and source against main’s
+reviewed artifact policy and refuses an existing release or tag before creating
+an empty unpublished draft. Checkout, artifact
 download and validation use the automatic read-only token. Without the secret
 the writer stops before any release operation. Keep the secret out of repository
 secrets, inputs, logs and local files. Delete the environment secret and revoke
@@ -155,10 +158,12 @@ Sumidoku and Sparkle notices inside the ZIP.
 The untouched original 1.3.0 (6) cannot update itself: a separately approved manual
 bootstrap is still necessary. No current installation is replaced by this work.
 
-The earlier `1.3.1-beta.1` archive predates the notices and refers to the superseded
-Stable hash. Its publication pin was retired. Prepare it with both notices and
-the corrected, publicly verified Stable catalog, then requalify and review its new
-artifact pin. Previous native Stable → Beta → Restore Stable,
+The original Beta build 10 came from `6f92874`. Its first archive lacked the
+Sumidoku notice and contained a superseded Stable catalog entry. Reuse the
+reviewed executable code and exact-source receipts, add the original MIT
+notice alongside Sparkle's notice, then reseal and repackage locally. Generate
+the new signed catalog from the authenticated public Stable feed. The original
+Beta archive, checksum and signature are superseded. Previous native Stable → Beta → Restore Stable,
 persistent-cookie, progress/download and backup evidence is reused when those
 application inputs have not changed. Publication infrastructure tests are separate.
 
@@ -180,7 +185,7 @@ Developer ID/notarization is optional, never a community release gate.
 
 ## Safe verification and operator sequence
 
-1. Review and land only this focused bootstrap. The product PR remains draft.
+1. Review the exact signed qualifications, artifact pins and any workflow changes.
 2. Test the registered workflow on the focused branch with `verify_only=true` and
    `policy_test=true`. This exercises source-hash and permission guards with a
    read-only token on Ubuntu. It has its own verification concurrency group so it
@@ -188,8 +193,11 @@ Developer ID/notarization is optional, never a community release gate.
    on macOS (already exercised locally). The publication job must be skipped. No release or draft is
    created by that test. Local validation may additionally consume signed files
    directly through `validate.py --artifacts`; it only reads GitHub for CI/feed state.
-3. When draft staging is approved, run the main-owned `desktop-local-draft.yml` for
-   the exact Stable version and source. It creates only an unpublished draft.
+3. After the exact artifact pins are reviewed and merged to `main`, set the
+   short-lived environment credential and run the main-owned
+   `desktop-local-draft.yml` for the pinned version and source. Approve only
+   that draft job. It creates an empty unpublished draft. Remove the
+   environment secret and revoke the short-lived credential after staging.
 4. Upload the locally signed nine-file artifact set using the reviewed local staging
    tool. Never export the private key. Run `desktop-publish.yml` with the matching
    version/tag and **verify_only=true** to validate the actual remote draft end to end.

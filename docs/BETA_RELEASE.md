@@ -204,3 +204,51 @@ The new manual workflows remain proposed in the draft PR until workflow registra
 is available on the default branch. Do not bypass that availability requirement by
 creating tags/releases manually. Do not merge the draft PR to enable them without
 approval. For now, inspect the fully signed local candidates and their evidence.
+
+## Build 10 qualification against the public Stable baseline
+
+The corrected `1.3.1-beta.1` archive retains the production app and server code
+from `6f92874` and both original source receipts. The publisher seal and ad-hoc
+signature envelope were refreshed to include the original Sumidoku MIT license.
+Sparkle's notice and every other unsigned payload were preserved. The local
+Keychain signed the archive, appcast, catalog and exact qualification.
+
+- Beta ZIP SHA-256: `072298f4c8bce6fb136d7e303e1a48259561887df4c10106163b9e4a41290aa6`.
+- Public Stable ZIP SHA-256: `d445eaa7e72f355cedfa0cb6924d4b80f3cec379860ba62e250a33acd7b77340`.
+- The public Stable assets and all three update feed files matched the approved
+  bytes over HTTPS. Stable's signed build 9 entry is unchanged in the Beta catalog.
+- [Exact signed qualification](../macos/Distribution/qualifications/desktop-v1.3.1-beta.1.json)
+  binds the new archive, catalog, appcast and checksum inventory.
+
+### Fresh qualification results
+
+| Check | Result |
+| --- | --- |
+| Rust workspace | 1,278 passed, 2 skipped across 78 binaries. Includes backup export/restore, source lists, auth, downloads and library progress. Clippy and compilation passed. |
+| Formatting | `git diff --check` passed. `cargo fmt --all --check` reported formatting differences in 219 unchanged Rust files. No Rust source was edited in this PR. |
+| Frontend | 380 passed. TypeScript and production web build passed. |
+| Python | 52 macOS tests and 37 publication tests passed. |
+| Swift and native | 12 navigation cases, 48 update/material assertions, 52 release-security/recovery assertions, 9 source-bootstrap assertions, 32 isolated onboarding assertions, and 11 production bundle-seal checks passed. All 11 native destinations resolved, with 13 unique current and 13 unique fallback symbols. Welcome view rendering passed. |
+| Disposable WKWebView | Passed 11 destinations, 9 legacy routes, both footer controls, Settings persistence, library organization and Aidoku recovery. Tracker UI used a local fixture. This pass captured no screenshots. |
+| Actual native fixture round trip | Stable build 9 → Beta build 10 → Restore Stable build 9 passed with the exact release server binaries. Preserved persisted WKWebView login, current library and advanced progress, local source, external subscription and source settings, existing download and backup, and backup schedule. No extra download jobs were created. |
+| Exact production package | Swift archive verification, Ed25519 archive/catalog/qualification verification, signed appcast, SHA256SUMS, both license notices, strict ad-hoc signature and publisher inventory passed. |
+
+The first fresh round trip timed out at the harness's 100-second handoff deadline
+and recovered to the prior Stable app. A reset disposable run with a 300-second
+deadline verified both transitions. Fixture transport uses real signed ZIPs and
+does not claim live download of the unpublished Beta or Gatekeeper first-launch
+certification. The final production bundle was verified separately and was never
+installed. The nonce-scoped fixture service was removed after testing.
+
+The native sidebar harness now reads actual candidate bundle metadata and uses a
+temporary localhost port, checking that the disposable child owns the listener
+before making requests. The round trip checks source-list persistence
+and rejects any download rows beyond the known completed fixture. The runtime
+source and prior reviewed application CI remain unchanged.
+
+The protected draft workflow on `main` rejected historical-source draft creation
+with HTTP 403 in [run 44254832530](https://github.com/TTokomon/SumidokuApp/actions/runs/44254832530).
+The reviewed path uses the short-lived `DESKTOP_RELEASE_TOKEN` in the single
+protected draft-creation step and pins both version and source to main's policy.
+GitHub staging and remote read-only validation follow review and merge of those
+changes. No manual release creation substitutes for the protected workflow.

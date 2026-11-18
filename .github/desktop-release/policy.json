@@ -28,6 +28,19 @@
       "sourceRevision": "9fd09f5c1e5c01f2061d6a00945867e62108c3a4",
       "url": "https://github.com/TTokomon/SumidokuApp/releases/download/desktop-v1.3.0+community.1/Sumidoku-Desktop-1.3.0+community.1-macOS-arm64.zip",
       "version": "1.3.0+community.1"
+    },
+    "1.3.1-beta.1": {
+      "build": 10,
+      "channel": "beta",
+      "clientSha256": "3055dd3a7cdc7231fe3b93cce96f5b596510f0f5a6f288bd6f4e1d8f20b98b57",
+      "length": 17110009,
+      "schema": 37,
+      "serverSha256": "d82bedb94b9fab33b9c87fc0f6398cd227ba0dac3bea4a121e11bcb6c6cd91aa",
+      "sha256": "072298f4c8bce6fb136d7e303e1a48259561887df4c10106163b9e4a41290aa6",
+      "signature": "NkYOTN7uZ7PxUHGN9RQCswNy4xZT+NTwf4iq2F0Zph58D7UVCRpPDOeO6LrR5/B1VLA+6xdDGUwzyzbWbSohBQ==",
+      "sourceRevision": "6f92874e25c000aaaf77b5da89bb8c7d834bf1f5",
+      "url": "https://github.com/TTokomon/SumidokuApp/releases/download/desktop-v1.3.1-beta.1/Sumidoku-Desktop-1.3.1-beta.1-macOS-arm64.zip",
+      "version": "1.3.1-beta.1"
     }
   }
 }

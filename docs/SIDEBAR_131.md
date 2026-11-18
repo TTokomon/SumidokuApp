@@ -1,6 +1,6 @@
 # Sumidoku Desktop 1.3.1 (7) — navigation and Settings review
 
-Draft PR #4 reorganizes the existing native shell and upstream web components.
+PR #4 reorganized the existing native shell and upstream web components.
 It does not change backend APIs, database schemas or persistent storage formats.
 The installed 1.3.0 (6), managed server and personal data remain untouched.
 
@@ -90,10 +90,14 @@ python3 -m unittest macos.tests.test_sidebar_131 macos.tests.test_aidoku_symbols
 ./macos/test-symbols.sh
 ./macos/test-app.sh
 CARGO_BUILD_JOBS=1 ./macos/build-fork.sh
-SUMIDOKU_SERVER_BINARY="$PWD/dist/fork/sumidoku-server" SUMIDOKU_TEST_SIDEBAR_ONLY=1 python3 macos/test-desktop.py
+SUMIDOKU_TEST_APP="$PWD/dist/native/Sumidoku.app" \
+  SUMIDOKU_SERVER_BINARY="$PWD/dist/fork/sumidoku-server" \
+  SUMIDOKU_TEST_SIDEBAR_ONLY=1 python3 macos/test-desktop.py
 ```
 
-The fixture server and database are disposable. External tracker calls are
+The fixture reads version and build metadata from the supplied app bundle. It
+starts the supplied server binary on a temporary localhost port with an isolated
+configuration and database. External tracker calls are
 intercepted in the test harness, never production code. The local source index
 matches the fixture backup by exact ID; no source package or manga chapter is
 automatically downloaded. Use `SUMIDOKU_TEST_NO_CAPTURE=1` for behavior-only work.

@@ -31,6 +31,7 @@ struct DesktopRenderTests {
     let releases: PreviewReleases
     let root: URL
     let output: URL
+    let port: Int
     func wait(_ expression: String) async throws {
         for _ in 0..<150 {
             if (try? await controller.webView.evaluateJavaScript(expression)) as? Bool == true { return }
@@ -178,7 +179,7 @@ struct DesktopRenderTests {
     func render() async {
         do {
                         fputs("UI fixture: loading library\n", stderr)
-                        controller.webView.load(URLRequest(url:URL(string:"http://127.0.0.1:3309/library")!))
+                        controller.webView.load(URLRequest(url:URL(string:"http://127.0.0.1:\(port)/library")!))
                         try await wait("document.querySelectorAll('.cover-card').length >= 4")
                         fputs("UI fixture: library loaded\n", stderr)
                         _ = try await controller.webView.evaluateJavaScript("localStorage.setItem('sumidoku.theme','light');location.reload()")
@@ -237,20 +238,25 @@ struct DesktopRenderTests {
         app.setActivationPolicy(.regular)
         let root=URL(fileURLWithPath:CommandLine.arguments[1])
         let output=URL(fileURLWithPath:CommandLine.arguments[2])
-        let manager=LibraryManager(home:root.appendingPathComponent("PreviewHome"),binary:root.appendingPathComponent("not-installed"),runner:root.appendingPathComponent("not-installed-runner"),service:PreviewService(),port:3309)
+        guard let rawPort = try? String(contentsOf: root.appendingPathComponent("fixture-port"), encoding: .utf8),
+              let port = Int(rawPort), (1024...65535).contains(port), port != 3000 else {
+            fputs("Invalid disposable UI port.\n", stderr)
+            exit(1)
+        }
+        let manager=LibraryManager(home:root.appendingPathComponent("PreviewHome"),binary:root.appendingPathComponent("not-installed"),runner:root.appendingPathComponent("not-installed-runner"),service:PreviewService(),port:port)
         let controller=ServerController(manager:manager,dataStore:.nonPersistent())
         controller.library=LocalLibrary(root:root,config:root,downloads:root.appendingPathComponent("Downloads"),backups:root.appendingPathComponent("Backups"))
         controller.available=true;controller.checking=false;controller.signedIn=true
         let fixtureScript = try! String(contentsOf: root.appendingPathComponent("tracker-fixture.js"), encoding: .utf8)
         controller.webView.configuration.userContentController.addUserScript(WKUserScript(source: fixtureScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let releases = PreviewReleases()
-        let updates=AppUpdates(defaults:UserDefaults(suiteName:"SumidokuUIFixture")!,schedule:false,fetcher:releases)
+        let updates=AppUpdates(defaults:UserDefaults(suiteName:"SumidokuUIFixture."+root.lastPathComponent)!,schedule:false,fetcher:releases)
         let host=NSHostingView(rootView:AnyView(DesktopShell(controller:controller,updates:updates).frame(minWidth:780,minHeight:600)))
         let window=NSWindow(contentRect:NSRect(x:0,y:0,width:1120,height:CommandLine.arguments.contains("--sidebar-only") ? 1000 : 820),styleMask:[.titled,.closable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
         window.title="Sumidoku — Disposable UI Fixture"
         window.contentView=host;window.orderFrontRegardless();window.makeKeyAndOrderFront(nil);window.display()
         app.activate(ignoringOtherApps:true)
-        let driver=Self(controller:controller,updates:updates,releases:releases,root:root,output:output)
+        let driver=Self(controller:controller,updates:updates,releases:releases,root:root,output:output,port:port)
         Task { await driver.render() }
         app.run()
     }
