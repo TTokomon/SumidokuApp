@@ -1,0 +1,31 @@
+name: Diagnose protected desktop release lookup
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Reviewed release version
+        required: true
+      release_id:
+        description: GitHub database ID of the existing draft
+        required: true
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    if: github.ref == 'refs/heads/main'
+    environment: desktop-release
+    runs-on: macos-26-intel
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check protected credential and draft visibility using GET only
+        env:
+          GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+          GH_PROMPT_DISABLED: '1'
+          GH_DEBUG: ''
+          DESKTOP_VERSION: ${{ inputs.version }}
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: python3 .github/desktop-release/diagnose_lookup.py "$DESKTOP_VERSION" "$RELEASE_ID"
