@@ -55,7 +55,8 @@ class LookupDiagnosticTests(unittest.TestCase):
             'target_commitish': diagnose_lookup.common.selected(version)['sourceRevision'],
         }
         for status in (401, 403, 404, 429, None):
-            responses = [(200, {}), (200, {}), (status, None), (200, draft), (200, [draft])]
+            # An installation token can read the repo and draft without /user.
+            responses = [(403, None), (200, {}), (status, None), (200, draft), (200, [draft])]
             with self.subTest(status=status), patch.dict(os.environ, {'GH_TOKEN': 'fixture-only'}):
                 with patch.object(diagnose_lookup, 'probe', side_effect=responses) as probe, contextlib.redirect_stdout(io.StringIO()):
                     if status == 404:

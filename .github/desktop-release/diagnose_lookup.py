@@ -59,13 +59,15 @@ def diagnose(version, release_id):
             and value.get('prerelease') is (expected['channel'] == 'beta')
         )
 
-    identity_status, identity = probe('Credential identity', 'user')
+    # Installation tokens cannot use the authenticated-user endpoint. The
+    # repository and exact draft tests decide whether this credential can read.
+    probe('Credential identity (advisory)', 'user')
     repo_status, repository = probe('Repository', repo)
     tag_status, tagged = probe('Release by tag', f'{repo}/releases/tags/{tag}')
     _, direct = probe('Release by ID', f'{repo}/releases/{release_id}')
     direct_matches = matching_draft(direct)
     print(f'Release by ID matches expected draft: {str(direct_matches).lower()}', flush=True)
-    if identity_status != 200 or not isinstance(identity, dict) or repo_status != 200 or not isinstance(repository, dict):
+    if repo_status != 200 or not isinstance(repository, dict):
         raise SystemExit('Credential or repository access check failed')
     if tag_status == 200 and matching_draft(tagged) and direct_matches:
         return
