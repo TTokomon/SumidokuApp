@@ -255,3 +255,11 @@ Beta 2 includes the Aidoku import report from [PR #11](https://github.com/TTokom
 The app and server were built from `17132f9542ea569c8cddac8820796dd19ec1f5c8`, whose Git tree equals the independently tested PR head `4ac9fed14f053e289b262f4ec60f1da66b89a43e`. [Reviewed CI](https://github.com/TTokomon/SumidokuApp/actions/runs/45752225377) passed. The [signed qualification](../macos/Distribution/qualifications/desktop-v1.3.1-beta.2.json) records the exact archive and validation evidence.
 
 A disposable native Stable 9 to Beta 11 upgrade and Restore Stable returned to build 9 with both exact release server binaries. It preserved account access, reading progress, source settings, downloads, backups and the backup schedule. The production server also passed a synthetic Aidoku import, with the preview matching the committed report. The signed candidate catalog selects build 11 on Beta and build 9 on Stable, and both existing release entries and appcast items are preserved.
+
+## Beta 3 (build 12)
+
+Beta 3 includes the three-step Aidoku recovery, offline library preservation, safer source transfer, and upstream search/animation/layout fixes from [PR #13](https://github.com/TTokomon/SumidokuApp/pull/13). Database schema 37 is unchanged.
+
+The app and server were built from `5c0a2318fe6f45aa3e902991c59a0c47c3f9ebe1` with [reviewed CI](https://github.com/TTokomon/SumidokuApp/actions/runs/45773152396) passing. The [signed qualification](../macos/Distribution/qualifications/desktop-v1.3.1-beta.3.json) records the exact archive and validation evidence.
+
+A disposable native Stable 9 to Beta 12 upgrade and Restore Stable returned to build 9 with both exact release server binaries, preserving account access, reading progress, source settings, downloads, backups, and the backup schedule. Manual UI and actual Aidoku backup testing await in-app Beta 3 installation.
