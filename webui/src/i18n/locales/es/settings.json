@@ -278,6 +278,33 @@
     "apiDocs": "Documentación de la API (Swagger UI)",
     "currentVersion": "Versión actual v{{version}}",
     "newVersion": "Nueva versión {{tag}} disponible",
-    "upToDate": "Actualizado"
+    "upToDate": "Actualizado",
+    "aidokuReport": {
+      "preview": "Vista previa de la importación",
+      "previewHelp": "Revisa esta copia antes de confirmar. La biblioteca aún no ha cambiado.",
+      "completed": "Resultados de la importación",
+      "completedHelp": "Estas entradas se procesaron durante la importación. Tu copia original sigue intacta.",
+      "willMerge": "Se añadirá o combinará",
+      "merged": "Incluido en la combinación",
+      "noEligible": "No se puede añadir ni combinar ninguna entrada de esta copia.",
+      "willSkip_other": "Se omitirá ({{count}})",
+      "skipped_other": "Omitido ({{count}})",
+      "noSkips": "No se omitió ninguna entrada.",
+      "showMore": "Mostrar {{count}} más",
+      "unsupported": "Fuera de esta importación",
+      "unsupportedHelp": "No se transfieren las preferencias, credenciales, extensiones y listas de fuentes, marcadores ni capítulos descargados. Los metadatos del manga se usan en la biblioteca, el historial y los vínculos con servicios de seguimiento. Los metadatos de capítulos solo se usan en el historial de lectura. Se conservan los detalles de la biblioteca, el orden de categorías y los vínculos existentes. El progreso de lectura solo avanza.",
+      "confirmSkips": "Continuar omitiendo las entradas indicadas. Se conservará la copia original.",
+      "sections": {
+        "library": "Entradas de biblioteca",
+        "categories": "Categorías",
+        "progress": "Progreso de capítulos",
+        "trackers": "Vínculos de seguimiento"
+      },
+      "reasons": {
+        "source not installed": "No está instalada una fuente con ese ID exacto. Instala la fuente correspondiente y vuelve a comprobar la copia.",
+        "tracker not supported": "Sumidoku no admite este servicio de seguimiento.",
+        "category assignment has a blank name": "Esta asignación no tiene nombre de categoría."
+      }
+    }
   }
 }

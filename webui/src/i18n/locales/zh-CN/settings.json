@@ -272,6 +272,33 @@
     "apiDocs": "接口文档（Swagger UI）",
     "currentVersion": "当前版本 v{{version}}",
     "newVersion": "有新版本 {{tag}}",
-    "upToDate": "已是最新"
+    "upToDate": "已是最新",
+    "aidokuReport": {
+      "preview": "导入预览",
+      "previewHelp": "请在确认前检查备份。书库尚未更改。",
+      "completed": "导入结果",
+      "completedHelp": "这些条目已在导入过程中处理。原始备份保持不变。",
+      "willMerge": "将添加或合并",
+      "merged": "已纳入合并",
+      "noEligible": "此备份没有可以添加或合并的条目。",
+      "willSkip_other": "将跳过（{{count}} 项）",
+      "skipped_other": "已跳过（{{count}} 项）",
+      "noSkips": "没有跳过任何条目。",
+      "showMore": "再显示 {{count}} 项",
+      "unsupported": "不属于此次导入",
+      "unsupportedHelp": "应用偏好、账号登录信息、源扩展和列表、书签以及已下载的章节文件不会迁移。漫画元数据用于书库、历史和追踪绑定，章节元数据仅用于阅读历史。现有书库详情、分类顺序和追踪绑定保持不变。阅读进度只会前进。",
+      "confirmSkips": "跳过列出的条目并继续。原始备份将保留。",
+      "sections": {
+        "library": "书库条目",
+        "categories": "分类",
+        "progress": "章节进度",
+        "trackers": "追踪绑定"
+      },
+      "reasons": {
+        "source not installed": "尚未安装 ID 完全匹配的源。请安装对应的源，然后重新检查备份。",
+        "tracker not supported": "Sumidoku 不支持此追踪服务。",
+        "category assignment has a blank name": "此分类分配没有分类名称。"
+      }
+    }
   }
 }
