@@ -347,7 +347,7 @@ function BrowseSources() {
 		if (!pendingDelete) return;
 		try { await del.mutateAsync(pendingDelete.id); setPendingDelete(null); } catch { /* error toast */ }
 	}
-	return <div className="page container">
+	return <div className="page container sources-page">
 		<PageHeader title="Sources" actions={<>
 			<Button onClick={() => setSearchParams({ view: 'search' })}><Search size={15} />Search Sources</Button>
 			<Button onClick={() => navigate('/migrate')}><ArrowLeftRight size={15} />{t('browse.migrate')}</Button>

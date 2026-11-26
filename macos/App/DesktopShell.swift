@@ -113,6 +113,12 @@ struct DesktopShell: View {
         .contextMenu { Button("Open \(item.title)") { select(item.id) } }
     }
     var body: some View {
+        GeometryReader { window in
+            splitView(sidebarHeight: window.size.height)
+        }
+    }
+
+    private func splitView(sidebarHeight: CGFloat) -> some View {
         NavigationSplitView(columnVisibility: $visibility) {
             VStack(spacing: 0) {
                 HStack(spacing: 14) {
@@ -126,12 +132,14 @@ struct DesktopShell: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 12)
                     .fixedSize(horizontal: false, vertical: true)
-                List(selection: selection) {
-                    Section("Collection") { ForEach(DesktopDestination.collection) { item in destinationRow(item) } }
-                    Section("Preferences") { ForEach(DesktopDestination.settings) { item in destinationRow(item) } }
+                GeometryReader { available in
+                    List(selection: selection) {
+                        Section("Collection") { ForEach(DesktopDestination.collection) { item in destinationRow(item) } }
+                        Section("Preferences") { ForEach(DesktopDestination.settings) { item in destinationRow(item) } }
+                    }
+                    .listStyle(.sidebar)
+                    .frame(width: available.size.width, height: available.size.height)
                 }
-                .listStyle(.sidebar)
-                .frame(minHeight: 0, maxHeight: .infinity)
                 .clipped()
                 Divider()
                 Group {
@@ -169,6 +177,7 @@ struct DesktopShell: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .frame(height: sidebarHeight, alignment: .top)
             .navigationSplitViewColumnWidth(min: 235, ideal: 270, max: 320)
             .navigationTitle("Sumidoku")
         } detail: {

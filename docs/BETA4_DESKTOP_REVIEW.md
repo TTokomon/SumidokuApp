@@ -7,7 +7,7 @@ Reference: Aidoku/Aidoku tree 95d1468d599a154f03d6a1dd06bf839d3ff3f7bd. Studied 
 - Library: display preferences, categories/filter groups, default category, update schedule/exclusions. Main library only search, sort, filter, grid/list, selection.
 - Reader: reading behavior and display settings.
 - Sources: subscribed lists, automatic source updates; main Sources page installed/pinned, discover, search and migration. Keep built-in connections.
-- Storage & Backups: downloads, backup/import/restore and recurring Aidoku backup connection.
+- Storage & Backups: downloads, backup/import/restore and Aidoku file import. A recurring Aidoku backup connection depends on a verified sender protocol.
 - Accounts & Integrations: security, tokens, tracker authentication and bindings.
 - Server & Diagnostics: local server, cache/logs/about.
 
@@ -20,7 +20,7 @@ Sumidoku provides the base URL and generates a dedicated revocable backup-only t
 - History day grouping/search and direct resume, paginated data; updates day/manga grouping, compact operational controls and chapter detail.
 - Sources: compact rows with real package icons where available, reliable cache/retry and meaningful fallback, pinned ordering, no duplicate rows or long origin URLs in main list; verify icon retrieval failures rather than masking them.
 - Migration: move vs copy, complete library pagination, candidate discovery and chapter matching.
-- Chapter counts, transient unavailable notifications, real tracker OAuth and backup-receiver protocol remain separate implementation gates. No release or native test claimed for these changes.
+- Exercise chapter counts and transient server availability with disposable fixtures. Live tracker authorization and backup receiver compatibility require separate verification with their respective providers or clients.
 
 
 ## Implementation status
@@ -36,9 +36,10 @@ Sumidoku provides the base URL and generates a dedicated revocable backup-only t
   moves and leaves failed originals shelved. No schema migration is required.
 - Attached source artwork uses a validated, cached fallback from the exact
   associated repository and package version.
-- Native tracker sign-in still needs provider registration, a callback flow
-  that preserves the initiating account, and secure native token storage.
-  Release builds receive no confidential OAuth settings at compile time.
+- The server-side tracker callback binds a single-use authorization attempt to
+  its initiating account. Live desktop sign-in still needs provider registration,
+  a configured HTTPS callback relay and secure native token storage. Release
+  builds receive no confidential OAuth settings at compile time.
 - The supported Aidoku transfer is a local `.aib` export and reviewed import.
   The Base URL and token workflow requires confirmation of the Aidoku sender
   and protocol. Storage & Backups places other import formats behind a disclosure.
