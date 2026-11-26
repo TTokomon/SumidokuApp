@@ -1,6 +1,6 @@
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CategoriesSection, FilterGroupsSection, LibraryDisplaySection } from './library/LibraryManagement';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
@@ -71,6 +71,7 @@ export interface LibraryPageProps {
 export default function LibraryPage({ initialSelecting = false }: LibraryPageProps) {
 	const { t } = useTranslation();
 	const qc = useQueryClient();
+	const navigate = useNavigate();
 	const [params, setParams] = useSearchParams();
 	const panel = params.get('panel');
 	const setPanel = (value: string | null) => setParams((previous) => { const next = new URLSearchParams(previous); if (value) next.set('panel', value); else next.delete('panel'); return next; });
@@ -208,7 +209,6 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 	);
 
 	const [selecting, setSelecting] = useState(initialSelecting);
-	const gridSettled = useRef(initialSelecting);
 	// Entering selection mode selects the whole loaded prefix, so the seeded state must start the same way
 	const [selected, setSelected] = useState<Set<number>>(() =>
 		initialSelecting ? new Set(entries.map((m) => m.id)) : new Set()
@@ -224,9 +224,10 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 		() => new Set((sourcesQuery.data ?? []).filter((s) => s.kind === 'local').map((s) => s.id)),
 		[sourcesQuery.data]
 	);
+	const availableSourceIds = useMemo(() => new Set((sourcesQuery.data ?? []).filter((s) => s.enabled).map((s) => s.id)), [sourcesQuery.data]);
 	const downloadIds = useMemo(
-		() => downloadEligibleIds(selectedEntries, localSourceIds),
-		[selectedEntries, localSourceIds]
+		() => downloadEligibleIds(selectedEntries.filter((m) => availableSourceIds.has(m.sourceId)), localSourceIds),
+		[selectedEntries, localSourceIds, availableSourceIds]
 	);
 
 	const batchChapters = useBatchChapters();
@@ -384,10 +385,6 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 		setCategoryTri((cur) => cycled(cur, key));
 	}
 
-	// Select mode swaps every card between a link and a button, which remounts it; without this
-	// the grid's entrance cascade would replay on each toggle
-	if (selecting) gridSettled.current = true;
-
 	return (
 		<div className="page container">
 			<Modal open={panel === 'organize'} title="Organize Library" onClose={() => setPanel(null)}><CategoriesSection /><FilterGroupsSection /></Modal>
@@ -485,12 +482,13 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 					isFetching={query.isFetching}
 					onLoadMore={() => void query.fetchNextPage()}
 				>
-					<div className={['cover-grid', selecting ? 'cover-grid--selecting' : '', gridSettled.current ? 'cover-grid--settled' : ''].filter(Boolean).join(' ')}>
+					<div className={selecting ? 'cover-grid cover-grid--selecting' : 'cover-grid'}>
 						{entries.map((m) => (
 							<CoverCard
 								key={m.id}
 								src={coverUrl(m.id, m.cover)}
-								title={m.title}
+								title={m.title || m.key}
+								subtitle={sourcesQuery.isSuccess && !availableSourceIds.has(m.sourceId) ? t('aidokuWizard.sourceUnavailable', { defaultValue: 'Source unavailable' }) : undefined}
 								unreadCount={m.unreadCount}
 								trackerProviders={m.trackerProviders}
 								trashed={m.trashed}
@@ -506,6 +504,7 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 
 			{selecting && (
 				<BatchActionBar count={t('library.selectedShort', { count: selectedEntries.length })}>
+					<Button size="sm" disabled={selectedEntries.length === 0 || batchBusy} onClick={() => navigate('/migrate', { state: { transferEntries: selectedEntries } })}>{t('aidokuWizard.transferSource', { defaultValue: 'Transfer source' })}</Button>
 					<Button
 						size="sm"
 						variant="primary"

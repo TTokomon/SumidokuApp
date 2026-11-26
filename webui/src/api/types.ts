@@ -16,6 +16,8 @@ export type AidokuImportResponse = {
 	included?: Array<AidokuIncluded>;
 	categoryNames?: Array<string>;
 	skipped: Array<AidokuSkipped>;
+	missingSources?: Array<string>;
+	archivedTrackers?: number;
 };
 
 export type AidokuIncluded = {
@@ -113,6 +115,7 @@ export type BackupDoc = {
 	sourceSettings?: {
 		[key: string]: SettingsValues;
 	};
+	trackerBindings?: Array<BackupTrackerBinding>;
 };
 
 export type BackupFile = {
@@ -170,6 +173,7 @@ export type BackupRestoreResponse = {
 		progress: number;
 		settings: number;
 		sourceSettings: number;
+		trackerBindings?: number;
 	};
 	warnings: Array<string>;
 };
@@ -187,6 +191,17 @@ export type BackupSource = {
 	name: string;
 	version: number;
 	repoUrl?: string | null;
+	retainOffline?: boolean;
+};
+
+export type BackupTrackerBinding = {
+	sourceKey: string;
+	mangaKey: string;
+	provider: string;
+	trackId: string;
+	title: string | null;
+	trackMode: string;
+	chapterOffset: number;
 };
 
 export type BasicLoginRequest = {
@@ -777,6 +792,7 @@ export type MigrateMode = "copy" | "migrate" | "migrateWithHistory";
 export type MigrateRequest = {
 	mode: MigrateMode;
 	entries: Array<MigrateEntry>;
+	safePageOffsets?: boolean;
 };
 
 export type MigrateResponse = {

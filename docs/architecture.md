@@ -366,7 +366,12 @@ no alias is derived from migration text.
   in completion order, then a final event whose payload is the same JSON
   value as the buffered response. The per-source failure type is
   `sourceError`, not `error`, because the streaming client treats
-  `{"type":"error"}` as the terminal failure of the whole request. The
+  `{"type":"error"}` as the terminal failure of the whole request. Closing
+  the stream aborts the remaining per-source tasks immediately; a WASM call
+  whose caller was cancelled is skipped when the actor dequeues it, so only
+  an already executing source call may finish after disconnect. Local task
+  events refresh only the affected local instance's views, never active
+  remote or aggregate searches: those require explicit submission. The
   browse page's search view (`webui/src/pages/browse/SearchPanel.tsx`) renders
   each arriving section as a horizontal cover scroller and offers tri-state
   (include/exclude) content-rating / language / source filters persisted
@@ -2190,9 +2195,12 @@ surface levels (`--bg`, `--bg-elev`, `--bg-raise` for floating layers), one
 set of easing/duration variables, and `--accent-grad` for primary fills.
 Sidebar, tab-bar and cover-card navigations opt into React Router's
 `viewTransition`; `src/styles/app.css` cross-fades the page while the shell
-keeps its own transition names and stays put. Nothing inside a page is named:
-a shared-element cover morph was tried and removed, because a named cover
-inside the manga hero made Chrome paint the hero backdrop unclipped over the
+keeps its own transition names and stays put. At every viewport width that
+page entrance is the only one: grids, cards, home sections, manga-hero items
+and empty states do not replay their entrance when async content replaces a
+skeleton. Nothing inside a page is named: a shared-element cover morph was
+tried and removed, because a named cover inside the manga hero made Chrome
+paint the hero backdrop unclipped over the
 card during the transition. A cover card hands its cover URL over in router
 state so the detail page's loading skeleton shows the art in the hero's
 position. Browsers without the View Transitions API fall back to the

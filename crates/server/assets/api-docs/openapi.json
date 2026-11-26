@@ -5260,6 +5260,15 @@
               "type": "boolean",
               "default": false
             }
+          },
+          {
+            "name": "preserveMissingSources",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Preserve records for unavailable external sources as disabled package-less source rows."
           }
         ],
         "requestBody": {
@@ -10298,6 +10307,11 @@
             "items": {
               "$ref": "#/components/schemas/MigrateEntry"
             }
+          },
+          "safePageOffsets": {
+            "type": "boolean",
+            "default": false,
+            "description": "Preserve original page offsets rather than applying them to unverified layouts."
           }
         }
       },
@@ -11136,6 +11150,11 @@
           "repoUrl": {
             "type": "string",
             "nullable": true
+          },
+          "retainOffline": {
+            "type": "boolean",
+            "default": false,
+            "description": "Allow disabled offline source identity to be recreated for library records."
           }
         }
       },
@@ -11451,6 +11470,13 @@
               "$ref": "#/components/schemas/SettingsValues"
             },
             "default": {}
+          },
+          "trackerBindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupTrackerBinding"
+            },
+            "default": []
           }
         }
       },
@@ -11488,6 +11514,10 @@
                 "format": "int64"
               },
               "sourceSettings": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "trackerBindings": {
                 "type": "integer",
                 "format": "int64"
               }
@@ -11675,6 +11705,17 @@
             "items": {
               "$ref": "#/components/schemas/AidokuSkipped"
             }
+          },
+          "missingSources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact source keys preserved without an installed extension."
+          },
+          "archivedTrackers": {
+            "type": "integer",
+            "description": "Inactive unsupported tracker associations preserved by the import."
           }
         }
       },
@@ -12408,7 +12449,7 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0,
-            "maximum": 9223372036854775807,
+            "maximum": 9223372036854776000,
             "default": 2147483648,
             "description": "Cache budget in bytes. Zero bypasses chapter image caches; required page data remains protected while active or recently used, then is reclaimed by the always-running LRU."
           }
@@ -12534,6 +12575,43 @@
           "autoUpdatePackages": {
             "type": "boolean",
             "default": false
+          }
+        }
+      },
+      "BackupTrackerBinding": {
+        "type": "object",
+        "required": [
+          "sourceKey",
+          "mangaKey",
+          "provider",
+          "trackId",
+          "title",
+          "trackMode",
+          "chapterOffset"
+        ],
+        "properties": {
+          "sourceKey": {
+            "type": "string"
+          },
+          "mangaKey": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "trackId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "trackMode": {
+            "type": "string"
+          },
+          "chapterOffset": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       }

@@ -16,7 +16,15 @@ Import
 upserts by natural key (source key + manga key, chapter key, category
 name) inside a single transaction, so a failed or invalid backup leaves
 the database untouched; entries whose source is not installed are skipped
-and reported in the response `warnings`. Category update and automatic-download
+and reported in the response `warnings`. New exports explicitly mark eligible
+external Aidoku source identities with `retainOffline`; their library records
+can restore to a disabled, package-less source on a fresh instance. No extension
+is installed implicitly. New exports also carry local `trackerBindings`,
+including history-only and tracker-only manga identities. Library restoration
+merges bindings without overwriting existing links or contacting trackers.
+Older backup documents without these optional fields retain their old behavior.
+Older application builds can ignore the new fields. Tracker credentials are not
+included. Inactive Aidoku tracker archives travel in the settings section. Category update and automatic-download
 exclusions use the backup-only `includeInUpdate` and `includeInDownload` fields
 (`2` for excluded categories, `0` for all others). Legacy `includeInDownload: 1`
 marks include-only categories, which an exclusion list cannot represent. A
@@ -97,6 +105,20 @@ plus the skipped list) without writing anything. The web UI's settings page
 has an "从 Aidoku 导入" button under the backup section that walks upload →
 dry-run preview → confirm. Aidoku settings and source configs are out of
 scope.
+
+Desktop requests `preserveMissingSources=true` to retain valid missing external
+source identities as disabled package-less records and merge their library and
+history. Explicit installation of the exact source key reuses the retained ID.
+This mode also archives unsupported tracker associations separately from live
+tracker links, including source/manga keys, remote track ID, provider, title,
+offset and track mode. They never initiate tracker requests. The versioned
+`aidoku.inactive_tracker_bindings.v1` owner archive lives in the existing
+settings table so the current schema-37 updater can still restore Stable.
+Current settings writes cannot modify it; portable backup settings restores
+merge it by exact identity. Older Stable builds preserve the key as an unknown
+setting, but do not offer archive management or activation. Legacy import
+clients retain the original skip behavior. Archive counts are separate from
+active tracker counts; the original .aib remains unchanged.
 
 ## Importing from Suwayomi/Mihon
 

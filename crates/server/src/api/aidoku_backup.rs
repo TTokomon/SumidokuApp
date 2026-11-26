@@ -25,6 +25,9 @@ use super::import_merge::{
 pub struct AidokuImportQuery {
 	#[serde(default)]
 	pub dry_run: bool,
+	/// Older clients retain skip semantics unless they explicitly opt into offline preservation.
+	#[serde(default)]
+	pub preserve_missing_sources: bool,
 }
 
 // The structs below declare only the consumed fields, unknown fields tolerated; field names follow Aidoku's Codable keys
@@ -190,6 +193,10 @@ struct ImportReport<'a> {
 	imported: ImportCounts,
 	entries: Vec<ReportEntry<'a>>,
 	categories: HashSet<String>,
+	preserve_missing_sources: bool,
+	missing_sources: HashSet<String>,
+	archived_trackers: Vec<crate::settings::ArchivedAidokuTracker>,
+	archived_count: usize,
 }
 
 /// A Swift Date in a plist is CFAbsoluteTime; the plist crate has already normalized it to SystemTime
@@ -200,8 +207,45 @@ fn date_to_unix(date: plist::Date) -> i64 {
 		.unwrap_or(0)
 }
 
-async fn source_id_by_key(tx: &mut Transaction<'_, Sqlite>, key: &str) -> ApiResult<Option<i64>> {
-	Ok(sqlx::query_scalar("SELECT id FROM source WHERE key=? AND (kind!='aidoku' OR wasm_path!='')").bind(key).fetch_optional(&mut **tx).await?)
+/// Match exact source identities. Reuse the disabled, package-less source representation
+/// used by data-preserving uninstall. The installer reuses its row ID.
+pub(crate) fn retainable_aidoku_key(key: &str) -> bool {
+	crate::source::valid_source_key(key)
+		&& !["local.", "opds.", "komga.", "kavita.", "suwayomi."].iter().any(|prefix| key.starts_with(prefix))
+}
+
+async fn source_id_by_key(
+	tx: &mut Transaction<'_, Sqlite>,
+	key: &str,
+	report: &mut ImportReport<'_>,
+) -> ApiResult<Option<i64>> {
+	let existing: Option<(i64, String, String)> =
+		sqlx::query_as("SELECT id, kind, wasm_path FROM source WHERE key = ?")
+			.bind(key)
+			.fetch_optional(&mut **tx)
+			.await?;
+	if let Some((id, kind, wasm_path)) = existing {
+		if kind != "aidoku" || !wasm_path.is_empty() {
+			return Ok(Some(id));
+		}
+		if report.preserve_missing_sources {
+			report.missing_sources.insert(key.to_string());
+			return Ok(Some(id));
+		}
+		return Ok(None);
+	}
+	if !report.preserve_missing_sources || !retainable_aidoku_key(key) {
+		return Ok(None);
+	}
+	let id: i64 = sqlx::query_scalar(
+		"INSERT INTO source (key, name, kind, wasm_path, enabled) VALUES (?, ?, 'aidoku', '', 0) RETURNING id",
+	)
+	.bind(key)
+	.bind(key)
+	.fetch_one(&mut **tx)
+	.await?;
+	report.missing_sources.insert(key.to_string());
+	Ok(Some(id))
 }
 
 /// Aidoku stores contentRating.rawValue - 1 (when >0); 0 conflates unknown/safe, treated as unknown
@@ -281,12 +325,12 @@ pub async fn import_aidoku_backup(
 	Query(query): Query<AidokuImportQuery>,
 	body: axum::body::Bytes,
 ) -> ApiResult<Json<Value>> {
-	let result = import_aidoku_doc(&state, user.id, &body, query.dry_run).await?;
+	let result = import_aidoku_doc(&state, user.id, &body, query.dry_run, query.preserve_missing_sources).await?;
 	Ok(Json(result))
 }
 
 /// Validation + single-transaction import; dry-run takes the same execution path and rolls back instead of committing at the end, so the report matches a real run
-pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_run: bool) -> ApiResult<Value> {
+pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_run: bool, preserve_missing_sources: bool) -> ApiResult<Value> {
 	let doc: AibBackup = plist::from_bytes(body)
 		.map_err(|e| ApiError::bad_request(format!("invalid aidoku backup: {e}")))?;
 
@@ -301,13 +345,17 @@ pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_
 		.map(|c| ((c.source_id.as_str(), c.manga_id.as_str(), c.id.as_str()), c))
 		.collect();
 
-	let mut report = ImportReport::default();
+	let mut report = ImportReport { preserve_missing_sources, ..Default::default() };
 	{
 		let mut tx = crate::db::begin_write(&state.pool).await?;
 		import_categories(&mut tx, user_id, &doc, &mut report.categories).await?;
 		import_library(&mut tx, user_id, &doc, &manga_meta, &mut report).await?;
 		import_progress(&mut tx, user_id, &doc, &manga_meta, &chapter_meta, &mut report).await?;
 		import_trackers(&mut tx, user_id, &doc, &manga_meta, &mut report).await?;
+		let archived_count = report.archived_trackers.len();
+		crate::settings::merge_aidoku_tracker_archive(&mut tx, std::mem::take(&mut report.archived_trackers)).await?;
+		// Retain the reported count (including existing matches) for preview/commit parity.
+		report.archived_count = archived_count;
 		if dry_run {
 			tx.rollback().await?;
 		} else {
@@ -318,6 +366,8 @@ pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_
 	let entry_json = |entry: &ReportEntry<'_>| entry.to_json(&manga_meta, &chapter_meta);
 	let mut categories: Vec<_> = report.categories.iter().collect();
 	categories.sort_unstable();
+	let mut missing_sources: Vec<_> = report.missing_sources.iter().collect();
+	missing_sources.sort_unstable();
 	Ok(json!({
 		"dryRun": dry_run,
 		"imported": {
@@ -328,6 +378,8 @@ pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_
 		},
 		"included": included.into_iter().map(entry_json).collect::<Vec<_>>(),
 		"categoryNames": categories,
+		"missingSources": missing_sources,
+		"archivedTrackers": report.archived_count,
 		"skipped": skipped.into_iter().map(entry_json).collect::<Vec<_>>(),
 	}))
 }
@@ -370,7 +422,7 @@ async fn import_library<'a>(
 			tracker_id: None,
 			reason: None,
 		};
-		let Some(source_id) = source_id_by_key(tx, &entry.source_id).await? else {
+		let Some(source_id) = source_id_by_key(tx, &entry.source_id, report).await? else {
 			report.entries.push(ReportEntry { reason: Some("source not installed"), ..row });
 			continue;
 		};
@@ -423,7 +475,7 @@ async fn import_progress<'a>(
 			tracker_id: None,
 			reason: None,
 		};
-		let Some(source_id) = source_id_by_key(tx, &entry.source_id).await? else {
+		let Some(source_id) = source_id_by_key(tx, &entry.source_id, report).await? else {
 			report.entries.push(ReportEntry { reason: Some("source not installed"), ..row });
 			continue;
 		};
@@ -475,11 +527,27 @@ async fn import_trackers<'a>(
 			tracker_id: Some(&entry.tracker_id),
 			reason: None,
 		};
-		let Some(source_id) = source_id_by_key(tx, &entry.source_id).await? else {
+		let provider = aidoku_tracker_provider(&entry.tracker_id);
+		// An unsupported provider is an inactive association, never a live link or
+		// a credential. Archive the original identity even when its source is absent.
+		if provider.is_none() && report.preserve_missing_sources {
+			report.archived_trackers.push(crate::settings::ArchivedAidokuTracker {
+				source_key: entry.source_id.clone(),
+				manga_key: entry.manga_id.clone(),
+				tracker_id: entry.tracker_id.clone(),
+				track_id: entry.id.clone(),
+				title: entry.title.clone(),
+				chapter_offset: entry.chapter_offset,
+				track_mode: track_mode_from_settings(&doc.settings, &entry.source_id, &entry.manga_id).as_str().to_string(),
+			});
+			report.entries.push(ReportEntry { section: "archivedTrackers", ..row });
+			continue;
+		}
+		let Some(source_id) = source_id_by_key(tx, &entry.source_id, report).await? else {
 			report.entries.push(ReportEntry { reason: Some("source not installed"), ..row });
 			continue;
 		};
-		let Some(provider) = aidoku_tracker_provider(&entry.tracker_id) else {
+		let Some(provider) = provider else {
 			report.entries.push(ReportEntry { reason: Some("tracker not supported"), ..row });
 			continue;
 		};

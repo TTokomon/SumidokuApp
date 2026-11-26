@@ -35,7 +35,7 @@ export function DestinationPicker({ selected, onChange }: DestinationPickerProps
 	const [dragIndex, setDragIndex] = useState<number | null>(null);
 	const [overIndex, setOverIndex] = useState<number | null>(null);
 
-	const all = sources.data ?? [];
+	const all = (sources.data ?? []).filter((source) => source.enabled);
 	const byId = new Map(all.map((s) => [s.id, s]));
 	const chosen = selected.map((id) => byId.get(id)).filter((s): s is Source => s !== undefined);
 	const chosenIds = new Set(chosen.map((s) => s.id));

@@ -419,3 +419,126 @@ async fn import_aidoku_keeps_an_existing_tracker_binding() {
 		["mal"]
 	);
 }
+
+#[tokio::test]
+async fn import_aidoku_preserves_missing_sources_without_installing_packages() {
+	let app = test_app().await;
+	scan(&app.app).await;
+	let before = db_dump(&app.db_path).await;
+	let (status, preview) = post_aib(&app.app, "?dryRun=true&preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK, "{preview}");
+	assert_eq!(preview["imported"]["library"], 3);
+	assert_eq!(preview["imported"]["progress"], 4);
+	assert_eq!(preview["imported"]["trackers"], 3);
+	assert_eq!(preview["missingSources"], json!(["en.ghost-source"]));
+	assert_eq!(preview["skipped"].as_array().unwrap().len(), 0);
+	assert_eq!(preview["archivedTrackers"], 1);
+	assert_eq!(db_dump(&app.db_path).await, before);
+
+	let (status, committed) = post_aib(&app.app, "?preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK, "{committed}");
+	for field in ["imported", "included", "categoryNames", "missingSources", "archivedTrackers", "skipped"] {
+		assert_eq!(committed[field], preview[field], "{field} differs from preview");
+	}
+	let pool = connect_db(&app.db_path).await;
+	let (source_id, enabled, wasm_path): (i64, bool, String) =
+		sqlx::query_as("SELECT id, enabled, wasm_path FROM source WHERE key = 'en.ghost-source'")
+			.fetch_one(&pool).await.unwrap();
+	assert!(!enabled);
+	assert!(wasm_path.is_empty());
+	let manga_id: i64 = sqlx::query_scalar("SELECT id FROM manga WHERE source_id = ? AND key = 'ghost-1'")
+		.bind(source_id).fetch_one(&pool).await.unwrap();
+	let (in_library,): (bool,) = sqlx::query_as("SELECT in_library FROM manga_user WHERE manga_id = ? AND user_id = 1")
+		.bind(manga_id).fetch_one(&pool).await.unwrap();
+	assert!(in_library);
+	let progress: i64 = sqlx::query_scalar("SELECT cu.last_page_read FROM chapter_user cu JOIN chapter c ON c.id = cu.chapter_id WHERE c.manga_id = ? AND c.key = '9' AND cu.user_id = 1")
+		.bind(manga_id).fetch_one(&pool).await.unwrap();
+	assert_eq!(progress, 1);
+	let tracker: String = sqlx::query_scalar("SELECT track_id FROM tracker_link WHERE manga_id = ? AND user_id = 1")
+		.bind(manga_id).fetch_one(&pool).await.unwrap();
+	assert_eq!(tracker, "404");
+	pool.close().await;
+	let (_, sources) = request(&app.app, "GET", "/api/v1/sources", None).await;
+	assert!(!sources.as_array().unwrap().iter().any(|source| source["key"] == "en.ghost-source"));
+	let after = db_dump(&app.db_path).await;
+	let (status, _) = post_aib(&app.app, "?preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK);
+	assert_eq!(db_dump(&app.db_path).await, after);
+	let chapter = chapter_by_key(&app.app, manga_id, "9").await;
+	let (status, queued) = request(&app.app, "POST", "/api/v1/downloads", Some(json!({"chapterIds": [chapter["id"].as_i64().unwrap()]}))).await;
+	assert_eq!(status, StatusCode::OK, "{queued}");
+	assert_eq!(queued["queued"], json!([]));
+}
+
+#[tokio::test]
+async fn unsupported_aidoku_bindings_are_inactive_and_survive_portable_backup() {
+	let app = test_app().await;
+	scan(&app.app).await;
+	let before = db_dump(&app.db_path).await;
+	let (status, preview) = post_aib(&app.app, "?dryRun=true&preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK, "{preview}");
+	assert_eq!(preview["archivedTrackers"], 1);
+	assert_eq!(db_dump(&app.db_path).await, before);
+	let (status, committed) = post_aib(&app.app, "?preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK, "{committed}");
+	assert_eq!(committed["archivedTrackers"], 1);
+	let archive_key = "aidoku.inactive_tracker_bindings.v1";
+	let (status, backup) = request(&app.app, "GET", "/api/v1/backups/document", None).await;
+	assert_eq!(status, StatusCode::OK);
+	let entries = backup["settings"][archive_key].as_array().unwrap();
+	assert_eq!(entries.len(), 1);
+	assert_eq!(entries[0]["trackerId"], "shikimori");
+	assert_eq!(entries[0]["trackId"], "303");
+	assert_eq!(entries[0]["sourceKey"], "en.example-source");
+	let manga = library_entry(&app.app, "Aib Title One").await;
+	assert!(!tracker_links(&app.app, manga["id"].as_i64().unwrap()).await.iter().any(|row| row["provider"] == "shikimori"));
+	let (_, settings) = request(&app.app, "GET", "/api/v1/settings", None).await;
+	assert!(settings.get(archive_key).is_none());
+	let (status, _) = request(&app.app, "PUT", "/api/v1/settings", Some(json!({(archive_key): []}))).await;
+	assert_eq!(status, StatusCode::OK);
+	let (_, after_settings) = request(&app.app, "GET", "/api/v1/backups/document", None).await;
+	assert_eq!(after_settings["settings"][archive_key], backup["settings"][archive_key]);
+
+	let target = test_app().await;
+	for _ in 0..2 {
+		let (status, result) = request(&target.app, "POST", "/api/v1/backups/document?sections=settings", Some(backup.clone())).await;
+		assert_eq!(status, StatusCode::OK, "{result}");
+	}
+	let (_, restored) = request(&target.app, "GET", "/api/v1/backups/document", None).await;
+	assert_eq!(restored["settings"][archive_key], backup["settings"][archive_key]);
+}
+
+#[tokio::test]
+async fn portable_restore_preserves_offline_manga_progress_and_tracker_associations() {
+	let app = test_app().await;
+	scan(&app.app).await;
+	let (status, _) = post_aib(&app.app, "?preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK);
+	let (status, backup) = request(&app.app, "GET", "/api/v1/backups/document", None).await;
+	assert_eq!(status, StatusCode::OK);
+	assert_eq!(backup["trackerBindings"].as_array().unwrap().len(), 3);
+	assert!(backup["sources"].as_array().unwrap().iter().any(|source| source["key"] == "en.ghost-source" && source["retainOffline"] == true));
+	let target = test_app().await;
+	scan(&target.app).await;
+	for _ in 0..2 {
+		let (status, restored) = request(&target.app, "POST", "/api/v1/backups/document", Some(backup.clone())).await;
+		assert_eq!(status, StatusCode::OK, "{restored}");
+		assert_eq!(restored["restored"]["trackerBindings"], 3);
+	}
+	let (_, exported) = request(&target.app, "GET", "/api/v1/backups/document", None).await;
+	for field in ["trackerBindings", "progress", "categories"] {
+		assert_eq!(exported[field], backup[field], "{field} did not survive backup");
+	}
+	let pool = connect_db(&target.db_path).await;
+	let (enabled, path, in_library, progress, track_id): (bool, String, bool, i64, String) = sqlx::query_as(
+		"SELECT s.enabled, s.wasm_path, mu.in_library, cu.last_page_read, tl.track_id
+		 FROM source s JOIN manga m ON m.source_id=s.id
+		 JOIN manga_user mu ON mu.manga_id=m.id AND mu.user_id=1
+		 JOIN chapter c ON c.manga_id=m.id JOIN chapter_user cu ON cu.chapter_id=c.id AND cu.user_id=1
+		 JOIN tracker_link tl ON tl.manga_id=m.id AND tl.user_id=1
+		 WHERE s.key='en.ghost-source' AND m.key='ghost-1' AND c.key='9'",
+	).fetch_one(&pool).await.unwrap();
+	assert_eq!((enabled, path, in_library, progress, track_id), (false, String::new(), true, 1, "404".into()));
+	assert_eq!(exported["settings"]["aidoku.inactive_tracker_bindings.v1"], backup["settings"]["aidoku.inactive_tracker_bindings.v1"]);
+	assert_eq!(request(&target.app, "GET", "/api/v1/downloads", None).await.1, json!([]));
+}

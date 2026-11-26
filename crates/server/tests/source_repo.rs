@@ -899,3 +899,45 @@ async fn automatic_source_updates_skip_disabled_breaking_and_invalid_packages() 
 	sumidoku_server::source::repo::auto_update_unused_packages(&state).await.unwrap();assert_eq!(source_by_key(&app.app,"en.repo-source").await["version"],1,"invalid package leaves installed version intact");
 	repo.serve.abort();
 }
+
+#[tokio::test]
+async fn installing_exact_missing_aidoku_package_reconnects_imported_identity() {
+	let t = test_app().await;
+	let repo = serve_repo().await;
+	repo.mock.set_index(json!([repo_entry("en.ghost-source", "Recovered", 1, &["en"], 0)]));
+	repo.mock.set_file("files/en.ghost-source-v1.aix", aix_bytes("en.ghost-source", "Recovered", 1, &["en"], 0));
+	assert_eq!(request(&t.app, "POST", "/api/v1/sources/scan", None).await.0, StatusCode::OK);
+	let original = include_bytes!("fixtures/example.aib");
+	let (status, _, _) = request_bytes(&t.app, "POST", "/api/v1/backups/import/aidoku?preserveMissingSources=true", original.to_vec(), "application/octet-stream").await;
+	assert_eq!(status, StatusCode::OK);
+	let pool = connect_db(&t.db_path).await;
+	let retained: (i64, i64, i64, String) = sqlx::query_as(
+		"SELECT s.id, m.id, cu.last_page_read, tl.track_id FROM source s
+		 JOIN manga m ON m.source_id=s.id JOIN chapter c ON c.manga_id=m.id
+		 JOIN chapter_user cu ON cu.chapter_id=c.id AND cu.user_id=1
+		 JOIN tracker_link tl ON tl.manga_id=m.id AND tl.user_id=1
+		 WHERE s.key='en.ghost-source' AND m.key='ghost-1' AND c.key='9'",
+	).fetch_one(&pool).await.unwrap();
+	assert_eq!(retained.2, 1);
+	assert_eq!(retained.3, "404");
+	let (_, list) = add_repo(&t.app, &repo.url).await;
+	let (status, installed) = request(&t.app, "POST", "/api/v1/source-repos/install", Some(json!({
+		"repoId": list["id"], "sourceKey": "en.ghost-source"
+	}))).await;
+	assert_eq!(status, StatusCode::OK, "{installed}");
+	assert_eq!(installed["id"], retained.0);
+	assert_eq!(installed["enabled"], true);
+	let after: (i64, i64, i64, String) = sqlx::query_as(
+		"SELECT s.id, m.id, cu.last_page_read, tl.track_id FROM source s
+		 JOIN manga m ON m.source_id=s.id JOIN chapter c ON c.manga_id=m.id
+		 JOIN chapter_user cu ON cu.chapter_id=c.id AND cu.user_id=1
+		 JOIN tracker_link tl ON tl.manga_id=m.id AND tl.user_id=1
+		 WHERE s.key='en.ghost-source' AND m.key='ghost-1' AND c.key='9'",
+	).fetch_one(&pool).await.unwrap();
+	assert_eq!(after, retained);
+	let (status, _, bytes) = request_bytes(&t.app, "POST", "/api/v1/backups/import/aidoku?dryRun=true&preserveMissingSources=true", original.to_vec(), "application/octet-stream").await;
+	assert_eq!(status, StatusCode::OK);
+	let preview: Value = serde_json::from_slice(&bytes).unwrap();
+	assert_eq!(preview["missingSources"], json!([]));
+	assert_eq!(request(&t.app, "GET", "/api/v1/downloads", None).await.1, json!([]));
+}

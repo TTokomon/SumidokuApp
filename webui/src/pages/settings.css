@@ -682,3 +682,19 @@
 	gap: 2px;
 	font-size: 13px;
 }
+
+/* Import wizard stays legible in a narrow macOS Preferences window and on mobile. */
+.aidoku-wizard { width: min(620px, calc(100vw - 32px)); }
+.aidoku-wizard__steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; list-style: none; padding: 0; margin: 0 0 20px; }
+.aidoku-wizard__steps li { display: flex; align-items: center; gap: 7px; padding: 8px 0; border-top: 3px solid var(--border); color: var(--text-dim); font-size: 12px; overflow-wrap: anywhere; }
+.aidoku-wizard__steps li[aria-current="step"], .aidoku-wizard__steps li[data-complete="true"] { border-color: var(--accent); color: var(--text); }
+.aidoku-wizard__steps li[aria-current="step"] { font-weight: 600; }
+.aidoku-wizard__steps li > span { flex: none; }
+.aidoku-wizard__summary { display: grid; gap: 12px; margin-bottom: 16px; }
+.aidoku-wizard__summary h3, .aidoku-wizard__summary p { margin: 0; }
+.aidoku-wizard__counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.aidoku-wizard__counts > div, .aidoku-wizard__notice, .aidoku-wizard__confirmation { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 12px; overflow-wrap: anywhere; }
+.aidoku-wizard__counts dt { color: var(--text-dim); font-size: 13px; }
+.aidoku-wizard__counts dd { margin: 4px 0 0; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.aidoku-wizard__ack { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; }
+.aidoku-wizard__confirmation { margin-top: 12px; }

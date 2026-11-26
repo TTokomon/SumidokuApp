@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AidokuImportResponse, AidokuIncluded, AidokuSkipped } from '../../api/types';
 import { Button } from '../../components';
+import { aidokuSourceLabel } from './aidokuRecovery';
 
 const PAGE_SIZE = 25;
 const sections = ['library', 'categories', 'progress', 'trackers'] as const;
@@ -45,9 +46,10 @@ export function AidokuImportReport({ result }: { result: AidokuImportResponse })
 		: section;
 	const skippedBySection = new Map<string, AidokuSkipped[]>();
 	for (const entry of result.skipped) {
-		const group = skippedBySection.get(entry.section);
+		const key = entry.reason === 'source not installed' ? `source:${entry.sourceKey}` : entry.section;
+		const group = skippedBySection.get(key);
 		if (group) group.push(entry);
-		else skippedBySection.set(entry.section, [entry]);
+		else skippedBySection.set(key, [entry]);
 	}
 	const categoryNames = result.categoryNames ?? [];
 	const hasEligible = sections.some((section) => result.imported[section] > 0);
@@ -65,14 +67,16 @@ export function AidokuImportReport({ result }: { result: AidokuImportResponse })
 				<ReportList
 					key={section}
 					label={sectionLabel(section)}
-					expanded={section === 'library'}
+					expanded={false}
 					items={section === 'categories' ? categoryNames : (result.included ?? []).filter((entry) => entry.section === section).map(entryLabel)}
 				/>
 			))}
+			{(result.archivedTrackers ?? 0) > 0 && <ReportList label={t('aidokuWizard.inactiveTrackers', { defaultValue: 'Inactive tracker bindings preserved' })} items={(result.included ?? []).filter(entry => entry.section === 'archivedTrackers').map(entryLabel)} />}
+			{(result.missingSources ?? []).length > 0 && <p className="settings-modal-text">{t('aidokuWizard.savedWithoutSources', { defaultValue: 'Library records from unavailable sources are preserved. Install the matching extensions to read those titles again.' })}</p>}
 			<h4>{t(result.dryRun ? 'settings.aidokuReport.willSkip' : 'settings.aidokuReport.skipped', { count: result.skipped.length })}</h4>
 			{result.skipped.length === 0 && <p>{t('settings.aidokuReport.noSkips')}</p>}
 			{[...skippedBySection].map(([section, entries]) => (
-				<ReportList key={section} label={sectionLabel(section)} expanded items={entries.map((entry) => {
+				<ReportList key={section} label={section.startsWith('source:') ? aidokuSourceLabel(section.slice(7)) : sectionLabel(section)} items={entries.map((entry) => {
 					const reason = t(`settings.aidokuReport.reasons.${entry.reason}`, { defaultValue: entry.reason });
 					return `${entryLabel(entry)} — ${reason}`;
 				})} />
