@@ -21,6 +21,10 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 	const [confirm, setConfirm] = useState(false);
 	const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
 	const matches = (packages.data ?? []).filter((entry) => ids.includes(entry.key));
+	const countBySource = new Map<string, number>();
+	for (const entry of [...(preview.included ?? []), ...preview.skipped]) {
+		if (ids.includes(entry.sourceKey)) countBySource.set(entry.sourceKey, (countBySource.get(entry.sourceKey) ?? 0) + 1);
+	}
 	const defaults = JSON.stringify(defaultRecoverySelection(matches));
 	const previousDefaults = useRef<string[]>([]);
 	useEffect(() => {
@@ -50,12 +54,12 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 	return <section aria-label="Recover Missing Aidoku Sources">
 		<h3>Restore your sources</h3>
 		<p>Your backup contains manga from sources that are not installed. Install the available matches to read them again. Nothing is installed until you approve.</p>
-		{ids.length ? <ul>{ids.map((id) => <li key={id}><strong title={id}>{aidokuSourceLabel(id)}</strong>
+		{ids.length ? <ul>{ids.map((id) => <li key={id}><strong title={id}>{matches.find((entry) => entry.key === id)?.name ?? aidokuSourceLabel(id)}</strong> ({countBySource.get(id) ?? 0} records)
 			{installed.data?.some((source) => source.key === id) ? ' — installed; recheck the backup' : !matches.some((entry) => entry.key === id) ? ' — unavailable in your source lists' : ' — available to install'}
 		</li>)}</ul> : <p>No missing source IDs in this preview.</p>}
 		{matches.filter((entry) => entry.installedId === null).map((entry) => <label className="repos__lang-row" key={`${entry.repoId}:${entry.key}`}>
 			<input type="checkbox" checked={selected.includes(`${entry.repoId}:${entry.key}`)} onChange={(event) => { const checked = event.currentTarget.checked, key = `${entry.repoId}:${entry.key}`; setSelected((old) => checked ? [...old.filter((item) => !item.endsWith(`:${entry.key}`)), key] : old.filter((item) => item !== key)); }} />
-			{aidokuSourceLabel(entry.key)} · {entry.repoName ?? `List ${entry.repoId}`} · v{entry.version}
+			{entry.name || aidokuSourceLabel(entry.key)} · {entry.repoName ?? `List ${entry.repoId}`} · v{entry.version}
 		</label>)}
 		{packages.isError && <p role="alert">Source lists could not be loaded. Cached/offline lists remain managed in Source Lists.</p>}
 		<div className="settings-actions">
@@ -67,7 +71,7 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 		{error && <p role="alert">{error}</p>}
 		<Modal open={confirm} title="Confirm Source Installation" onClose={() => setConfirm(false)} footer={<Button loading={busy} onClick={() => void installSelected()}>Install and Recheck Backup</Button>}>
 			<p>Only the selected packages will be installed. Manga import still requires your separate confirmation after the new preview.</p>
-			<ul>{matches.filter((entry) => selected.includes(`${entry.repoId}:${entry.key}`)).map((entry) => <li key={`${entry.repoId}:${entry.key}`}>{aidokuSourceLabel(entry.key)} — {entry.repoName ?? entry.repoId}</li>)}</ul>
+			<ul>{matches.filter((entry) => selected.includes(`${entry.repoId}:${entry.key}`)).map((entry) => <li key={`${entry.repoId}:${entry.key}`}>{entry.name || aidokuSourceLabel(entry.key)} — {entry.repoName ?? entry.repoId}</li>)}</ul>
 		</Modal>
 	</section>;
 }

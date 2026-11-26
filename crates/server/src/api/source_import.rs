@@ -37,7 +37,7 @@ pub async fn import_source(
 	.map_err(|e| ApiError::internal(format!("join: {e}")))?;
 	let doc = manifest.map_err(ApiError::bad_request)?;
 	let key = crate::source::manifest_key(&doc).map_err(ApiError::bad_request)?;
-	let old: Option<(i64, i64)> = sqlx::query_as("SELECT id, version FROM source WHERE key = ?")
+	let old: Option<(i64, i64, String)> = sqlx::query_as("SELECT id, version, wasm_path FROM source WHERE key = ?")
 		.bind(&key)
 		.fetch_optional(&state.pool)
 		.await?;
@@ -71,10 +71,10 @@ pub async fn import_source(
 	// A same-key replace gets repo update semantics: cross-breaking imports run the key migration
 	// (a fresh install or same-version refresh reports nothing by construction)
 	let migration = match old {
-		Some((_, old_version)) => {
+		Some((_, old_version, old_path)) if !old_path.is_empty() => {
 			crate::source::rekey::migrate_after_update(&state, source.id, old_version, user.id).await?
 		}
-		None => crate::source::rekey::RekeyReport::default(),
+		_ => crate::source::rekey::RekeyReport::default(),
 	};
 	let latest = repo::latest_versions(&state.pool).await?;
 	let pinned = super::pins::pinned_map(&state.pool).await?;

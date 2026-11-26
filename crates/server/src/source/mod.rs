@@ -1019,7 +1019,21 @@ pub async fn reconcile_chapters_detailed(
 		} else if trash {
 			trashed_count += crate::store::chapter::trash(conn, old.id, now).await? as i64;
 		} else {
-			crate::store::chapter::delete(conn, old.id).await?;
+			// Imported or previously read chapters may have old keys that no longer
+			// appear in the source. Keep their identities and history; if a future
+			// refresh supplies the exact key, the normal upsert restores it.
+			let has_progress: bool = sqlx::query_scalar(
+				"SELECT EXISTS(SELECT 1 FROM chapter_user WHERE chapter_id = ?
+				 AND (last_page_read > 0 OR is_read = 1 OR is_bookmarked = 1 OR last_read_at IS NOT NULL))",
+			)
+			.bind(old.id)
+			.fetch_one(&mut *conn)
+			.await?;
+			if has_progress {
+				crate::store::chapter::lock(conn, old.id).await?;
+			} else {
+				crate::store::chapter::delete(conn, old.id).await?;
+			}
 		}
 	}
 	let restored_count = existing
@@ -1886,6 +1900,26 @@ mod tests {
 			.expect("reconcile");
 		tx.commit().await.expect("commit reconcile");
 		outcome
+	}
+
+	#[tokio::test]
+	async fn missing_chapters_keep_reading_progress_until_the_exact_key_returns() {
+		let (pool, manga_id, _tmp) = reconcile_db().await;
+		run_reconcile(&pool, manga_id, &[reconcile_chapter("old", Some(5.0), None)]).await;
+		let old_id: i64 = sqlx::query_scalar("SELECT id FROM chapter WHERE manga_id = ? AND key = 'old'")
+			.bind(manga_id).fetch_one(&pool).await.unwrap();
+		sqlx::query("INSERT INTO chapter_user (chapter_id,user_id,last_page_read,is_bookmarked) VALUES (?,1,7,1)")
+			.bind(old_id).execute(&pool).await.unwrap();
+		run_reconcile(&pool, manga_id, &[reconcile_chapter("different", Some(6.0), None)]).await;
+		let locked: bool = sqlx::query_scalar("SELECT locked FROM chapter WHERE id = ?")
+			.bind(old_id).fetch_one(&pool).await.unwrap();
+		assert!(locked);
+		run_reconcile(&pool, manga_id, &[reconcile_chapter("old", Some(5.0), None)]).await;
+		let row: (i64, bool, i64, bool) = sqlx::query_as(
+			"SELECT c.id,c.locked,cu.last_page_read,cu.is_bookmarked FROM chapter c
+			 JOIN chapter_user cu ON cu.chapter_id=c.id WHERE c.manga_id=? AND c.key='old' AND cu.user_id=1",
+		).bind(manga_id).fetch_one(&pool).await.unwrap();
+		assert_eq!(row, (old_id,false,7,true));
 	}
 
 	#[tokio::test]

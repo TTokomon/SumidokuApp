@@ -39,6 +39,8 @@ test('Aidoku import displays merge, skipped entries with reasons, and unsupporte
 		assert.doesNotMatch(preview, /en\.missing\/42/);
 		assert.match(preview, /Outside this import/);
 		assert.match(preview, /downloaded chapter files do not transfer/);
+		const preserved = render({ ...report, missingSources: ['en.missing'], skipped: [] });
+		assert.match(preserved, /Library records from unavailable sources are preserved/);
 		const legacyResult = render({ dryRun: false, imported: report.imported, skipped: [] });
 		assert.match(legacyResult, /Import results/);
 		assert.match(legacyResult, /Included in the merge/);
