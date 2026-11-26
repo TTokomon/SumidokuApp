@@ -68,7 +68,7 @@ import { SkippedItems } from './SkippedItems';
 import '../settings.css';
 import { Section } from './SettingsSection';
 import { AidokuImportReport } from './AidokuImportReport';
-import { AidokuSourceRecovery } from './AidokuSourceRecovery';
+import { AidokuSourceRecovery, missingAidokuIds } from './AidokuSourceRecovery';
 import { useAidokuImportSession } from './AidokuImportSession';
 
 const READER_MODE_KEY = 'sumidoku.reader.mode';
@@ -1435,8 +1435,8 @@ export function BackupSection() {
 				) : (
 					aib && (
 						<>
+							{missingAidokuIds(aib.preview).length > 0 && <AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/browse?view=lists'); }} />}
 							<AidokuImportReport result={aib.preview} />
-							{aib.preview.skipped.some((entry) => entry.reason === 'source not installed') && <AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/browse?view=lists'); }} />}
 							{aib.preview.skipped.length > 0 && <label><input type="checkbox" checked={acceptSkips} onChange={(event) => setAcceptSkips(event.currentTarget.checked)} /> {t('settings.aidokuReport.confirmSkips')}</label>}
 						</>
 					)

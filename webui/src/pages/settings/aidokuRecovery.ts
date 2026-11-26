@@ -14,7 +14,7 @@ const names: Record<string, string> = {
 
 export function aidokuSourceLabel(key: string): string {
 	const fallback = key.split('.').pop() || key;
-	return names[key] ?? (fallback.charAt(0).toUpperCase() + fallback.slice(1));
+	return Object.prototype.hasOwnProperty.call(names, key) ? names[key] : (fallback.charAt(0).toUpperCase() + fallback.slice(1));
 }
 
 /** Select only unambiguous, not-yet-installed exact matches. Multiple lists require a user choice. */

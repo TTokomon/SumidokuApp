@@ -501,7 +501,7 @@ impl AppState {
 		if kind == crate::model::SOURCE_KIND_LOCAL || kind == crate::model::SOURCE_KIND_OPDS {
 			return Err(ApiError::unsupported_501("feature not supported by source"));
 		}
-		if !enabled {
+		if !enabled || (kind == "aidoku" && wasm_path.is_empty()) {
 			return Err(ApiError::source_disabled(&key));
 		}
 		let call_limit = source_call_limit(source_manifest_config.as_deref()).map(Semaphore::new);

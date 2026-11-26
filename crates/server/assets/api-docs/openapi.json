@@ -5260,6 +5260,15 @@
               "type": "boolean",
               "default": false
             }
+          },
+          {
+            "name": "preserveMissingSources",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Preserve records for unavailable external sources as disabled package-less source rows."
           }
         ],
         "requestBody": {
@@ -11675,6 +11684,13 @@
             "items": {
               "$ref": "#/components/schemas/AidokuSkipped"
             }
+          },
+          "missingSources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact source keys preserved without an installed extension."
           }
         }
       },
@@ -12408,7 +12424,7 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0,
-            "maximum": 9223372036854775807,
+            "maximum": 9223372036854776000,
             "default": 2147483648,
             "description": "Cache budget in bytes. Zero bypasses chapter image caches; required page data remains protected while active or recently used, then is reclaimed by the always-running LRU."
           }

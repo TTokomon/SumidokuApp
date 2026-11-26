@@ -6,7 +6,7 @@ import type { AidokuImportResponse } from '../../api/types';
 import { Button, Modal } from '../../components';
 
 export function missingAidokuIds(preview: AidokuImportResponse): string[] {
-	return [...new Set(preview.skipped.filter((item) => item.reason === 'source not installed').map((item) => item.sourceKey))].sort();
+	return [...new Set([...(preview.missingSources ?? []), ...preview.skipped.filter((item) => item.reason === 'source not installed').map((item) => item.sourceKey)])].sort();
 }
 
 export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, selection, onSelectionChange }: {
@@ -41,15 +41,15 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 				try { await install.mutateAsync({ repoId: item.repoId, sourceKey: item.key }); }
 				catch { failed.push(aidokuSourceLabel(item.key)); }
 			}
-			setConfirm(false);
 			await refreshPreview();
+			setConfirm(false);
 			if (failed.length) setError(`Could not install: ${failed.join(', ')}. You can retry these sources before importing.`);
 		} catch (error) { setError(error instanceof Error ? error.message : 'Some sources could not be installed. Recheck and retry remaining sources.'); }
 		finally { setBusy(false); }
 	}
 	return <section aria-label="Recover Missing Aidoku Sources">
 		<h3>Restore your sources</h3>
-		<p>Your backup contains manga from sources that are not installed. Install the available matches before importing to recover their manga and reading progress. Nothing is installed until you approve.</p>
+		<p>Your backup contains manga from sources that are not installed. Install the available matches to read them again. Nothing is installed until you approve.</p>
 		{ids.length ? <ul>{ids.map((id) => <li key={id}><strong title={id}>{aidokuSourceLabel(id)}</strong>
 			{installed.data?.some((source) => source.key === id) ? ' — installed; recheck the backup' : !matches.some((entry) => entry.key === id) ? ' — unavailable in your source lists' : ' — available to install'}
 		</li>)}</ul> : <p>No missing source IDs in this preview.</p>}
@@ -63,7 +63,7 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 			<Button disabled={!eligible.length || busy} onClick={() => setConfirm(true)}>Install {eligible.length} selected sources…</Button>
 			<Button loading={recheck.isPending} disabled={busy} onClick={() => void refreshPreview()}>Recheck Backup</Button>
 		</div>
-		<p className="muted">To add a GitHub list, open Source Lists, paste its repository/index URL, then return to Storage & Backups and resume this import. Recheck always previews the same original file.</p>
+		{preview.missingSources?.length ? <p className="muted">You can import now even if some sources are unavailable. Your saved library and supported reading progress and tracker bindings will be kept.</p> : <p className="muted">Install matching sources before importing to avoid skipping their entries.</p>}
 		{error && <p role="alert">{error}</p>}
 		<Modal open={confirm} title="Confirm Source Installation" onClose={() => setConfirm(false)} footer={<Button loading={busy} onClick={() => void installSelected()}>Install and Recheck Backup</Button>}>
 			<p>Only the selected packages will be installed. Manga import still requires your separate confirmation after the new preview.</p>

@@ -1128,7 +1128,7 @@ export function useImportAidoku() {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: ({ file, dryRun }: { file: File; dryRun: boolean }) =>
-			api<AidokuImportResponse>(`/backups/import/aidoku?dryRun=${dryRun}`, { method: 'POST', body: file }),
+			api<AidokuImportResponse>(`/backups/import/aidoku?dryRun=${dryRun}&preserveMissingSources=true`, { method: 'POST', body: file }),
 		onSuccess: (_result, vars) => {
 			if (!vars.dryRun) qc.invalidateQueries();
 		}

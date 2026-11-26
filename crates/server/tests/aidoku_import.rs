@@ -419,3 +419,48 @@ async fn import_aidoku_keeps_an_existing_tracker_binding() {
 		["mal"]
 	);
 }
+
+#[tokio::test]
+async fn import_aidoku_preserves_missing_sources_without_installing_packages() {
+	let app = test_app().await;
+	scan(&app.app).await;
+	let before = db_dump(&app.db_path).await;
+	let (status, preview) = post_aib(&app.app, "?dryRun=true&preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK, "{preview}");
+	assert_eq!(preview["imported"]["library"], 3);
+	assert_eq!(preview["imported"]["progress"], 4);
+	assert_eq!(preview["imported"]["trackers"], 3);
+	assert_eq!(preview["missingSources"], json!(["en.ghost-source"]));
+	assert_eq!(preview["skipped"].as_array().unwrap().len(), 1);
+	assert_eq!(db_dump(&app.db_path).await, before);
+
+	let (status, committed) = post_aib(&app.app, "?preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK, "{committed}");
+	for field in ["imported", "included", "categoryNames", "missingSources", "skipped"] {
+		assert_eq!(committed[field], preview[field], "{field} differs from preview");
+	}
+	let pool = connect_db(&app.db_path).await;
+	let (source_id, enabled, wasm_path): (i64, bool, String) =
+		sqlx::query_as("SELECT id, enabled, wasm_path FROM source WHERE key = 'en.ghost-source'")
+			.fetch_one(&pool).await.unwrap();
+	assert!(!enabled);
+	assert!(wasm_path.is_empty());
+	let manga_id: i64 = sqlx::query_scalar("SELECT id FROM manga WHERE source_id = ? AND key = 'ghost-1'")
+		.bind(source_id).fetch_one(&pool).await.unwrap();
+	let (in_library,): (bool,) = sqlx::query_as("SELECT in_library FROM manga_user WHERE manga_id = ? AND user_id = 1")
+		.bind(manga_id).fetch_one(&pool).await.unwrap();
+	assert!(in_library);
+	let progress: i64 = sqlx::query_scalar("SELECT cu.last_page_read FROM chapter_user cu JOIN chapter c ON c.id = cu.chapter_id WHERE c.manga_id = ? AND c.key = '9' AND cu.user_id = 1")
+		.bind(manga_id).fetch_one(&pool).await.unwrap();
+	assert_eq!(progress, 1);
+	let tracker: String = sqlx::query_scalar("SELECT track_id FROM tracker_link WHERE manga_id = ? AND user_id = 1")
+		.bind(manga_id).fetch_one(&pool).await.unwrap();
+	assert_eq!(tracker, "404");
+	pool.close().await;
+	let (_, sources) = request(&app.app, "GET", "/api/v1/sources", None).await;
+	assert!(!sources.as_array().unwrap().iter().any(|source| source["key"] == "en.ghost-source"));
+	let after = db_dump(&app.db_path).await;
+	let (status, _) = post_aib(&app.app, "?preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK);
+	assert_eq!(db_dump(&app.db_path).await, after);
+}

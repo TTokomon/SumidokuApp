@@ -71,6 +71,7 @@ export function AidokuImportReport({ result }: { result: AidokuImportResponse })
 					items={section === 'categories' ? categoryNames : (result.included ?? []).filter((entry) => entry.section === section).map(entryLabel)}
 				/>
 			))}
+			{(result.missingSources ?? []).length > 0 && <p className="settings-modal-text">{t('settings.aidokuReport.savedWithoutSources', { defaultValue: 'Library records from unavailable sources are preserved. Install the matching extensions to read those titles again.' })}</p>}
 			<h4>{t(result.dryRun ? 'settings.aidokuReport.willSkip' : 'settings.aidokuReport.skipped', { count: result.skipped.length })}</h4>
 			{result.skipped.length === 0 && <p>{t('settings.aidokuReport.noSkips')}</p>}
 			{[...skippedBySection].map(([section, entries]) => (
