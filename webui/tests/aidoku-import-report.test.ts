@@ -32,10 +32,11 @@ test('Aidoku import displays merge, skipped entries with reasons, and unsupporte
 		const preview = render(report);
 		assert.match(preview, /Import preview/);
 		assert.match(preview, /Will add or merge/);
-		assert.match(preview, /<li>Example manga \(en\.source\/11\)<\/li>/);
+		assert.match(preview, /Library entries \(1\)/);
 		assert.match(preview, /Will skip \(2 entries\)/);
-		assert.match(preview, /en\.missing\/42 · Opening \(7\).*exact source ID is not installed/);
-		assert.match(preview, /Example manga .*shikimori.*does not support this tracker/);
+		assert.match(preview, /Missing \(1\)/);
+		assert.match(preview, /Tracker bindings \(1\)/);
+		assert.doesNotMatch(preview, /en\.missing\/42/);
 		assert.match(preview, /Outside this import/);
 		assert.match(preview, /downloaded chapter files do not transfer/);
 		const legacyResult = render({ dryRun: false, imported: report.imported, skipped: [] });
