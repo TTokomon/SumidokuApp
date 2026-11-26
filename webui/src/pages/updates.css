@@ -186,3 +186,10 @@
 	font-size: 12.5px;
 	margin-top: 2px;
 }
+
+.updates-sections { display: grid; gap: 16px; }
+.updates-sections .activity-date { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+.updates-list { gap: 0; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.updates-list .updates-item { padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; }
+.updates-list .updates-item:last-child { border-bottom: 0; }
+.updates-item__thumb { width: 40px; }

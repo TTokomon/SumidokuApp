@@ -1,10 +1,9 @@
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CategoriesSection, FilterGroupsSection, LibraryDisplaySection } from './library/LibraryManagement';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookOpen, SearchX } from 'lucide-react';
+import { BookOpen, SearchX, LayoutGrid, List } from 'lucide-react';
 import { api, coverUrl } from '../api/client';
 import {
 	qk,
@@ -25,7 +24,7 @@ import type { TriStateSelection } from '../lib/triState';
 import { compareSourceName } from '../lib/source';
 import { downloadEligibleIds } from '../lib/librarySelection';
 import { hasLibraryFilterPrefs, loadLibraryFilters, saveLibraryFilters } from '../lib/libraryFilterPrefs';
-import { BatchActionBar, Button, CoverCard, EmptyState, InfiniteList, Modal, PageHeader, Skeleton, pushToast } from '../components';
+import { BatchActionBar, Button, CoverCard, EmptyState, InfiniteList, PageHeader, Skeleton, pushToast } from '../components';
 import { LibraryToolbar, UNCATEGORIZED, type RemovableFilterKind } from './library/LibraryToolbar';
 import { ChangeCategoriesModal, RemoveFromLibraryModal } from './library/LibraryBatchModals';
 import './library/library.css';
@@ -72,9 +71,9 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const navigate = useNavigate();
-	const [params, setParams] = useSearchParams();
-	const panel = params.get('panel');
-	const setPanel = (value: string | null) => setParams((previous) => { const next = new URLSearchParams(previous); if (value) next.set('panel', value); else next.delete('panel'); return next; });
+	const [params] = useSearchParams();
+	const [layout, setLayout] = useState<'grid' | 'list'>(() => { try { return localStorage.getItem('sumidoku.library.layout') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; } });
+	function changeLayout(value: 'grid' | 'list') { setLayout(value); try { localStorage.setItem('sumidoku.library.layout', value); } catch { /* storage unavailable */ } }
 	// Controls restore from localStorage; the prefs are loaded once — the pruning effect below drops ids that no longer exist
 	const [initialPrefs] = useState(loadLibraryFilters);
 	const [searchInput, setSearchInput] = useState(initialPrefs.search);
@@ -385,10 +384,9 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 		setCategoryTri((cur) => cycled(cur, key));
 	}
 
+	if (params.get('panel') === 'organize' || params.get('panel') === 'view') return <Navigate to="/settings?section=library" replace />;
 	return (
 		<div className="page container">
-			<Modal open={panel === 'organize'} title="Organize Library" onClose={() => setPanel(null)}><CategoriesSection /><FilterGroupsSection /></Modal>
-			<Modal open={panel === 'view'} title="Library View Options" onClose={() => setPanel(null)}><LibraryDisplaySection /></Modal>
 			<PageHeader
 				title={t('common.nav.library')}
 				actions={
@@ -405,7 +403,10 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 							</Button>
 						</>
 					) : (
-						<><Button size="sm" onClick={() => setPanel('organize')}>Organize</Button><Button size="sm" onClick={() => setPanel('view')}>View Options</Button>
+						<><div className="library-layout-toggle" role="group" aria-label={t('library.layout', { defaultValue: 'Library layout' })}>
+							<Button size="sm" aria-label={t('library.gridView', { defaultValue: 'Grid view' })} title={t('library.gridView', { defaultValue: 'Grid view' })} aria-pressed={layout === 'grid'} onClick={() => changeLayout('grid')}><LayoutGrid size={17} /></Button>
+							<Button size="sm" aria-label={t('library.listView', { defaultValue: 'List view' })} title={t('library.listView', { defaultValue: 'List view' })} aria-pressed={layout === 'list'} onClick={() => changeLayout('list')}><List size={17} /></Button>
+						</div>
 						<Button size="sm" disabled={entries.length === 0} onClick={enterSelect}>
 							{t('library.select')}
 						</Button></>
@@ -482,7 +483,7 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 					isFetching={query.isFetching}
 					onLoadMore={() => void query.fetchNextPage()}
 				>
-					<div className={selecting ? 'cover-grid cover-grid--selecting' : 'cover-grid'}>
+					<div className={`${layout === 'list' ? 'library-list' : 'cover-grid'}${selecting ? ' cover-grid--selecting' : ''}`}>
 						{entries.map((m) => (
 							<CoverCard
 								key={m.id}

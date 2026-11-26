@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FolderOpen, LibraryBig, BookOpen, Server } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
@@ -85,10 +86,11 @@ export function BuiltInSources() {
 	const [setup, setSetup] = useState<{ kind: BuiltInKind; source?: Source } | null>(null);
 	return <section aria-label="Built-in Sources">
 		<h2 className="browse__section">Built-in Sources</h2>
-		<p className="muted">Ready to configure. No GitHub source list is required.</p>
+		
 		{sources.isError && <p role="alert">Saved connections could not be loaded. The built-in setup options remain available.</p>}
 		<div className="source-list">{BUILT_INS.map((item) => <div className="source-card" key={item.id} data-integration={item.id}>
-			<div className="source-card__main"><h3>{item.name}</h3><p className="muted">{item.hint}</p>
+			<span className="source-card__icon-fallback" style={{background: 'var(--bg-hover)', color: 'var(--accent)'}}>{item.id === 'local' ? <FolderOpen size={20} /> : item.id === 'komga' ? <LibraryBig size={20} /> : item.id === 'kavita' ? <BookOpen size={20} /> : <Server size={20} />}</span>
+			<div className="source-card__main"><div className="source-card__name">{item.name}</div><p className="source-card__meta">{item.hint}</p>
 				{(sources.data ?? []).filter((s) => s.kind !== 'aidoku' && builtInKind(s) === item.id).map((source) => <div key={source.id} className="integration-instance">
 					<Button onClick={() => navigate(`/browse/${source.id}`)}>{source.name}</Button>
 					<Button onClick={() => setSetup({ kind: item.id, source })}>Edit / Test</Button>

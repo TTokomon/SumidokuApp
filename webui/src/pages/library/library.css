@@ -370,3 +370,14 @@
 		padding-bottom: 128px;
 	}
 }
+
+/* A compact list view reuses the same accessible cover card and selection behavior. */
+.library-layout-toggle { display: inline-flex; gap: 3px; align-items: center; }
+.library-layout-toggle [aria-pressed="true"] { background: var(--bg-hover); color: var(--accent); }
+.library-list { display: flex; flex-direction: column; }
+.library-list .cover-card { display: grid; grid-template-columns: 46px minmax(0,1fr); grid-template-rows: auto auto; align-items: center; column-gap: 12px; row-gap: 2px; text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); width: 100%; }
+.library-list .cover-card__cover { grid-row: 1 / span 2; width: 46px; }
+.library-list .cover-card__title { grid-column: 2; margin: 0; align-self: end; }
+.library-list .cover-card__subtitle { grid-column: 2; margin: 0; align-self: start; }
+.library-list .cover-card__title:last-child { grid-row: 1 / span 2; align-self: center; }
+.library-list .cover-card:hover { background: var(--bg-hover); }

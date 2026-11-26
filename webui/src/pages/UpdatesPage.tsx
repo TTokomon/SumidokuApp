@@ -51,6 +51,16 @@ export default function UpdatesPage() {
 		[recent.data]
 	);
 
+	const updateSections = useMemo(() => {
+		const days = new Map<string, Map<number, typeof recentEntries>>();
+		for (const entry of recentEntries) {
+			const date = new Date(entry.fetchedAt * 1000).toLocaleDateString(undefined, { dateStyle: 'full' });
+			const day = days.get(date) ?? new Map<number, typeof recentEntries>();
+			const entries = day.get(entry.manga.id) ?? []; entries.push(entry); day.set(entry.manga.id, entries); days.set(date, day);
+		}
+		return [...days].map(([date, manga]) => [date, [...manga.values()]] as const);
+	}, [recentEntries]);
+
 	useEffect(() => {
 		let receivedEvent = false;
 
@@ -211,8 +221,8 @@ export default function UpdatesPage() {
 			)}
 
 			{jobs.length > 0 && (
-				<div className="card updates-jobs">
-					<div className="faint updates-jobs__title">{t('updates.liveFeed')}</div>
+				<details className="card updates-jobs" open={running}>
+					<summary className="faint updates-jobs__title">{t('updates.liveFeed')}</summary>
 					{jobs.map((j) => (
 						<div key={j.seq} className="updates-job">
 							<span className={`updates-job__dot updates-job__dot--${j.status}`} />
@@ -227,7 +237,7 @@ export default function UpdatesPage() {
 							)}
 						</div>
 					))}
-				</div>
+				</details>
 			)}
 
 			<h2 className="updates-recent__heading">{t('updates.recentHeading')}</h2>
@@ -245,9 +255,10 @@ export default function UpdatesPage() {
 					isFetching={recent.isFetching}
 					onLoadMore={() => void recent.fetchNextPage()}
 				>
-					<div className="updates-list">
-						{recentEntries.map((e) => (
-							<Link key={e.chapter.id} className="updates-item card" to={`/manga/${e.manga.id}`}>
+					<div className="updates-sections">
+						{updateSections.map(([date, groups]) => <section key={date}><h3 className="activity-date">{date}</h3><div className="updates-list">
+						{groups.map((group) => { const e = group[0]!; return (
+							<Link key={e.manga.id} className="updates-item card" to={`/manga/${e.manga.id}`}>
 								<div className="updates-item__thumb">
 									<Cover src={coverUrl(e.manga.id, e.manga.cover)} title={e.manga.title} />
 								</div>
@@ -255,14 +266,14 @@ export default function UpdatesPage() {
 									<div className="updates-item__title">{e.manga.title}</div>
 									<div className="muted updates-item__chapter">
 										{chapterLabel(e.chapter)}
-										<Badge>{t('updates.newChapter')}</Badge>
+										<Badge>{t('updates.addedChapters', { count: group.length })}</Badge>
 									</div>
 									<div className="faint updates-item__time">
 										{relativeTime(e.fetchedAt)}
 									</div>
 								</div>
 							</Link>
-						))}
+						); })}</div></section>)}
 					</div>
 				</InfiniteList>
 			)}

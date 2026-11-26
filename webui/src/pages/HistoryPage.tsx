@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Clock } from 'lucide-react';
@@ -6,7 +6,7 @@ import { coverUrl } from '../api/client';
 import { useHistory } from '../api/hooks';
 import type { HistoryEntry } from '../api/types';
 import { chapterLabel, relativeTime } from '../lib/format';
-import { Button, Cover, EmptyState, InfiniteList, PageHeader, Skeleton } from '../components';
+import { Button, Cover, EmptyState, InfiniteList, Input, PageHeader, Skeleton } from '../components';
 import './history.css';
 
 interface HistoryRow {
@@ -17,6 +17,7 @@ interface HistoryRow {
 export default function HistoryPage() {
 	const { t } = useTranslation();
 	const query = useHistory();
+	const [search, setSearch] = useState('');
 	const rows = useMemo<HistoryRow[]>(() => {
 		const all = query.data?.pages.flatMap((p) => p.entries) ?? [];
 		// Group by manga + calendar day, keep the latest entry and count how many were collapsed
@@ -37,9 +38,19 @@ export default function HistoryPage() {
 		return [...groups.values()].sort((a, b) => b.entry.lastReadAt - a.entry.lastReadAt);
 	}, [query.data]);
 
+	const sections = useMemo(() => {
+		const grouped = new Map<string, HistoryRow[]>();
+		for (const row of rows) {
+			if (search.trim() && !row.entry.manga.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())) continue;
+			const date = new Date(row.entry.lastReadAt * 1000).toLocaleDateString(undefined, { dateStyle: 'full' });
+			const group = grouped.get(date) ?? []; group.push(row); grouped.set(date, group);
+		}
+		return [...grouped];
+	}, [rows, search]);
+
 	return (
 		<div className="page container">
-			<PageHeader title={t('common.nav.history')} />
+			<PageHeader title={t('common.nav.history')} actions={<Input type="search" value={search} onChange={e => setSearch(e.currentTarget.value)} aria-label="Search loaded history" placeholder="Search history…" />} />
 
 			{query.isPending ? (
 				<div className="history-list">
@@ -64,8 +75,9 @@ export default function HistoryPage() {
 					isFetching={query.isFetching}
 					onLoadMore={() => void query.fetchNextPage()}
 				>
-					<div className="history-list">
-						{rows.map(({ entry: h, extra }) => (
+					<div className="history-sections">
+						{sections.map(([date, items]) => <section key={date}><h2 className="activity-date">{date}</h2><div className="history-list">
+						{items.map(({ entry: h, extra }) => (
 							<Link
 								key={h.chapter.id}
 								className="history-item card"
@@ -94,7 +106,7 @@ export default function HistoryPage() {
 									)}
 								</div>
 							</Link>
-						))}
+						))}</div></section>)}
 					</div>
 				</InfiniteList>
 			)}

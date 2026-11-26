@@ -5,7 +5,8 @@ import { DesktopUpdatesSection, DesktopServerSection } from '../native/DesktopBr
 import { SettingsLayout, SETTINGS_GROUPS, settingsCategoryFor } from './settings/SettingsLayout';
 import { contextualSettingsRoute } from './settings/navigation';
 import { TrackersPanel } from './settings/TrackersPanel';
-import { SourceAutomation } from './settings/SourceLists';
+import { SourceAutomation, SourceLists } from './settings/SourceLists';
+import { CategoriesSection, FilterGroupsSection, LibraryDisplaySection } from './library/LibraryManagement';
 import {
 	AppearanceSection, ReaderSection, IncognitoSection, LibraryUpdateSection,
 	DownloadSection, DownloadMoveSection, BackupSection, ScheduledBackupSection,
@@ -24,9 +25,11 @@ export default function SettingsPage() {
 	return <div className="page container settings-page">
 		<PageHeader title={t(category.labelKey, { defaultValue: category.fallbackLabel })} />
 		<SettingsLayout current={current} onSelect={(section) => setParams({ section })} panels={{
-			general: <><AppearanceSection /><DesktopUpdatesSection /></>,
-			reader: <><ReaderSection /><IncognitoSection /></>,
-			automation: <><LibraryUpdateSection /><SourceAutomation /></>,
+			general: <><AppearanceSection /><IncognitoSection /><DesktopUpdatesSection /></>,
+			library: <><LibraryDisplaySection /><CategoriesSection /><FilterGroupsSection /></>,
+			reader: <ReaderSection />,
+			automation: <LibraryUpdateSection />,
+			'source-lists': <><SourceLists /><SourceAutomation /></>,
 			downloads: <><DownloadSection /><DownloadMoveSection /></>,
 			backups: <><BackupSection /><ScheduledBackupSection /></>,
 			accounts: <><SecuritySection /><ApiKeysSection /></>,
