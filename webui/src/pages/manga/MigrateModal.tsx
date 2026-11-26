@@ -131,11 +131,11 @@ export function MigrateModal({ manga, onClose }: { manga: Manga; onClose: () => 
 							{t('migrateModal.backToCandidates')}
 						</Button>
 					</div>
-					<p className="muted">{t('aidokuWizard.safeTransferHelp', { defaultValue: 'Unverified page positions stay with the original manga. Partial transfers keep the original in your library.' })}</p>
+					<p className="muted">{t('aidokuWizard.safeTransferHelp', { defaultValue: 'Move replaces the library entry. Unmatched history stays with the original manga outside the library.' })}</p>
 				</div>
 			) : (
 				<>
-					<DestinationPicker selected={destinations} onChange={setDestinations} />
+					<DestinationPicker selected={destinations} onChange={setDestinations} originSourceId={manga.sourceId} />
 					<div className="migrate-single__bar">
 						<Button
 							size="sm"

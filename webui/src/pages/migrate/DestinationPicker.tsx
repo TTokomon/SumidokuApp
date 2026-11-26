@@ -23,13 +23,15 @@ export interface DestinationPickerProps {
 	/** Selected target source ids; the order is the priority */
 	selected: number[];
 	onChange: (ids: number[]) => void;
+	/** Keep same-source reassociation available manually, but omit it from automatic destination selection. */
+	originSourceId?: number | null;
 }
 
 /**
  * Migration destination-set picker: SELECTED is ordered (drag to reorder, removable), AVAILABLE appends
  * on click, and "select all pinned" batch-adds in pin order. Shared by the single-entry and batch entries.
  */
-export function DestinationPicker({ selected, onChange }: DestinationPickerProps) {
+export function DestinationPicker({ selected, onChange, originSourceId }: DestinationPickerProps) {
 	const { t } = useTranslation();
 	const sources = useSources();
 	const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -46,6 +48,11 @@ export function DestinationPicker({ selected, onChange }: DestinationPickerProps
 	const pinnedRest = all
 		.filter((s) => s.pinned && !chosenIds.has(s.id))
 		.sort((a, b) => (a.pinOrder ?? 0) - (b.pinOrder ?? 0));
+
+	const otherSources = available.filter((source) => source.id !== originSourceId);
+	function addOtherSources() {
+		onChange([...selected, ...otherSources.map((source) => source.id)]);
+	}
 
 	function addAllPinned() {
 		onChange([...selected, ...pinnedRest.map((s) => s.id)]);
@@ -126,7 +133,10 @@ export function DestinationPicker({ selected, onChange }: DestinationPickerProps
 				</div>
 			)}
 
-			<h4>{t('destinationPicker.availableHeading')}</h4>
+			<div className="dest-picker__head">
+				<h4>{t('destinationPicker.availableHeading')}</h4>
+				{otherSources.length > 0 && <Button size="sm" onClick={addOtherSources}>{t('aidokuWizard.selectOtherSources', { defaultValue: 'Select all other sources' })}</Button>}
+			</div>
 			{available.length === 0 ? (
 				<p className="muted">{t('destinationPicker.noMore')}</p>
 			) : (

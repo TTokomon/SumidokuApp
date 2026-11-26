@@ -215,7 +215,7 @@ export default function MigratePage() {
 										className="migrate-source"
 										onClick={() => pickSource(s.id)}
 									>
-										<span className="migrate-source__name">{s.name}</span>
+										<span className="migrate-source__name">{s.name}{!s.enabled && <small className="muted"> · {t('aidokuWizard.sourceUnavailable')}</small>}</span>
 										<span className="migrate-source__count">{t('migrate.inLibrary', { count: s.mangaCount })}</span>
 										<ArrowRight size={16} />
 									</button>
@@ -282,7 +282,7 @@ export default function MigratePage() {
 
 			{step === 'destinations' && (
 				<>
-					<DestinationPicker selected={destinations} onChange={setDestinations} />
+					<DestinationPicker selected={destinations} onChange={setDestinations} originSourceId={sourceId} />
 					<div className="migrate-toolbar">
 						<Button variant="primary" disabled={destinations.length === 0} onClick={startMatch}>
 							{t('migrate.startMatch', { count: selected.size })}
@@ -387,7 +387,7 @@ export default function MigratePage() {
 				}
 			>
 				<p className="muted">{confirmMode ? MODE_HINT[confirmMode] : ''}</p>
-				<p className="muted">{t('aidokuWizard.safeTransferHelp', { defaultValue: 'Unverified page positions stay with the original manga. Partial transfers keep the original in your library.' })}</p>
+				<p className="muted">{t('aidokuWizard.safeTransferHelp', { defaultValue: 'Move replaces the library entry. Unmatched history stays with the original manga outside the library.' })}</p>
 				<p className="muted">{t('migrate.unmatchedUntouched', { count: rows.length - matchedRows.length })}</p>
 			</Modal>
 

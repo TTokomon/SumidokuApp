@@ -377,16 +377,26 @@ async fn run_entry(
 
 	match mode {
 		MigrateMode::Copy => {}
-		MigrateMode::Migrate | MigrateMode::MigrateWithHistory if !warnings.is_empty() => {
-			warnings.push("Transfer was partial; the original manga and its progress remain in your library.".into());
-		}
 		MigrateMode::Migrate | MigrateMode::MigrateWithHistory => {
-			// After a complete move, the destination owns the tracker bindings; no remote calls.
-			sqlx::query("DELETE FROM tracker_link WHERE manga_id = ? AND user_id = ?")
-				.bind(origin.id).bind(user_id).execute(&mut *tx).await?;
+			// A successful move has one shelved entry. Warnings preserve the old
+			// history off the shelf instead of leaving duplicate library entries.
+			let partial = !warnings.is_empty();
+			// Remove only associations that now have an identical destination
+			// binding; conflicting links remain attached to the historical origin.
+			sqlx::query(
+				"DELETE FROM tracker_link WHERE manga_id = ? AND user_id = ?
+				 AND EXISTS (SELECT 1 FROM tracker_link destination
+				 WHERE destination.manga_id = ? AND destination.user_id = tracker_link.user_id
+				 AND destination.provider = tracker_link.provider
+				 AND destination.track_id = tracker_link.track_id
+				 AND destination.track_mode = tracker_link.track_mode
+				 AND destination.chapter_offset = tracker_link.chapter_offset)",
+			).bind(origin.id).bind(user_id).bind(to_manga_id).execute(&mut *tx).await?;
 			crate::store::library::unshelve(&mut tx, origin.id, user_id).await?;
 			crate::store::category::clear_manga(&mut tx, origin.id, user_id).await?;
-			if mode == MigrateMode::Migrate {
+			if partial {
+				warnings.push("Moved to the new source; unmatched history remains on the original manga outside your library.".into());
+			} else if mode == MigrateMode::Migrate {
 				crate::store::progress::reset_manga(&mut tx, origin.id, user_id).await?;
 			}
 		}

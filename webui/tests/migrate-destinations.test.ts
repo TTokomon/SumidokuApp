@@ -65,3 +65,13 @@ test('single and batch migration do not exclude the current source', async () =>
 	assert.doesNotMatch(single, /excludeId=/);
 	assert.doesNotMatch(batch, /excludeId=/);
 });
+
+test('destination picker offers one-click selection of other sources', async () => {
+	const client = new QueryClient();
+	client.setQueryData(['sources'], [source(1, 'Example Source'), source(2, 'Other Source')]);
+	const { DestinationPicker } = await vite.ssrLoadModule('/src/pages/migrate/DestinationPicker.tsx');
+	const markup = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(DestinationPicker, { selected: [], onChange: () => {}, originSourceId: 1 })));
+	assert.match(markup, /Select all other sources/);
+	assert.match(markup, /Other Source/);
+	client.clear();
+});
