@@ -17,15 +17,15 @@ struct NativeSymbolTests {
         }
         let symbols = (DesktopDestination.collection + DesktopDestination.settings).map(\.symbol) + ["arrow.clockwise", "server.rack"]
         let actual = symbols.map { NativeSymbol.resolve($0) }
-        guard Set(symbols).count == 13, Set(actual).count == 13 else {
+        guard Set(symbols).count == 14, Set(actual).count == 14 else {
             fputs("FAIL: duplicate navigation identifiers or current-system resolutions\n", stderr); exit(1)
         }
         // Simulate preferred names being absent; these base glyphs exist on supported older systems.
-        let older: Set<String> = ["books.vertical", "network", "clock", "arrow.down.circle", "clock.arrow.circlepath", "gearshape", "book", "calendar", "externaldrive", "person.crop.circle", "gearshape.2", "goforward", "desktopcomputer"]
+        let older: Set<String> = ["books.vertical", "network", "clock", "arrow.down.circle", "clock.arrow.circlepath", "gearshape", "book", "square.stack.3d.up", "list.bullet", "externaldrive", "person.crop.circle", "gearshape.2", "goforward", "desktopcomputer"]
         let fallback = symbols.map { NativeSymbol.resolve($0, available: { older.contains($0) }) }
-        guard Set(fallback).count == 13, fallback.allSatisfy({ older.contains($0) && NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) else {
+        guard Set(fallback).count == 14, fallback.allSatisfy({ older.contains($0) && NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) else {
             fputs("FAIL: older-system fallback unavailable or collision\n", stderr); exit(1)
         }
-        print("PASS: \(count) actual destination resolutions; 13 unique current and 13 collision-free forced older-system sidebar/footer resolutions")
+        print("PASS: \(count) actual destination resolutions; 14 unique current and 14 collision-free forced older-system sidebar/footer resolutions")
     }
 }

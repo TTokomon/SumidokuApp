@@ -54,7 +54,7 @@ test('expanded sidebar keeps visible labels and collapse control', async () => {
 	assert.match(markup, /aria-expanded="true"/);
 });
 
-test('sidebar shows five Collection items and six Preferences shortcuts', async () => {
+test('sidebar shows five Collection items and seven Preferences shortcuts', async () => {
 	const markup = await renderSidebar(false);
 	const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
 	assert.deepEqual(
@@ -63,13 +63,14 @@ test('sidebar shows five Collection items and six Preferences shortcuts', async 
 			'/library', '/browse', '/history', '/downloads', '/updates',
 			'/settings?section=general',
 			'/settings?section=reader',
-			'/settings?section=automation',
+			'/settings?section=library',
+			'/settings?section=source-lists',
 			'/settings?section=downloads',
 			'/settings?section=accounts',
 			'/settings?section=system'
 		]
 	);
-	for (const heading of ['Collection', 'Preferences', 'General', 'Reader', 'Automation', 'Storage &amp; Backups', 'Accounts &amp; Integrations', 'Server &amp; Diagnostics']) {
+	for (const heading of ['Collection', 'Preferences', 'General', 'Reader', 'Library', 'Sources', 'Storage &amp; Backups', 'Accounts &amp; Integrations', 'Server &amp; Diagnostics']) {
 		assert.ok(navigation.includes(heading), heading);
 	}
 	assert.doesNotMatch(navigation, /data-nav-group/);
@@ -78,7 +79,8 @@ test('sidebar shows five Collection items and six Preferences shortcuts', async 
 test('legacy Settings section links select the correct consolidated Preferences shortcut', async () => {
 	const sections: Record<string, string> = {
 		downloads: 'downloads', backups: 'downloads',
-		trackers: 'accounts', accounts: 'accounts', automation: 'automation',
+		trackers: 'accounts', accounts: 'accounts', automation: 'library',
+		library: 'library', 'source-lists': 'source-lists', unknown: 'general',
 		reader: 'reader',
 		system: 'system', general: 'general'
 	};
@@ -133,7 +135,7 @@ test('collapsing keeps the sidebar toggle at the same spot', async () => {
 });
 
 
-test('Accounts groups trackers and retains inactive canonical panels', async () => {
+test('Accounts groups trackers and mounts only the active panel', async () => {
 	const vite = await createServer({
 		root: fileURLToPath(new URL('../', import.meta.url)),
 		configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true }
@@ -144,33 +146,33 @@ test('Accounts groups trackers and retains inactive canonical panels', async () 
 		const markup = renderToStaticMarkup(createElement(SettingsLayout, {
 			current: 'trackers', onSelect: () => {}, panels
 		}));
-		assert.equal((markup.match(/data-settings-category=/g) ?? []).length, 6);
+		assert.equal((markup.match(/data-settings-category=/g) ?? []).length, 7);
 		assert.match(markup, /data-settings-group="trackers"[^>]*aria-current="page"/);
 		assert.match(markup, /data-settings-group="accounts"/);
-		assert.equal((markup.match(/data-settings-panel=/g) ?? []).length, 8);
+		assert.equal((markup.match(/data-settings-panel=/g) ?? []).length, 1);
 		assert.match(markup, /data-settings-panel="trackers">/);
 	} finally { await vite.close(); }
 });
 
-test('six Settings categories cover canonical sections and contextual legacy routes', async () => {
+test('seven Settings categories cover each section once', async () => {
 	const vite = await createServer({
 		root: fileURLToPath(new URL('../', import.meta.url)),
 		configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true }
 	});
 	try {
-		const { SETTINGS_GROUPS, SETTINGS_CATEGORIES, settingsCategoryFor, contextualSettingsRoute } =
+		const { SETTINGS_GROUPS, SETTINGS_CATEGORIES, settingsCategoryFor, settingsSection } =
 			await vite.ssrLoadModule('/src/pages/settings/navigation.ts');
-		assert.equal(SETTINGS_CATEGORIES.length, 6);
+		assert.equal(SETTINGS_CATEGORIES.length, 7);
 		const all = SETTINGS_CATEGORIES.flatMap((group: { sections: string[] }) => group.sections);
-		assert.deepEqual(new Set(all), new Set(SETTINGS_GROUPS.map(([id]: [string]) => id)));
-		assert.equal(contextualSettingsRoute('library'), '/library?panel=organize');
-		assert.equal(contextualSettingsRoute('source-lists'), '/browse?view=lists');
-		assert.equal(contextualSettingsRoute('trackers'), null);
+		assert.deepEqual([...all].sort(), SETTINGS_GROUPS.map(([id]: [string]) => id).sort());
+		assert.equal(settingsSection('library'), 'library');
+		assert.equal(settingsSection('source-lists'), 'source-lists');
+		assert.equal(settingsSection('trackers'), 'trackers');
 		assert.equal(settingsCategoryFor('trackers').id, 'accounts');
 		assert.equal(settingsCategoryFor('system').id, 'server');
 		assert.equal(settingsCategoryFor('general').id, 'general');
 		assert.equal(settingsCategoryFor('reader').id, 'reader');
-		assert.equal(settingsCategoryFor('automation').id, 'automation');
+		assert.equal(settingsCategoryFor('automation').id, 'library');
 	} finally { await vite.close(); }
 });
 
@@ -194,6 +196,6 @@ test('all browser destination icons are distinct', async () => {
 	const markup = await renderSidebar(false);
 	const navigation = markup.slice(markup.indexOf('<nav'), markup.indexOf('</nav>'));
 	const icons = [...navigation.matchAll(/class="lucide ([^"]+)"/g)].map((match) => match[1]);
-	assert.equal(icons.length, 11);
-	assert.equal(new Set(icons).size, 11);
+	assert.equal(icons.length, 12);
+	assert.equal(new Set(icons).size, 12);
 });

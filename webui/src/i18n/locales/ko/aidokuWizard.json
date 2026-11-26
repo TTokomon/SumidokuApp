@@ -47,7 +47,8 @@
 		"transferSource": "소스 이전",
 		"selectedTitles": "선택한 작품",
 		"retryFailed": "실패한 이전 다시 시도",
-		"safeTransferHelp": "확인되지 않은 페이지 위치는 원본 만화에 남습니다. 일부만 이전되면 원본이 라이브러리에 유지됩니다.",
-		"noConfidentMatch": "확실한 일치 항목 없음 — 직접 선택"
+		"safeTransferHelp": "이동하면 라이브러리 항목이 교체됩니다. 일치하지 않는 기록은 라이브러리 밖의 원본 만화에 남습니다.",
+		"noConfidentMatch": "확실한 일치 항목 없음 — 직접 선택",
+		"selectOtherSources": "다른 소스 모두 선택"
 	}
 }

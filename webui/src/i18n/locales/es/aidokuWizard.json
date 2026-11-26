@@ -47,7 +47,8 @@
 		"transferSource": "Cambiar fuente",
 		"selectedTitles": "Títulos seleccionados",
 		"retryFailed": "Reintentar transferencias fallidas",
-		"safeTransferHelp": "Las posiciones de página sin verificar permanecen en el manga original. Las transferencias parciales conservan el original en la biblioteca.",
-		"noConfidentMatch": "Sin coincidencia fiable: elige manualmente"
+		"safeTransferHelp": "Al mover, se reemplaza la entrada de la biblioteca. El historial sin coincidencias se conserva en el manga original fuera de la biblioteca.",
+		"noConfidentMatch": "Sin coincidencia fiable: elige manualmente",
+		"selectOtherSources": "Seleccionar todas las demás fuentes"
 	}
 }

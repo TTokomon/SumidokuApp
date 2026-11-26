@@ -47,7 +47,8 @@
 		"transferSource": "ソースを移行",
 		"selectedTitles": "選択した作品",
 		"retryFailed": "失敗した移行を再試行",
-		"safeTransferHelp": "確認できないページ位置は元の漫画に残ります。部分的な移行では元の漫画がライブラリに残ります。",
-		"noConfidentMatch": "確実な一致がありません。手動で選択してください。"
+		"safeTransferHelp": "移行するとライブラリの項目が置き換わります。対応する章がない履歴は、ライブラリ外の元の漫画に残ります。",
+		"noConfidentMatch": "確実な一致がありません。手動で選択してください。",
+		"selectOtherSources": "その他のソースをすべて選択"
 	}
 }

@@ -1451,7 +1451,7 @@ export function BackupSection() {
 						{aibStep === 1 && <AidokuWizardSummary result={aib.preview} />}
 						{aibStep === 2 && (
 							missingAidokuIds(aib.preview).length > 0 ? (
-								<AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} onBusyChange={setRecoveryBusy} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/browse?view=lists'); }} />
+								<AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} onBusyChange={setRecoveryBusy} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/settings?section=source-lists'); }} />
 							) : <p className="settings-modal-text">{t('aidokuWizard.sourcesReady')}</p>
 						)}
 						{aibStep === 3 && <>

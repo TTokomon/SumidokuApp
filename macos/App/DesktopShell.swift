@@ -19,8 +19,8 @@ struct DesktopDestination: Identifiable, Hashable {
     static let settings = [
         Self(id: "/settings?section=general", title: "General", symbol: "gear"),
         Self(id: "/settings?section=reader", title: "Reader", symbol: "book.fill"),
-        Self(id: "/settings?section=library", title: "Library", symbol: "books.vertical.fill"),
-        Self(id: "/settings?section=source-lists", title: "Sources", symbol: "globe"),
+        Self(id: "/settings?section=library", title: "Library", symbol: "books.vertical.circle"),
+        Self(id: "/settings?section=source-lists", title: "Sources", symbol: "list.bullet.rectangle"),
         Self(id: "/settings?section=downloads", title: "Storage & Backups", symbol: "externaldrive.fill"),
         Self(id: "/settings?section=accounts", title: "Accounts & Integrations", symbol: "person.crop.circle.fill"),
         Self(id: "/settings?section=system", title: "Server & Diagnostics", symbol: "gearshape.2.fill")

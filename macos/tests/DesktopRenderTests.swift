@@ -56,7 +56,7 @@ struct DesktopRenderTests {
             try await wait("location.pathname + location.search === '\(item.id)'")
             guard shell.selection.wrappedValue == item.id else { throw UpdateFailure("Native sidebar selection mismatch") }
         }
-        for (route, target, selected) in [("/settings", "/settings", "/settings?section=general"), ("/settings?section=general", "/settings?section=general", "/settings?section=general"), ("/settings?section=reader", "/settings?section=reader", "/settings?section=reader"), ("/settings?section=library", "/library?panel=organize", "/library"), ("/settings?section=source-lists", "/browse?view=lists", "/browse"), ("/settings?section=trackers", "/settings?section=trackers", "/settings?section=accounts"), ("/settings?section=downloads", "/settings?section=downloads", "/settings?section=downloads"), ("/settings?section=backups", "/settings?section=backups", "/settings?section=downloads"), ("/settings?section=system", "/settings?section=system", "/settings?section=system")] {
+        for (route, target, selected) in [("/settings", "/settings", "/settings?section=general"), ("/settings?section=general", "/settings?section=general", "/settings?section=general"), ("/settings?section=reader", "/settings?section=reader", "/settings?section=reader"), ("/library?panel=organize", "/settings?section=library", "/settings?section=library"), ("/browse?view=lists", "/settings?section=source-lists", "/settings?section=source-lists"), ("/settings?section=automation", "/settings?section=automation", "/settings?section=library"), ("/settings?section=trackers", "/settings?section=trackers", "/settings?section=accounts"), ("/settings?section=downloads", "/settings?section=downloads", "/settings?section=downloads"), ("/settings?section=backups", "/settings?section=backups", "/settings?section=downloads"), ("/settings?section=system", "/settings?section=system", "/settings?section=system")] {
             controller.navigate(route)
             try await wait("location.pathname + location.search === '\(target)'")
             guard shell.selection.wrappedValue == selected else { throw UpdateFailure("Legacy Settings selection mismatch") }
@@ -69,12 +69,12 @@ struct DesktopRenderTests {
         guard controller.nativePanel == "server" else { throw UpdateFailure("Local Server footer destination mismatch") }
         controller.navigate("/library")
         try await wait("location.pathname === '/library'")
-        print("PASS: eleven native selection bindings and own-window clicks on both native footer controls")
+        print("PASS: twelve native selection bindings and own-window clicks on both native footer controls")
     }
     func verifyGroupedSettingsAndRecovery() async throws {
         controller.navigate("/settings?section=backups")
-        try await wait("document.querySelectorAll('[data-settings-category]').length === 6 && document.querySelectorAll('[data-settings-panel]').length === 8")
-        for section in ["general", "reader", "automation", "downloads", "backups", "accounts", "trackers", "system"] {
+        try await wait("document.querySelectorAll('[data-settings-category]').length === 7 && document.querySelectorAll('[data-settings-panel]').length === 1")
+        for section in ["general", "reader", "library", "source-lists", "automation", "downloads", "backups", "accounts", "trackers", "system"] {
             controller.navigate("/settings?section=" + section)
             try await wait("document.querySelector('[data-settings-panel=\"\(section)\"]').hidden === false")
         }
@@ -102,13 +102,13 @@ struct DesktopRenderTests {
         try await run("document.querySelector('[aria-label=\"Recover Missing Aidoku Sources\"] input[type=checkbox]').click();")
         try await wait("document.querySelector('[aria-label=\"Recover Missing Aidoku Sources\"] input[type=checkbox]').checked")
         _ = try await controller.webView.evaluateJavaScript("Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Add / Manage Source Lists…').click()")
-        try await wait("location.pathname === '/browse' && location.search === '?view=lists' && document.querySelector('section[aria-label=\"Source Lists\"]') !== null")
+        try await wait("location.pathname === '/settings' && location.search === '?section=source-lists' && document.querySelector('section[aria-label=\"Source Lists\"]') !== null")
         controller.navigate("/settings?section=backups")
         try await wait("Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='Resume Aidoku Import')")
         _ = try await controller.webView.evaluateJavaScript("Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Resume Aidoku Import').click()")
         try await wait("document.querySelector('[aria-label=\"Recover Missing Aidoku Sources\"]') !== null && window.__aibBodies.length === 2 && window.__aibBodies[0] === window.__aibBodies[1] && document.querySelector('[aria-label=\"Recover Missing Aidoku Sources\"] input[type=checkbox]')?.checked === true")
         _ = try await controller.webView.evaluateJavaScript("Array.from(document.querySelector('[role=dialog]').querySelectorAll('button')).find(b=>b.textContent==='Cancel').click()")
-        print("PASS: six visible Settings categories, eight persistent panels, subsections/back-forward and exact same Aidoku backup resumed after Source Lists")
+        print("PASS: seven Settings categories, one active panel, subsections/back-forward and exact same Aidoku backup resumed after Source Lists")
     }
     func capture(_ name: String) async throws {
         guard capturesEnabled else { return }
@@ -199,7 +199,7 @@ struct DesktopRenderTests {
                             exit(0)
                         }
                         let fixture = try JSONSerialization.jsonObject(with:Data(contentsOf:root.appendingPathComponent("preview.json"))) as! [String:Int]
-                        let routes = [("manga-details","/manga/\(fixture["manga"]!)"),("sources","/browse"),("source-lists","/browse?view=lists"),("automation","/settings?section=automation"),("history","/history"),("backup-import","/settings?section=backups"),("reader","/reader/\(fixture["chapter"]!)")]
+                        let routes = [("manga-details","/manga/\(fixture["manga"]!)"),("sources","/browse"),("source-lists","/settings?section=source-lists"),("automation","/settings?section=automation"),("history","/history"),("backup-import","/settings?section=backups"),("reader","/reader/\(fixture["chapter"]!)")]
                         for (name,route) in routes {
                             controller.navigate(route)
                             try await wait("location.pathname + location.search === '\(route)'")

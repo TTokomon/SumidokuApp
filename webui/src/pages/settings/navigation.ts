@@ -19,7 +19,6 @@ export const SETTINGS_CATEGORIES: ReadonlyArray<{
 export function settingsCategoryFor(section: SettingsGroupKey) {
 	return SETTINGS_CATEGORIES.find((category) => category.sections.includes(section)) ?? SETTINGS_CATEGORIES[0]!;
 }
-export function contextualSettingsRoute(section: string | null): string | null {
-	void section;
-	return null;
+export function settingsSection(section: string | null): SettingsGroupKey {
+	return SETTINGS_GROUPS.find(([key]) => key === section)?.[0] ?? 'general';
 }

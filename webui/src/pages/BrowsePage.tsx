@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import {
 	ArrowLeftRight,
 	CircleArrowUp,
@@ -46,7 +46,6 @@ import {
 import ReposPanel from './browse/ReposPanel';
 import { SearchPanel } from './browse/SearchPanel';
 import { TrashPanel } from './browse/TrashPanel';
-import { SourceLists } from './settings/SourceLists';
 import { BuiltInSources } from './browse/BuiltInSources';
 
 import { SourceSettingsButton, SourceSettingsDialog } from './browse/SourceSettingsModal';
@@ -325,13 +324,19 @@ export function SourceCard({
 }
 
 export default function BrowsePage() {
+	const [params] = useSearchParams();
+	if (params.get('view') === 'lists') return <Navigate to="/settings?section=source-lists" replace />;
+	return <BrowseSources />;
+}
+
+function BrowseSources() {
 	const { t } = useTranslation();
 	const sources = useSources();
 	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const searching = searchParams.get('view') === 'search';
 	const rawView = searchParams.get('view');
-	const tab = rawView === 'available' || rawView === 'discover' ? 'discover' : rawView === 'trash' ? 'trash' : rawView === 'lists' ? 'lists' : 'installed';
+	const tab = rawView === 'available' || rawView === 'discover' ? 'discover' : rawView === 'trash' ? 'trash' : 'installed';
 	const [query, setQuery] = useState(''); const [language, setLanguage] = useState('');
 	const [pendingDelete, setPendingDelete] = useState<Source | null>(null);
 	const del = useDeleteSource(); const pin = usePinSource(); const setEnabled = useSetSourceEnabled();
@@ -350,16 +355,17 @@ export default function BrowsePage() {
 			<Button loading={scan.isPending} onClick={() => scan.mutate()}><ScanSearch size={15} />{t('browse.scan')}</Button>
 		</>} />
 		{!searching && <div className="browse__tabs"><SegmentedControl options={[
-					{ value: 'installed', label: 'Installed' }, { value: 'discover', label: 'Discover' }, { value: 'lists', label: 'Source Lists' }, { value: 'trash', label: t('browse.tabTrash') }
+					{ value: 'installed', label: 'Installed' }, { value: 'discover', label: 'Discover' }, { value: 'trash', label: t('browse.tabTrash') }
 				]} value={tab} onChange={(view) => setSearchParams(view === 'installed' ? {} : { view })} /></div>}
 		{!searching && tab === 'installed' && <BuiltInSources />}
 		<section aria-label="External Sources">
 			<h2 className="browse__section">External Sources</h2>
+			{!searching && <Link to="/settings?section=source-lists">Source Lists</Link>}
 			
 			<SearchPanel active={searching} initialQuery={searchParams.get('q') ?? ''} onActiveChange={(active, q) => setSearchParams(active ? { view: 'search', ...(q ? { q } : {}) } : {}, { replace: true })} />
 			{!searching && <>
 
-				{tab === 'lists' ? <SourceLists /> : tab === 'discover' ? <ReposPanel manage={false} /> : tab === 'trash' ? <TrashPanel /> : <>
+				{tab === 'discover' ? <ReposPanel manage={false} /> : tab === 'trash' ? <TrashPanel /> : <>
 					<div className="repos__filters">
 						<Input type="search" aria-label="Search installed external sources" placeholder="Search installed sources by name or ID" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
 						<select aria-label="Filter installed source language" value={language} onChange={(e) => setLanguage(e.currentTarget.value)}><option value="">All languages</option>{[...new Set(all.flatMap((s) => s.languages))].sort().map((lang) => <option key={lang} value={lang}>{languageLabel(lang)}</option>)}</select>

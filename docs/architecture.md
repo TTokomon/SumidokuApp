@@ -2217,9 +2217,9 @@ When authentication is on, the
 login page takes the admin username + password with an initially empty username
 field, browser API requests use the login cookie, CLI clients may send a
 bearer header, and any `401` lands on `/login`. Desktop navigation exposes library,
-sources, history, downloads, chapter updates and six grouped Preferences destinations. The native
+sources, history, downloads, chapter updates and seven grouped Preferences destinations. The native
 WKWebView hides the browser sidebar to avoid duplicated navigation. The browse page keeps cross-source search above its
-Installed, Discover, Source Lists and Trash views, with `/search` redirecting to its search view.
+Installed, Discover and Trash views, with `/search` redirecting to its search view.
 Remote source and cross-source searches run on explicit submission; local-source
 filtering uses a 500ms debounce. Clearing a source's search box resubmits an
 empty query so the unsearched results return without waiting for submission.
@@ -2236,21 +2236,19 @@ and shows each field's source as follow-the-source, written by a provider, or
 manual, with per-field unlock and a restore-to-source action. Both live in
 `webui/src/pages/manga/`, share `metadata.css`, and are only offered while the
 entry is in the library or its source is local.
-Settings exposes General, Reader, Automation, Storage & Backups, Accounts &
-Integrations and Server & Diagnostics. Storage and Accounts have two subsections;
-other categories have a single page. A small keyword search links directly to
-these groups and contextual management. Desktop uses the sidebar without a second
-category bar; compact browser layouts retain their own category controls.
-`pages/settings/navigation.ts` owns category and legacy-route mapping.
+Settings exposes General, Reader, Library, Sources, Storage & Backups, Accounts
+& Integrations and Server & Diagnostics. The active subsection alone mounts its
+controls. Desktop uses the sidebar without a second category bar, while compact
+browser layouts retain their own category controls. The shared Settings
+navigation maps sections to their categories.
 
-Library owns the reused category/filter editors in Organize and display settings
-in View Options (`LibraryManagement.tsx`). Legacy `section=library` redirects to
-`/library?panel=organize`. Legacy `section=source-lists` redirects to
-`/browse?view=lists`; subscriptions and manual package actions live there, while
-source refresh/update policies live in Automation. Accounts owns password/API-key
-security and all trackers (`section=trackers` remains valid). Downloads and backups
-retain their original section URLs within Storage. General, Reader and System URLs
-also remain valid, with the new `automation` and `accounts` sections added.
+Library contains display preferences, category and filter management, and update
+scheduling. The old `/library?panel=organize` and `/library?panel=view` URLs redirect
+to `/settings?section=library`. The `automation` subsection remains a direct link
+to Library update scheduling. `/browse?view=lists` redirects to
+`/settings?section=source-lists`, which owns subscriptions and source refresh and
+update policies. Accounts owns password and API-key security and all trackers.
+Downloads and Backups retain their section URLs within Storage.
 
 `AidokuImportSessionProvider`, keyed to the authenticated user around AppLayout,
 retains the original File, preview, skip confirmation and exact source-package

@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, CalendarClock, HardDrive, Users, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon } from 'lucide-react';
+import { BookOpen, BookCopy, ListTree, HardDrive, Users, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { IconButton } from '../components';
-import { SETTINGS_CATEGORIES, contextualSettingsRoute } from '../pages/settings/navigation';
+import { SETTINGS_CATEGORIES, settingsSection } from '../pages/settings/navigation';
 import { NAV } from './navigation';
 
 interface DesktopSidebarProps {
@@ -28,7 +28,8 @@ const COLLECTION_NAV: SidebarItem[] = NAV.filter((item) => item.to !== '/setting
 const PREFERENCE_ICONS: Record<string, LucideIcon> = {
 	general: SettingsIcon,
 	reader: BookOpen,
-	automation: CalendarClock,
+	library: BookCopy,
+	sources: ListTree,
 	storage: HardDrive,
 	accounts: Users,
 	server: Server
@@ -45,11 +46,10 @@ const PREFERENCES_NAV: SidebarItem[] = SETTINGS_CATEGORIES.map((category) => ({
 function SidebarLink({ item, collapsed }: { item: SidebarItem; collapsed: boolean }) {
 	const { t } = useTranslation();
 	const { pathname, search } = useLocation();
-	const section = new URLSearchParams(search).get('section') ?? 'general';
-	const effectivePath = pathname === '/settings' ? contextualSettingsRoute(section)?.split('?')[0] ?? pathname : pathname;
+	const section = settingsSection(new URLSearchParams(search).get('section'));
 	const active = item.sections
 		? pathname === '/settings' && item.sections.includes(section)
-		: effectivePath === item.to || (item.to === '/library' && pathname.startsWith('/manga/')) ||
+		: pathname === item.to || (item.to === '/library' && pathname.startsWith('/manga/')) ||
 			(item.to === '/browse' && pathname.startsWith('/browse/'));
 	const Icon = item.icon;
 	const label = t(item.labelKey, { defaultValue: item.fallbackLabel ?? item.labelKey });

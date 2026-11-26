@@ -47,7 +47,8 @@
 		"transferSource": "移轉來源",
 		"selectedTitles": "選取的作品",
 		"retryFailed": "重試失敗的移轉",
-		"safeTransferHelp": "未驗證的頁碼位置將保留在原漫畫中。部分移轉時原漫畫保留在書庫中。",
-		"noConfidentMatch": "沒有可靠的相符項目，請手動選擇"
+		"safeTransferHelp": "移轉會替換書庫項目。無法配對的閱讀紀錄會保留在書庫以外的原漫畫中。",
+		"noConfidentMatch": "沒有可靠的相符項目，請手動選擇",
+		"selectOtherSources": "選取所有其他來源"
 	}
 }

@@ -638,7 +638,7 @@ export default function MangaDetailPage() {
 						{sourceUnavailable && <div className="manga-hero__chips">
 							<Chip color="warning">{t('aidokuWizard.sourceUnavailable', { defaultValue: 'Source unavailable' })}</Chip>
 							<span className="muted">{t('aidokuWizard.sourceUnavailableHelp', { defaultValue: 'Your library and saved progress are kept. Restore this source or transfer to another.' })}</span>
-							<Button size="sm" onClick={() => navigate('/browse?view=lists')}>{t('aidokuWizard.restoreSource', { defaultValue: 'Restore source' })}</Button>
+							<Button size="sm" onClick={() => navigate('/settings?section=source-lists')}>{t('aidokuWizard.restoreSource', { defaultValue: 'Restore source' })}</Button>
 							{manga.inLibrary && <Button size="sm" onClick={() => setMigrateOpen(true)}>{t('aidokuWizard.transferSource', { defaultValue: 'Transfer source' })}</Button>}
 						</div>}
 						{creators.length > 0 && (

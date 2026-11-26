@@ -260,7 +260,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     func showSourceLists() {
         nativePanel = nil
         guard signedIn else { controlError = "Sign in to manage Source Lists."; return }
-        navigate("/browse?view=lists")
+        navigate("/settings?section=source-lists")
     }
 
     func showBackupRestore() {

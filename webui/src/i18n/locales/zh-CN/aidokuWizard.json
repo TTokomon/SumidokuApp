@@ -47,7 +47,8 @@
 		"transferSource": "迁移来源",
 		"selectedTitles": "所选作品",
 		"retryFailed": "重试失败的迁移",
-		"safeTransferHelp": "未经验证的页码位置将保留在原漫画中。部分迁移时原漫画保留在书库中。",
-		"noConfidentMatch": "无可靠匹配，请手动选择"
+		"safeTransferHelp": "迁移将替换书库条目。无法匹配的阅读记录保留在书库之外的原漫画中。",
+		"noConfidentMatch": "无可靠匹配，请手动选择",
+		"selectOtherSources": "选择所有其他来源"
 	}
 }

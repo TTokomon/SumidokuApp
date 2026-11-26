@@ -12,8 +12,8 @@ async function modules() {
 	await vite.ssrLoadModule('/src/i18n');
 	return vite;
 }
-function render(component: any, qc = new QueryClient()) {
-	return renderToStaticMarkup(createElement(QueryClientProvider, { client: qc }, createElement(MemoryRouter, {}, createElement(component))));
+function render(component: any, qc = new QueryClient(), path = '/') {
+	return renderToStaticMarkup(createElement(QueryClientProvider, { client: qc }, createElement(MemoryRouter, { initialEntries: [path] }, createElement(component))));
 }
 
 test('all four built-in setup options render before sources load and without any repository', async () => {
@@ -23,7 +23,12 @@ test('all four built-in setup options render before sources load and without any
 		const markup = render(BuiltInSources);
 		for (const name of ['Local Files', 'Komga', 'Kavita', 'Suwayomi']) assert.ok(markup.includes(name), name);
 		assert.equal((markup.match(/data-integration=/g) ?? []).length, 4);
-		assert.match(markup, /No GitHub source list is required/);
+		const rows = [...markup.matchAll(/data-integration="[^"]+">([\s\S]*?)<\/button>/g)];
+		assert.equal(rows.length, 4);
+		for (const [, row] of rows) {
+			assert.match(row, /<svg/);
+			assert.match(row, /<button[^>]*>Set Up$/);
+		}
 	} finally { await vite.close(); }
 });
 
@@ -34,17 +39,20 @@ test('Sources separates built-ins from external packages and links to the single
 		const qc = new QueryClient(); qc.setQueryData(['sources'], []);
 		const markup = render(Browse, qc);
 		assert.match(markup, /Built-in Sources/); assert.match(markup, /External Sources/);
-		assert.match(markup, />Source Lists<\/button>/); assert.doesNotMatch(markup, /Add Repository/);
+		assert.match(markup, /href="\/settings\?section=source-lists"[^>]*>Source Lists<\/a>/); assert.doesNotMatch(markup, /Add Repository/);
 	} finally { await vite.close(); }
 });
 
 test('Sources owns the canonical Source Lists section with list management', async () => {
 	const vite = await modules();
 	try {
+		const { SettingsLayout } = await vite.ssrLoadModule('/src/pages/settings/SettingsLayout.tsx');
 		const { SourceLists } = await vite.ssrLoadModule('/src/pages/settings/SourceLists.tsx');
-		const { contextualSettingsRoute } = await vite.ssrLoadModule('/src/pages/settings/navigation.ts');
-		assert.equal(contextualSettingsRoute('source-lists'), '/browse?view=lists');
-		const markup = render(SourceLists); assert.match(markup, /Source Lists/); assert.match(markup, /Add Source List/);
+		const markup = render(() => createElement(SettingsLayout, {
+			current: 'source-lists', onSelect: () => {},
+			panels: { 'source-lists': createElement(SourceLists) }
+		}));
+		assert.match(markup, /data-settings-panel="source-lists"/); assert.match(markup, /Source Lists/); assert.match(markup, /Add Source List/);
 		assert.match(markup, /Installed packages and repository subscriptions are separate/);
 	} finally { await vite.close(); }
 });

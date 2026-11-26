@@ -9,7 +9,7 @@ export type { SettingsGroupKey } from './navigation';
 
 interface SettingsLayoutProps {
 	current: SettingsGroupKey;
-	onSelect: (key: SettingsGroupKey | 'library' | 'source-lists') => void;
+	onSelect: (key: SettingsGroupKey) => void;
 	panels: Record<SettingsGroupKey, ReactNode>;
 }
 export function SettingsLayout({ current, onSelect, panels }: SettingsLayoutProps) {
@@ -30,7 +30,7 @@ export function SettingsLayout({ current, onSelect, panels }: SettingsLayoutProp
 			{category.sections.length > 1 && <nav className="settings-subnav" aria-label={t('settings.groupNav')}>
 				{category.sections.map((section) => <button type="button" key={section} data-settings-group={section} className={active === section ? 'settings-subnav__item settings-subnav__item--active' : 'settings-subnav__item'} aria-current={active === section ? 'page' : undefined} onClick={() => onSelect(section)}>{t(Object.fromEntries(SETTINGS_GROUPS)[section], { defaultValue: section === 'library' ? 'Library' : section === 'source-lists' ? 'Source Lists' : section })}</button>)}
 			</nav>}
-			{SETTINGS_GROUPS.map(([key]) => <div key={key} data-settings-panel={key} hidden={active !== key}>{panels[key]}</div>)}
+			<div key={active} data-settings-panel={active}>{panels[active]}</div>
 		</div>
 	</div>;
 }
