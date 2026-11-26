@@ -61,6 +61,12 @@ struct DesktopRenderTests {
             try await wait("location.pathname + location.search === '\(target)'")
             guard shell.selection.wrappedValue == selected else { throw UpdateFailure("Legacy Settings selection mismatch") }
         }
+        print("PASS: twelve native selection bindings and legacy Settings redirects")
+    }
+    func verifyOwnWindowFooterActions() async throws {
+        let shell = DesktopShell(controller: controller, updates: updates)
+        controller.navigate("/library")
+        try await wait("location.pathname === '/library'")
         guard let window = controller.webView.window else { throw UpdateFailure("Native window missing") }
         try await Task.sleep(nanoseconds: 300_000_000)
         try await clickOwnWindow(window, at: NSPoint(x: 100, y: 64))
@@ -69,7 +75,7 @@ struct DesktopRenderTests {
         guard controller.nativePanel == "server" else { throw UpdateFailure("Local Server footer destination mismatch") }
         controller.navigate("/library")
         try await wait("location.pathname === '/library'")
-        print("PASS: twelve native selection bindings and own-window clicks on both native footer controls")
+        print("PASS: own-window clicks on both native footer controls")
     }
     func verifyGroupedSettingsAndRecovery() async throws {
         controller.navigate("/settings?section=backups")
@@ -259,6 +265,7 @@ struct DesktopRenderTests {
                         try await verifyLibraryWorkspace()
                         try await verifyAutomationAndTrackers()
                         try await verifyGroupedSettingsAndRecovery()
+                        try await verifyOwnWindowFooterActions()
                         if sidebarOnly {
                             try JSONSerialization.data(withJSONObject:["success":true,"mode":"focused-sidebar","nativeWindowCaptures":capturesEnabled,"nativeServerProbe":true,"nativeDestinations":12,"legacySettingsRoutes":10,"nativeFooterActions":2,"settingsCategories":7,"activeSettingsPanels":1,"aidokuExactFileResumed":true,"recoverySelectionPreserved":true,"libraryOrganization":true,"settingsPersisted":true,"trackerControlsFixtureVerified":true]).write(to:root.appendingPathComponent("render-result.json"))
                             exit(0)

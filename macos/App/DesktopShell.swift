@@ -106,7 +106,8 @@ struct DesktopShell: View {
                 .frame(width: 26, height: 28)
                 .accessibilityHidden(true)
         }
-        .frame(minHeight: 36, alignment: .leading)
+        .frame(minHeight: 44, alignment: .leading)
+        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
         .contentShape(Rectangle())
         .tag(item.id)
         .contextMenu { Button("Open \(item.title)") { select(item.id) } }
