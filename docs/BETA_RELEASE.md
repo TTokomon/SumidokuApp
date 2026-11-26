@@ -247,3 +247,11 @@ The reviewed path uses the short-lived `DESKTOP_RELEASE_TOKEN` in the single
 protected draft-creation step and pins both version and source to main's policy.
 GitHub staging and remote read-only validation follow review and merge of those
 changes. No manual release creation substitutes for the protected workflow.
+
+## Beta 2 (build 11)
+
+Beta 2 includes the Aidoku import report from [PR #11](https://github.com/TTokomon/SumidokuApp/pull/11). A preview lists included library entries, categories, chapter progress and tracker bindings, identifies skipped rows with reasons, and explains what this importer leaves out. Its result uses the same report layout after the merge. The database schema and source matching rules are unchanged.
+
+The app and server were built from `17132f9542ea569c8cddac8820796dd19ec1f5c8`, whose Git tree equals the independently tested PR head `4ac9fed14f053e289b262f4ec60f1da66b89a43e`. [Reviewed CI](https://github.com/TTokomon/SumidokuApp/actions/runs/45752225377) passed. The [signed qualification](../macos/Distribution/qualifications/desktop-v1.3.1-beta.2.json) records the exact archive and validation evidence.
+
+A disposable native Stable 9 to Beta 11 upgrade and Restore Stable returned to build 9 with both exact release server binaries. It preserved account access, reading progress, source settings, downloads, backups and the backup schedule. The production server also passed a synthetic Aidoku import, with the preview matching the committed report. The signed candidate catalog selects build 11 on Beta and build 9 on Stable, and both existing release entries and appcast items are preserved.
