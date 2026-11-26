@@ -20,6 +20,7 @@ import {
 	pushToast
 } from '../../components';
 import { DestinationPicker } from './DestinationPicker';
+import { uniqueTitleMatch } from './matchCandidate';
 import './migrate.css';
 
 type Step = 'source' | 'series' | 'destinations' | 'match';
@@ -31,7 +32,7 @@ interface Row {
 	result?: MigrateResult;
 }
 
-/** Batch auto-match: title-search target sources in priority order; the first source with results wins and its first entry is taken */
+/** Batch auto-match: only select a unique exact normalized title without conflicting known authors. */
 async function autoMatch(
 	rows: Row[],
 	destinations: number[],
@@ -42,8 +43,9 @@ async function autoMatch(
 		for (const destId of destinations) {
 			try {
 				const r = await migrateLookup(row.manga.id, destId);
-				if (r.candidates.length > 0) {
-					update(row.manga.id, { state: 'matched', target: r.candidates[0] });
+				const match = uniqueTitleMatch(row.manga, r.candidates);
+				if (match) {
+					update(row.manga.id, { state: 'matched', target: match });
 					return;
 				}
 			} catch {
@@ -337,7 +339,7 @@ export default function MigratePage() {
 											<div className="migrate-row__meta">{destName(row.target.sourceId!)}</div>
 										</>
 									) : (
-										<div className="migrate-row__notfound">{t('migrate.notFound')}</div>
+										<div className="migrate-row__notfound">{t('migrate.noConfidentMatch', { defaultValue: 'No confident match — choose manually' })}</div>
 									)}
 									{row.result &&
 										(row.result.ok ? (
@@ -347,6 +349,7 @@ export default function MigratePage() {
 										) : (
 											<Reason item={row.result} />
 										))}
+									{(row.result?.warnings ?? []).map((warning) => <p className="muted" key={warning}>{warning}</p>)}
 								</div>
 								{!executed && !matching && (
 									<RowMenu

@@ -353,7 +353,8 @@ async fn register_source_with_policy(state: &AppState, package: SourcePackage, u
 		}
 		let changed = sqlx::query(
 			"UPDATE source SET name = ?, version = ?, languages = ?, content_rating = ?,
-			 base_url = ?, breaking_change_version = ?, config = ?, wasm_path = ?, icon_path = ?, updated_at = ?, features = ? WHERE id = ?
+			 base_url = ?, breaking_change_version = ?, config = ?, enabled = CASE WHEN wasm_path = '' THEN 1 ELSE enabled END,
+			 wasm_path = ?, icon_path = ?, updated_at = ?, features = ? WHERE id = ?
 			 AND (? IS NULL OR (version = ? AND repo_id = ? AND enabled = 1 AND NOT EXISTS (SELECT 1 FROM manga WHERE source_id = source.id)))",
 		)
 		.bind(name)

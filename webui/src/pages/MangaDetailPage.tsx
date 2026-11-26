@@ -144,7 +144,8 @@ export default function MangaDetailPage() {
 	const sourceQuery = useSource(manga?.sourceId ?? 0);
 	// The local source has no filters concept (the endpoint returns 501 unsupported), so the query is not issued
 	const isLocal = sourceQuery.data?.kind === 'local';
-	const filtersQuery = useSourceFilters(manga?.sourceId ?? 0, !isLocal);
+	const sourceUnavailable = sourceQuery.isSuccess && (!sourceQuery.data || !sourceQuery.data.enabled);
+	const filtersQuery = useSourceFilters(manga?.sourceId ?? 0, !isLocal && !!sourceQuery.data?.enabled);
 
 	const [descOpen, setDescOpen] = useState(false);
 	// Tags wrap onto rows; past two rows the list clamps to the measured third-row top and a toggle
@@ -633,7 +634,13 @@ export default function MangaDetailPage() {
 						<Cover src={coverUrl(mangaId, manga.cover)} title={manga.title} />
 					</div>
 					<div className="manga-hero__info">
-						<h1 className="manga-hero__title">{manga.title}</h1>
+						<h1 className="manga-hero__title">{manga.title || manga.key}</h1>
+						{sourceUnavailable && <div className="manga-hero__chips">
+							<Chip color="warning">{t('mangaDetail.sourceUnavailable', { defaultValue: 'Source unavailable' })}</Chip>
+							<span className="muted">{t('mangaDetail.sourceUnavailableHelp', { defaultValue: 'Your library and saved progress are kept. Restore this source or transfer to another.' })}</span>
+							<Button size="sm" onClick={() => navigate('/browse?view=lists')}>{t('mangaDetail.restoreSource', { defaultValue: 'Restore source' })}</Button>
+							{manga.inLibrary && <Button size="sm" onClick={() => setMigrateOpen(true)}>{t('mangaDetail.transferSource', { defaultValue: 'Transfer source' })}</Button>}
+						</div>}
 						{creators.length > 0 && (
 							<div className="manga-hero__creators">
 								{creators.map((c, i) => {
@@ -746,7 +753,7 @@ export default function MangaDetailPage() {
 						<div className="manga-hero__actions">
 							<Button
 								variant="primary"
-								disabled={!continueCh}
+								disabled={!continueCh || (sourceUnavailable && !continueCh.hasFinishedDownload)}
 								onClick={() => continueCh && navigate(readTarget(continueCh))}
 							>
 								<BookOpen size={16} />
@@ -774,7 +781,7 @@ export default function MangaDetailPage() {
 							)}
 							<IconButton
 								label={t('mangaDetail.refreshDetails')}
-								disabled={refreshManga.isPending}
+								disabled={sourceUnavailable || refreshManga.isPending}
 								onClick={() => refreshManga.mutate(mangaId)}
 							>
 								{refreshManga.isPending ? <Spinner size={16} /> : <RefreshCw size={17} />}
@@ -809,7 +816,7 @@ export default function MangaDetailPage() {
 										<button
 											type="button"
 											className="manga-menu__row"
-											disabled={refreshChapters.isPending}
+											disabled={sourceUnavailable || refreshChapters.isPending}
 											onClick={() =>
 												refreshChapters.mutate(mangaId, {
 													onSuccess: () => {
@@ -859,7 +866,7 @@ export default function MangaDetailPage() {
 												<PencilLine size={14} />
 											</button>
 										)}
-										{!isLocal && chapters.length > 0 && (
+										{!isLocal && !sourceUnavailable && chapters.length > 0 && (
 											<button
 												type="button"
 												className="manga-menu__row"
@@ -906,7 +913,7 @@ export default function MangaDetailPage() {
 					{isLocal && (
 						<Button
 							size="sm"
-							disabled={refreshChapters.isPending}
+							disabled={sourceUnavailable || refreshChapters.isPending}
 							onClick={() =>
 								refreshChapters.mutate(mangaId, {
 									onSuccess: () => pushToast(t('mangaDetail.chaptersRefreshed'), 'info')
@@ -1057,7 +1064,7 @@ export default function MangaDetailPage() {
 							dlState={dlStateOf(c)}
 							downloadProgress={dlActivity.get(c.id)?.progress ?? undefined}
 							onDownload={() => downloadChapter(c)}
-							hideDownload={isLocal}
+							hideDownload={isLocal || sourceUnavailable}
 							onToggleBookmark={() => {
 								if (c.id < 0) return;
 								updateChapter.mutate({ id: c.id, mangaId, isBookmarked: !c.isBookmarked });
@@ -1130,7 +1137,7 @@ export default function MangaDetailPage() {
 					>
 						{t('mangaDetail.removeBookmark')}
 					</Button>
-					{!isLocal && (
+					{!isLocal && !sourceUnavailable && (
 						<Button
 							size="sm"
 							variant="primary"

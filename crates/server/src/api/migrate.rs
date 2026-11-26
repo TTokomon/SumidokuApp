@@ -67,7 +67,10 @@ pub async fn migrate_lookup(
 	Query(query): Query<LookupQuery>,
 ) -> ApiResult<Json<Value>> {
 	let origin = manga_row(&state.pool, query.manga_id).await?;
-	source_row(&state, query.target_source_id).await?;
+	let target = source_row(&state, query.target_source_id).await?;
+	if !target.enabled || (target.kind == "aidoku" && target.wasm_path.is_empty()) {
+		return Err(ApiError::source_disabled(&target.key));
+	}
 	let title = query
 		.query
 		.filter(|q| !q.trim().is_empty())
@@ -200,8 +203,11 @@ async fn run_entry(
 	let Ok(origin) = manga_row(&state.pool, entry.from_manga_id).await else {
 		return Ok(failed("not_found"));
 	};
-	if source_row(state, entry.to_source_id).await.is_err() {
+	let Ok(target_source) = source_row(state, entry.to_source_id).await else {
 		return Ok(failed("source_not_found"));
+	};
+	if !target_source.enabled || (target_source.kind == "aidoku" && target_source.wasm_path.is_empty()) {
+		return Ok(failed_with("source_not_found", "Destination source is unavailable or disabled.".into()));
 	}
 	// Same source with a different key is the breaking-change forceMigrate fallback path (the new key starts a fresh row,
 	// progress carried by chapter number); only migrating onto yourself in place (same key) would wipe your own progress, so it must be refused
@@ -304,7 +310,7 @@ async fn run_entry(
 	for row in &origin_progress {
 		let Some(target) = match_target(&targets, row) else {
 			warnings.push(format!(
-				"progress not carried: no target chapter matches source chapter {}",
+				"progress not carried: no unambiguous target chapter matches source chapter {}",
 				chapter_label(row)
 			));
 			continue;
@@ -324,9 +330,38 @@ async fn run_entry(
 		.await?;
 	}
 
+	// Transfer supported local tracker bindings only. Existing destination bindings win,
+	// and differing bindings retain the origin rather than silently discarding its association.
+	let conflicting_trackers: Vec<String> = sqlx::query_scalar(
+		"SELECT old.provider FROM tracker_link old JOIN tracker_link new
+		 ON new.user_id = old.user_id AND new.provider = old.provider AND new.manga_id = ?
+		 WHERE old.manga_id = ? AND old.user_id = ?
+		 AND (new.track_id != old.track_id OR new.track_mode != old.track_mode OR new.chapter_offset != old.chapter_offset)
+		 ORDER BY old.provider",
+	)
+	.bind(to_manga_id).bind(origin.id).bind(user_id)
+	.fetch_all(&mut *tx).await?;
+	for provider in conflicting_trackers {
+		warnings.push(format!("Existing {provider} tracker binding retained; original binding kept."));
+	}
+	sqlx::query(
+		"INSERT INTO tracker_link (manga_id, user_id, provider, track_id, title, track_mode, chapter_offset, created_at, updated_at)
+		 SELECT ?, user_id, provider, track_id, title, track_mode, chapter_offset, created_at, updated_at
+		 FROM tracker_link WHERE manga_id = ? AND user_id = ?
+		 ON CONFLICT (manga_id, user_id, provider) DO NOTHING",
+	)
+	.bind(to_manga_id).bind(origin.id).bind(user_id)
+	.execute(&mut *tx).await?;
+
 	match mode {
 		MigrateMode::Copy => {}
+		MigrateMode::Migrate | MigrateMode::MigrateWithHistory if !warnings.is_empty() => {
+			warnings.push("Transfer was partial; the original manga and its progress remain in your library.".into());
+		}
 		MigrateMode::Migrate | MigrateMode::MigrateWithHistory => {
+			// After a complete move, the destination owns the tracker bindings; no remote calls.
+			sqlx::query("DELETE FROM tracker_link WHERE manga_id = ? AND user_id = ?")
+				.bind(origin.id).bind(user_id).execute(&mut *tx).await?;
 			crate::store::library::unshelve(&mut tx, origin.id, user_id).await?;
 			crate::store::category::clear_manga(&mut tx, origin.id, user_id).await?;
 			if mode == MigrateMode::Migrate {
@@ -359,14 +394,26 @@ struct TargetChapter {
 	volume: Option<f64>,
 }
 
-/// Exact chapter-number match (duplicates take the smallest source_order); only when the source chapter has no
-/// chapter number does the volume number serve as fallback, and then only onto a target chapter that likewise has no chapter number, so volumes never swallow normal chapters
+/// Refuse ambiguous chapter-number matches instead of taking the first translation.
+/// Volume-only records match only other volume-only records.
 fn match_target<'t>(targets: &'t [TargetChapter], row: &OriginProgress) -> Option<&'t TargetChapter> {
 	if let Some(number) = row.number {
-		return targets.iter().find(|t| t.number == Some(number));
+		if let Some(volume) = row.volume {
+			let mut exact = targets.iter().filter(|t| t.number == Some(number) && t.volume == Some(volume));
+			if let Some(first) = exact.next() {
+				return exact.next().is_none().then_some(first);
+			}
+		}
+		let mut matches = targets.iter().filter(|t| {
+			t.number == Some(number) && (row.volume.is_none() || t.volume.is_none())
+		});
+		let first = matches.next()?;
+		return matches.next().is_none().then_some(first);
 	}
 	if let Some(volume) = row.volume {
-		return targets.iter().find(|t| t.number.is_none() && t.volume == Some(volume));
+		let mut matches = targets.iter().filter(|t| t.number.is_none() && t.volume == Some(volume));
+		let first = matches.next()?;
+		return matches.next().is_none().then_some(first);
 	}
 	None
 }

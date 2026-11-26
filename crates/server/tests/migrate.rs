@@ -528,3 +528,32 @@ async fn entry_failures_are_reported_per_row() {
 	let (status, body) = migrate(&app, "copy", json!([])).await;
 	assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
 }
+
+#[tokio::test]
+async fn partial_move_preserves_original_and_copies_tracker_binding() {
+	let TestApp { app, tmp, db_path, .. } = test_app().await;
+	let (example, second) = two_sources(&app, &tmp).await;
+	let (origin, key, cat) = stocked_origin(&app, example).await;
+	let (status, _) = request(&app, "PUT", &format!("/api/v1/trackers/links/{origin}"),
+		Some(json!({"provider":"anilist","trackId":"900","title":"Original","trackMode":"chapter","chapterOffset":2}))).await;
+	assert_eq!(status, StatusCode::OK);
+	let chapter = chapter_by_number(&app, origin, 7.0).await["id"].as_i64().unwrap();
+	let pool = connect_db(&db_path).await;
+	sqlx::query("UPDATE chapter SET number = 999.5 WHERE id = ?").bind(chapter).execute(&pool).await.unwrap();
+	pool.close().await;
+	let (status, body) = migrate(&app, "migrate", json!([{"fromMangaId":origin,"toSourceId":second,"toMangaKey":key}])).await;
+	assert_eq!(status, StatusCode::OK, "{body}");
+	let result = &body["results"][0];
+	assert_eq!(result["ok"], true, "{result}");
+	assert!(result["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap().contains("original manga")));
+	let target = result["toMangaId"].as_i64().unwrap();
+	let original = manga_detail(&app, origin).await;
+	assert_eq!(original["inLibrary"], true);
+	assert_eq!(original["categoryIds"], json!([cat]));
+	let ch = chapter_by_number(&app, origin, 999.5).await;
+	assert_eq!(ch["lastPageRead"], 3);
+	let pool = connect_db(&db_path).await;
+	let links: Vec<(i64, String, i64)> = sqlx::query_as("SELECT manga_id, track_id, chapter_offset FROM tracker_link WHERE user_id=1 AND provider='anilist' ORDER BY manga_id").fetch_all(&pool).await.unwrap();
+	assert_eq!(links, vec![(origin,"900".into(),2),(target,"900".into(),2)]);
+	pool.close().await;
+}

@@ -224,9 +224,10 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 		() => new Set((sourcesQuery.data ?? []).filter((s) => s.kind === 'local').map((s) => s.id)),
 		[sourcesQuery.data]
 	);
+	const availableSourceIds = useMemo(() => new Set((sourcesQuery.data ?? []).filter((s) => s.enabled).map((s) => s.id)), [sourcesQuery.data]);
 	const downloadIds = useMemo(
-		() => downloadEligibleIds(selectedEntries, localSourceIds),
-		[selectedEntries, localSourceIds]
+		() => downloadEligibleIds(selectedEntries.filter((m) => availableSourceIds.has(m.sourceId)), localSourceIds),
+		[selectedEntries, localSourceIds, availableSourceIds]
 	);
 
 	const batchChapters = useBatchChapters();
@@ -490,7 +491,8 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 							<CoverCard
 								key={m.id}
 								src={coverUrl(m.id, m.cover)}
-								title={m.title}
+								title={m.title || m.key}
+								subtitle={sourcesQuery.isSuccess && !availableSourceIds.has(m.sourceId) ? t('library.sourceUnavailable', { defaultValue: 'Source unavailable' }) : undefined}
 								unreadCount={m.unreadCount}
 								trackerProviders={m.trackerProviders}
 								trashed={m.trashed}
