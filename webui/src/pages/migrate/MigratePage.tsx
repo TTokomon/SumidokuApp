@@ -345,7 +345,7 @@ export default function MigratePage() {
 											<div className="migrate-row__meta">{destName(row.target.sourceId!)}</div>
 										</>
 									) : (
-										<div className="migrate-row__notfound">{t('migrate.noConfidentMatch', { defaultValue: 'No confident match — choose manually' })}</div>
+										<div className="migrate-row__notfound">{t('aidokuWizard.noConfidentMatch', { defaultValue: 'No confident match — choose manually' })}</div>
 									)}
 									{row.result &&
 										(row.result.ok ? (

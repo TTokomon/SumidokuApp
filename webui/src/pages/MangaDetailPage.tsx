@@ -636,10 +636,10 @@ export default function MangaDetailPage() {
 					<div className="manga-hero__info">
 						<h1 className="manga-hero__title">{manga.title || manga.key}</h1>
 						{sourceUnavailable && <div className="manga-hero__chips">
-							<Chip color="warning">{t('mangaDetail.sourceUnavailable', { defaultValue: 'Source unavailable' })}</Chip>
-							<span className="muted">{t('mangaDetail.sourceUnavailableHelp', { defaultValue: 'Your library and saved progress are kept. Restore this source or transfer to another.' })}</span>
-							<Button size="sm" onClick={() => navigate('/browse?view=lists')}>{t('mangaDetail.restoreSource', { defaultValue: 'Restore source' })}</Button>
-							{manga.inLibrary && <Button size="sm" onClick={() => setMigrateOpen(true)}>{t('mangaDetail.transferSource', { defaultValue: 'Transfer source' })}</Button>}
+							<Chip color="warning">{t('aidokuWizard.sourceUnavailable', { defaultValue: 'Source unavailable' })}</Chip>
+							<span className="muted">{t('aidokuWizard.sourceUnavailableHelp', { defaultValue: 'Your library and saved progress are kept. Restore this source or transfer to another.' })}</span>
+							<Button size="sm" onClick={() => navigate('/browse?view=lists')}>{t('aidokuWizard.restoreSource', { defaultValue: 'Restore source' })}</Button>
+							{manga.inLibrary && <Button size="sm" onClick={() => setMigrateOpen(true)}>{t('aidokuWizard.transferSource', { defaultValue: 'Transfer source' })}</Button>}
 						</div>}
 						{creators.length > 0 && (
 							<div className="manga-hero__creators">
@@ -889,7 +889,7 @@ export default function MangaDetailPage() {
 													setMigrateOpen(true);
 												}}
 											>
-												<span>{t('mangaDetail.migrate')}</span>
+												<span>{t('aidokuWizard.transferSource')}</span>
 												<ArrowLeftRight size={14} />
 											</button>
 										)}

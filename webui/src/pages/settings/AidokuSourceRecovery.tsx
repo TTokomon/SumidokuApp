@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { aidokuSourceLabel, defaultRecoverySelection } from './aidokuRecovery';
 import type { Dispatch, SetStateAction } from 'react';
 import { useImportAidoku, useInstallRepoSource, useRepoSources, useSources } from '../../api/hooks';
@@ -13,6 +14,7 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 	selection?: string[]; onSelectionChange?: Dispatch<SetStateAction<string[]>>; onBusyChange?: (busy: boolean) => void;
 	file: File; preview: AidokuImportResponse; onPreview: (value: AidokuImportResponse) => void; onManageLists: () => void;
 }) {
+	const { t } = useTranslation();
 	const ids = missingAidokuIds(preview);
 	const packages = useRepoSources({ query: '' }); const installed = useSources();
 	const install = useInstallRepoSource(); const recheck = useImportAidoku();
@@ -36,7 +38,7 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 	}, [defaults, setSelected]);
 	const eligible = matches.filter((entry) => selected.includes(`${entry.repoId}:${entry.key}`) && entry.installedId === null);
 	async function refreshPreview() {
-		try { onPreview(await recheck.mutateAsync({ file, dryRun: true })); setError(''); } catch (error) { setError(error instanceof Error ? error.message : 'Backup preview could not be rechecked.'); }
+		try { onPreview(await recheck.mutateAsync({ file, dryRun: true })); setError(''); } catch (error) { setError(error instanceof Error ? error.message : t('aidokuWizard.recheckError')); }
 	}
 	async function installSelected() {
 		setBusy(true); setError('');
@@ -48,33 +50,33 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 			}
 			await refreshPreview();
 			setConfirm(false);
-			if (failed.length) setError(`Could not install: ${failed.join(', ')}. You can retry these sources before importing.`);
-		} catch (error) { setError(error instanceof Error ? error.message : 'Some sources could not be installed. Recheck and retry remaining sources.'); }
+			if (failed.length) setError(t('aidokuWizard.installFailed', { names: failed.join(', ') }));
+		} catch (error) { setError(error instanceof Error ? error.message : t('aidokuWizard.installError')); }
 		finally { setBusy(false); }
 	}
-	return <section aria-label="Recover Missing Aidoku Sources">
-		<h3>Restore your sources</h3>
-		<p>Your backup contains manga from sources that are not installed. Install the available matches to read them again. Nothing is installed until you approve.</p>
-		<details className="settings-backup__skipped"><summary>How source recovery works</summary><p>Sources must match the exact ID from your backup. Source names are never used to guess. Your original backup is unchanged.</p></details>
-		{ids.length ? <ul>{ids.map((id) => <li key={id}><strong title={id}>{matches.find((entry) => entry.key === id)?.name ?? aidokuSourceLabel(id)}</strong> ({countBySource.get(id) ?? 0} records)
-			{installed.data?.some((source) => source.key === id) ? ' — installed; recheck the backup' : !matches.some((entry) => entry.key === id) ? ' — unavailable in your source lists' : ' — available to install'}
-		</li>)}</ul> : <p>No missing source IDs in this preview.</p>}
+	return <section aria-label={t('aidokuWizard.recoveryTitle')}>
+		<h3>{t('aidokuWizard.recoveryTitle')}</h3>
+		<p>{t('aidokuWizard.recoveryHelp')}</p>
+		<details className="settings-backup__skipped"><summary>{t('aidokuWizard.howRecovery')}</summary><p>{t('aidokuWizard.exactHelp')}</p></details>
+		{ids.length ? <ul>{ids.map((id) => <li key={id}><strong title={id}>{matches.find((entry) => entry.key === id)?.name ?? aidokuSourceLabel(id)}</strong> ({t('aidokuWizard.records', { count: countBySource.get(id) ?? 0 })})
+			 — {t(installed.data?.some((source) => source.key === id) ? 'aidokuWizard.installed' : packages.isPending ? 'aidokuWizard.checking' : matches.some((entry) => entry.key === id) ? 'aidokuWizard.available' : 'aidokuWizard.unavailable')}
+		</li>)}</ul> : <p>{t('aidokuWizard.noMissing')}</p>}
 		{matches.filter((entry) => entry.installedId === null).map((entry) => <label className="repos__lang-row" key={`${entry.repoId}:${entry.key}`}>
 			<input type="checkbox" disabled={busy || confirm || recheck.isPending} checked={selected.includes(`${entry.repoId}:${entry.key}`)} onChange={(event) => { const checked = event.currentTarget.checked, key = `${entry.repoId}:${entry.key}`; setSelected((old) => checked ? [...old.filter((item) => !item.endsWith(`:${entry.key}`)), key] : old.filter((item) => item !== key)); }} />
-			{entry.name || aidokuSourceLabel(entry.key)} · {entry.repoName ?? `List ${entry.repoId}`} · v{entry.version}
+			{entry.name || aidokuSourceLabel(entry.key)} · {entry.repoName ?? t('aidokuWizard.listName', { id: entry.repoId })} · v{entry.version}
 		</label>)}
-		{packages.isError && <p role="alert">Source lists could not be loaded. Cached/offline lists remain managed in Source Lists.</p>}
+		{packages.isError && <p role="alert">{t('aidokuWizard.listError')}</p>}
 		<div className="settings-actions">
-			<Button disabled={busy || confirm || recheck.isPending} onClick={onManageLists}>Add / Manage Source Lists…</Button>
-			<Button disabled={!eligible.length || busy || confirm || recheck.isPending} onClick={() => setConfirm(true)}>Install {eligible.length} selected sources…</Button>
-			<Button loading={recheck.isPending} disabled={busy || confirm || recheck.isPending} onClick={() => void refreshPreview()}>Recheck Backup</Button>
+			<Button disabled={busy || confirm || recheck.isPending} onClick={onManageLists}>{t('aidokuWizard.manageLists')}</Button>
+			<Button disabled={!eligible.length || busy || confirm || recheck.isPending} onClick={() => setConfirm(true)}>{t('aidokuWizard.installSelected', { count: eligible.length })}</Button>
+			<Button loading={recheck.isPending} disabled={busy || confirm || recheck.isPending} onClick={() => void refreshPreview()}>{t('aidokuWizard.recheck')}</Button>
 		</div>
-		{preview.missingSources?.length ? <p className="muted">You can import now even if some sources are unavailable. Your saved library and supported reading progress and tracker bindings will be kept.</p> : <p className="muted">Install matching sources before importing to avoid skipping their entries.</p>}
+		{preview.missingSources?.length ? <p className="muted">{t('aidokuWizard.preserveHelp')}</p> : <p className="muted">{t('aidokuWizard.legacyHelp')}</p>}
 		{error && <p role="alert">{error}</p>}
-		{confirm && <section className="aidoku-wizard__confirmation" aria-label="Confirm Source Installation"><h4>Confirm Source Installation</h4>
-			<p>Only the selected packages will be installed. Manga import still requires your separate confirmation after the new preview.</p>
+		{confirm && <section className="aidoku-wizard__confirmation" aria-label={t('aidokuWizard.confirmInstall')}><h4>{t('aidokuWizard.confirmInstall')}</h4>
+			<p>{t('aidokuWizard.confirmHelp')}</p>
 			<ul>{matches.filter((entry) => selected.includes(`${entry.repoId}:${entry.key}`)).map((entry) => <li key={`${entry.repoId}:${entry.key}`}>{entry.name || aidokuSourceLabel(entry.key)} — {entry.repoName ?? entry.repoId}</li>)}</ul>
-			<div className="settings-actions"><Button disabled={busy} onClick={() => setConfirm(false)}>Cancel</Button><Button variant="primary" loading={busy} disabled={!eligible.length || busy} onClick={() => void installSelected()}>Install and Recheck Backup</Button></div>
+			<div className="settings-actions"><Button disabled={busy} onClick={() => setConfirm(false)}>{t('common.cancel')}</Button><Button variant="primary" loading={busy} disabled={!eligible.length || busy} onClick={() => void installSelected()}>{t('aidokuWizard.installRecheck')}</Button></div>
 		</section>}
 	</section>;
 }
