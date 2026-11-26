@@ -54,6 +54,7 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 	return <section aria-label="Recover Missing Aidoku Sources">
 		<h3>Restore your sources</h3>
 		<p>Your backup contains manga from sources that are not installed. Install the available matches to read them again. Nothing is installed until you approve.</p>
+		<details className="settings-backup__skipped"><summary>How source recovery works</summary><p>Sources must match the exact ID from your backup. Source names are never used to guess. Your original backup is unchanged.</p></details>
 		{ids.length ? <ul>{ids.map((id) => <li key={id}><strong title={id}>{matches.find((entry) => entry.key === id)?.name ?? aidokuSourceLabel(id)}</strong> ({countBySource.get(id) ?? 0} records)
 			{installed.data?.some((source) => source.key === id) ? ' — installed; recheck the backup' : !matches.some((entry) => entry.key === id) ? ' — unavailable in your source lists' : ' — available to install'}
 		</li>)}</ul> : <p>No missing source IDs in this preview.</p>}

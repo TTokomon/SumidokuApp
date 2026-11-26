@@ -63,5 +63,20 @@ test('Aidoku recovery matches exact source IDs and never display names', async (
 		const markup = render(Component);
 		assert.match(markup, /en.exact/); assert.match(markup, /Source names are never used to guess/);
 		assert.match(markup, /Recheck Backup/); assert.match(markup, /original backup is unchanged/);
+		assert.deepEqual(missingAidokuIds({ ...preview, missingSources: ['en.exact', 'en.offline'] }), ['en.exact', 'en.offline']);
+
+		// Exercise the actual package filter, not just the explanatory copy. A source with
+		// the same display name must not be offered unless its exact key matches.
+		const qc = new QueryClient();
+		const pkg = { name: 'Exact', version: 1, languages: ['en'], contentRating: 0, iconUrl: null, baseUrl: null, installedId: null, installedVersion: null, updateVersion: null };
+		qc.setQueryData(['source-repos', 'sources', { query: '' }], [
+			{ ...pkg, key: 'en.lookalike', repoId: 1, repoName: 'Wrong list' },
+			{ ...pkg, key: 'en.exact', repoId: 2, repoName: 'Matching list' }
+		]);
+		const matched = render(Component, qc);
+		assert.match(matched, /Matching list/);
+		assert.doesNotMatch(matched, /Wrong list|en\.lookalike/);
+		assert.equal((matched.match(/type="checkbox"/g) ?? []).length, 1);
+		qc.clear();
 	} finally { await vite.close(); }
 });
