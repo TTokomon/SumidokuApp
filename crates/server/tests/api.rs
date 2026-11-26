@@ -286,7 +286,7 @@ async fn source_icon() {
 	let (status, headers, bytes) = request_full(&app, "GET", &icon_path, None).await;
 	assert_eq!(status, StatusCode::OK);
 	assert_eq!(headers["content-type"], "image/png");
-	assert_eq!(headers["cache-control"], "private, max-age=86400");
+	assert_eq!(headers["cache-control"], "private, max-age=300");
 	assert_eq!(bytes, PNG);
 
 	// icon_path is still in the DB but the file is gone → 404

@@ -28,6 +28,25 @@ export interface LibraryFilterPrefs {
 
 const KEY = 'sumidoku.library.filters';
 
+export type LibraryLayout = 'grid' | 'list';
+const LAYOUT_KEY = 'sumidoku.library.layout';
+
+export function loadLibraryLayout(): LibraryLayout {
+	try {
+		return localStorage.getItem(LAYOUT_KEY) === 'list' ? 'list' : 'grid';
+	} catch {
+		return 'grid';
+	}
+}
+
+export function saveLibraryLayout(layout: LibraryLayout): void {
+	try {
+		localStorage.setItem(LAYOUT_KEY, layout);
+	} catch {
+		// Private mode keeps the layout choice for the current session.
+	}
+}
+
 const EMPTY: LibraryFilterPrefs = {
 	search: '',
 	sort: 'added',

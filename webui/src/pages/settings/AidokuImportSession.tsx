@@ -1,10 +1,10 @@
-import { createContext, useContext, useState } from 'react';
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import { createContext, useContext, useRef, useState } from 'react';
+import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
 import type { AidokuImportResponse } from '../../api/types';
 
 export type AidokuImportStep = 1 | 2 | 3;
 
-type Draft = { file: File; preview: AidokuImportResponse } | null;
+type Draft = { file: File; preview: AidokuImportResponse; current: boolean } | null;
 interface Session {
 	aib: Draft; setAib: Dispatch<SetStateAction<Draft>>;
 	result: AidokuImportResponse | null; setResult: Dispatch<SetStateAction<AidokuImportResponse | null>>;
@@ -12,6 +12,7 @@ interface Session {
 	acceptSkips: boolean; setAcceptSkips: Dispatch<SetStateAction<boolean>>;
 	step: AidokuImportStep; setStep: Dispatch<SetStateAction<AidokuImportStep>>;
 	selected: string[]; setSelected: Dispatch<SetStateAction<string[]>>;
+	seenDefaults: RefObject<Set<string>>;
 }
 const Context = createContext<Session | null>(null);
 
@@ -23,7 +24,8 @@ export function AidokuImportSessionProvider({ children }: { children: ReactNode 
 	const [acceptSkips, setAcceptSkips] = useState(false);
 	const [step, setStep] = useState<AidokuImportStep>(1);
 	const [selected, setSelected] = useState<string[]>([]);
-	return <Context.Provider value={{ aib, setAib, result, setResult, paused, setPaused, acceptSkips, setAcceptSkips, step, setStep, selected, setSelected }}>{children}</Context.Provider>;
+	const seenDefaults = useRef(new Set<string>());
+	return <Context.Provider value={{ aib, setAib, result, setResult, paused, setPaused, acceptSkips, setAcceptSkips, step, setStep, selected, setSelected, seenDefaults }}>{children}</Context.Provider>;
 }
 export function useAidokuImportSession() {
 	const session = useContext(Context);

@@ -52,8 +52,8 @@ import { SourceSettingsButton, SourceSettingsDialog } from './browse/SourceSetti
 import { iconColor } from './browse/iconColor';
 
 function SourceIcon({ source }: { source: Source }) {
-	const [failed, setFailed] = useState(false);
-	if (failed) {
+	const [failedRevision, setFailedRevision] = useState<number | null>(null);
+	if (failedRevision === source.updatedAt) {
 		return (
 			<span className="source-card__icon-fallback" style={{ background: iconColor(source.key) }}>
 				{source.name.slice(0, 1)}
@@ -63,11 +63,11 @@ function SourceIcon({ source }: { source: Source }) {
 	return (
 		<span className="source-card__icon">
 			<img
-				src={sourceIconUrl(source.id)}
+				src={sourceIconUrl(source.id, source.updatedAt)}
 				alt=""
 				loading="lazy"
 				referrerPolicy="no-referrer"
-				onError={() => setFailed(true)}
+				onError={() => setFailedRevision(source.updatedAt)}
 			/>
 		</span>
 	);
@@ -341,7 +341,7 @@ function BrowseSources() {
 	const [pendingDelete, setPendingDelete] = useState<Source | null>(null);
 	const del = useDeleteSource(); const pin = usePinSource(); const setEnabled = useSetSourceEnabled();
 	const scan = useScanSources();
-	const all = useMemo(() => [...(sources.data ?? [])].filter((source) => source.kind === 'aidoku').sort((a, b) => Number(b.pinned) - Number(a.pinned) || compareSourceName(a, b)), [sources.data]);
+	const all = useMemo(() => [...(sources.data ?? [])].filter((source) => source.kind === 'aidoku').sort((a, b) => Number(b.pinned) - Number(a.pinned) || (a.pinned && b.pinned ? (a.pinOrder ?? 0) - (b.pinOrder ?? 0) : 0) || compareSourceName(a, b)), [sources.data]);
 	const visible = all.filter((source) => (!query || `${source.name} ${source.key}`.toLowerCase().includes(query.toLowerCase())) && (!language || source.languages.includes(language)));
 	async function confirmDelete() {
 		if (!pendingDelete) return;

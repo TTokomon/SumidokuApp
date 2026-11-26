@@ -51,6 +51,7 @@ function TrackerAccountCard({ provider }: { provider: TrackerProvider }) {
 	});
 	const name = TRACKER_PROVIDER_NAMES[provider];
 	const connected = statusQuery.data?.logged_in === true;
+	const canConnect = statusQuery.data?.configured !== false;
 	const isDefault = connected && preferencesQuery.data?.defaultTracker === provider;
 	return (
 		<article className="tracker-provider">
@@ -74,7 +75,7 @@ function TrackerAccountCard({ provider }: { provider: TrackerProvider }) {
 								: t('trackers.connected')}
 						</p>
 					) : (
-						<p className="tracker-provider__state">{t('trackers.disconnectedState')}</p>
+						<p className="tracker-provider__state">{canConnect ? t('trackers.disconnectedState') : t('trackers.unconfigured', { defaultValue: 'Sign-in requires a configured OAuth application.' })}</p>
 					)}
 				</div>
 			</div>
@@ -94,6 +95,7 @@ function TrackerAccountCard({ provider }: { provider: TrackerProvider }) {
 				<Button
 					size="sm"
 					variant={connected ? 'ghost' : 'primary'}
+					disabled={!canConnect || statusQuery.isPending}
 					onClick={() => window.location.assign(oauthStartUrl(provider))}
 				>
 					{connected ? t('trackers.reconnect') : t('trackers.connect')}

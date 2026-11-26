@@ -542,3 +542,31 @@ async fn portable_restore_preserves_offline_manga_progress_and_tracker_associati
 	assert_eq!(exported["settings"]["aidoku.inactive_tracker_bindings.v1"], backup["settings"]["aidoku.inactive_tracker_bindings.v1"]);
 	assert_eq!(request(&target.app, "GET", "/api/v1/downloads", None).await.1, json!([]));
 }
+
+#[tokio::test]
+async fn aidoku_commit_refuses_a_stale_source_preview_without_writing() {
+	let app = test_app().await;
+	scan(&app.app).await;
+
+	let (status, preview) = post_aib(&app.app, "?dryRun=true").await;
+	assert_eq!(status, StatusCode::OK, "{preview}");
+	let fingerprint = preview["previewFingerprint"].as_str().expect("preview fingerprint");
+	assert_eq!(fingerprint.len(), 43);
+
+	let pool = connect_db(&app.db_path).await;
+	sqlx::query("UPDATE source SET enabled = 0 WHERE key = 'en.example-source'")
+		.execute(&pool).await.unwrap();
+	let before = db_dump(&app.db_path).await;
+
+	let (status, result) = post_aib(&app.app, &format!("?previewFingerprint={fingerprint}")).await;
+	assert_eq!(status, StatusCode::CONFLICT, "{result}");
+	assert_eq!(result["error"]["code"].as_str().or_else(|| result["code"].as_str()), Some("aidoku_preview_changed"));
+	assert_eq!(db_dump(&app.db_path).await, before);
+
+	let (status, updated) = post_aib(&app.app, "?dryRun=true").await;
+	assert_eq!(status, StatusCode::OK);
+	let new_fingerprint = updated["previewFingerprint"].as_str().unwrap();
+	assert_ne!(new_fingerprint, fingerprint);
+	let (status, result) = post_aib(&app.app, &format!("?previewFingerprint={new_fingerprint}")).await;
+	assert_eq!(status, StatusCode::OK, "{result}");
+}

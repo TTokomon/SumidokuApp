@@ -178,6 +178,13 @@ async fn fetch_capped(root: &Url, url: &Url, max: u64) -> Result<(Vec<u8>,Url), 
 	tokio::time::timeout(FETCH_TIMEOUT,fetch).await.map_err(|_|"request timed out".to_string())?
 }
 
+pub(crate) async fn fetch_source_icon(root: &str, url: &str) -> Option<Vec<u8>> {
+	let root = parse_repo_url(root).ok()?;
+	let url = parse_repo_url(url).ok()?;
+	tokio::time::timeout(Duration::from_secs(5), fetch_capped(&root, &url, super::icon::MAX_ICON_BYTES))
+		.await.ok()?.ok().map(|(bytes, _)| bytes)
+}
+
 async fn fetch_index(_state: &AppState, url: &Url) -> Result<(String, ParsedIndex), String> {
 	let (raw,final_url) = fetch_capped(url,url,INDEX_MAX).await?;
 	if final_url!=*url { return Err("use the final published index URL".into()); }

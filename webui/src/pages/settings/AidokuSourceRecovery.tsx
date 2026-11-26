@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { aidokuSourceLabel, defaultRecoverySelection } from './aidokuRecovery';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useImportAidoku, useInstallRepoSource, useRepoSources, useSources } from '../../api/hooks';
 import type { AidokuImportResponse } from '../../api/types';
 import { Button } from '../../components';
@@ -10,7 +10,8 @@ export function missingAidokuIds(preview: AidokuImportResponse): string[] {
 	return [...new Set([...(preview.missingSources ?? []), ...preview.skipped.filter((item) => item.reason === 'source not installed').map((item) => item.sourceKey)])].sort();
 }
 
-export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, selection, onSelectionChange, onBusyChange }: {
+export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, selection, onSelectionChange, onBusyChange, seenDefaults, onPreviewInvalidated }: {
+	seenDefaults?: RefObject<Set<string>>; onPreviewInvalidated?: () => void;
 	selection?: string[]; onSelectionChange?: Dispatch<SetStateAction<string[]>>; onBusyChange?: (busy: boolean) => void;
 	file: File; preview: AidokuImportResponse; onPreview: (value: AidokuImportResponse) => void; onManageLists: () => void;
 }) {
@@ -29,19 +30,22 @@ export function AidokuSourceRecovery({ file, preview, onPreview, onManageLists, 
 		if (ids.includes(entry.sourceKey)) countBySource.set(entry.sourceKey, (countBySource.get(entry.sourceKey) ?? 0) + 1);
 	}
 	const defaults = JSON.stringify(defaultRecoverySelection(matches));
-	const previousDefaults = useRef<string[]>([]);
+	const localDefaults = useRef(new Set<string>());
+	const previousDefaults = seenDefaults ?? localDefaults;
 	useEffect(() => {
 		const next = JSON.parse(defaults) as string[];
-		const added = next.filter((key) => !previousDefaults.current.includes(key));
-		previousDefaults.current = next;
+		const added = next.filter((key) => !previousDefaults.current.has(key));
+		for (const key of added) previousDefaults.current.add(key);
 		if (added.length) setSelected((old) => [...new Set([...old, ...added.filter((key) => !old.some((item) => item.slice(item.indexOf(':') + 1) === key.slice(key.indexOf(':') + 1)))])]);
-	}, [defaults, setSelected]);
+	}, [defaults, setSelected, previousDefaults]);
 	const eligible = matches.filter((entry) => selected.includes(`${entry.repoId}:${entry.key}`) && entry.installedId === null);
 	async function refreshPreview() {
+		onPreviewInvalidated?.();
 		try { onPreview(await recheck.mutateAsync({ file, dryRun: true })); setError(''); } catch (error) { setError(error instanceof Error ? error.message : t('aidokuWizard.recheckError')); }
 	}
 	async function installSelected() {
 		setBusy(true); setError('');
+		onPreviewInvalidated?.();
 		try {
 			const failed: string[] = [];
 			for (const item of eligible) {

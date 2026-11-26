@@ -1,24 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, Search } from 'lucide-react';
 import { coverUrl } from '../../api/client';
-import { migrateLookup, useMigrate, useRegisterManga, useSources } from '../../api/hooks';
+import { useMigrate, useRegisterManga, useSources } from '../../api/hooks';
 import type { Manga, MigrateMode, SearchManga } from '../../api/types';
-import { mapPool } from '../../lib/pool';
+import { searchDestinations } from '../migrate/searchDestinations';
 import { Button, Cover, Modal, Spinner, pushToast } from '../../components';
 import { DestinationPicker } from '../migrate/DestinationPicker';
 import '../migrate/migrate.css';
 
 /**
- * Switch a single entry to another source: pick the destination set → title-search all target sources
- * with 3-way concurrency → user picks the match → execute with the chosen mode (or just view the entry) → jump to the target page
+ * Switch a single entry to another source: pick the destination set → title-search all target sources → user picks the match → execute with the chosen mode (or just view the entry) → jump to the target page
  */
 export function MigrateModal({ manga, onClose }: { manga: Manga; onClose: () => void }) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const [destinations, setDestinations] = useState<number[]>([]);
 	const [searching, setSearching] = useState(false);
+	const requestRef = useRef<AbortController | null>(null);
+	useEffect(() => () => requestRef.current?.abort(), []);
 	const [results, setResults] = useState<SearchManga[] | null>(null);
 	const [picked, setPicked] = useState<SearchManga | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -39,25 +40,35 @@ export function MigrateModal({ manga, onClose }: { manga: Manga; onClose: () => 
 		migrateWithHistory: t('migrateModal.modeHint.migrateWithHistory')
 	};
 
+	const eligible = destinations.filter((id) => sources.data?.some((source) => source.id === id && source.enabled));
+	function changeDestinations(ids: number[]) {
+		requestRef.current?.abort();
+		setDestinations(ids);
+		setResults(null);
+		setSearching(false);
+		setError(null);
+	}
+
 	async function search() {
+		requestRef.current?.abort();
+		const request = new AbortController();
+		requestRef.current = request;
 		setSearching(true);
 		setResults(null);
 		setPicked(null);
 		setError(null);
-		const hits = await mapPool(destinations, 3, async (destId) => {
-			try {
-				return await migrateLookup(manga.id, destId);
-			} catch (e) {
-				setError(e instanceof Error ? e.message : t('migrateModal.searchFailed'));
-				return null;
-			}
-		});
-		setResults(hits.flatMap((h) => h?.candidates ?? []));
+		const { candidates, failures } = await searchDestinations(manga, eligible, request.signal);
+		if (request.signal.aborted) return;
+		setResults(candidates);
 		setSearching(false);
+		if (failures.length) setError(t('migrate.searchFailed', {
+			defaultValue: 'Search incomplete: {{sources}} could not be checked.',
+			sources: failures.map(sourceName).join(', ')
+		}));
 	}
 
 	function execute(mode: MigrateMode) {
-		if (!picked) return;
+		if (!picked || !eligible.includes(picked.sourceId)) return;
 		migrate.mutate(
 			{
 				mode,
@@ -88,7 +99,7 @@ export function MigrateModal({ manga, onClose }: { manga: Manga; onClose: () => 
 	}
 
 	function showEntry() {
-		if (!picked) return;
+		if (!picked || !eligible.includes(picked.sourceId)) return;
 		register.mutate(
 			{ sourceId: picked.sourceId!, manga: picked },
 			{
@@ -119,8 +130,8 @@ export function MigrateModal({ manga, onClose }: { manga: Manga; onClose: () => 
 					</div>
 					{error && <p className="migrate-single__error">{error}</p>}
 					<div className="migrate-single__actions">
-						{(['copy', 'migrate', 'migrateWithHistory'] as MigrateMode[]).map((mode) => (
-							<Button key={mode} size="sm" variant={mode === 'migrateWithHistory' ? 'primary' : undefined} disabled={busy} title={MODE_HINT[mode]} onClick={() => execute(mode)}>
+						{(['copy', 'migrateWithHistory'] as MigrateMode[]).map((mode) => (
+							<Button key={mode} size="sm" variant={mode === 'migrateWithHistory' ? 'primary' : undefined} disabled={busy || !eligible.includes(picked.sourceId)} title={MODE_HINT[mode]} onClick={() => execute(mode)}>
 								{MODE_LABEL[mode]}
 							</Button>
 						))}
@@ -135,13 +146,13 @@ export function MigrateModal({ manga, onClose }: { manga: Manga; onClose: () => 
 				</div>
 			) : (
 				<>
-					<DestinationPicker selected={destinations} onChange={setDestinations} originSourceId={manga.sourceId} />
+					<DestinationPicker selected={destinations} onChange={changeDestinations} originSourceId={manga.sourceId} />
 					<div className="migrate-single__bar">
 						<Button
 							size="sm"
 							variant="primary"
 							loading={searching}
-							disabled={destinations.length === 0}
+							disabled={eligible.length === 0}
 							onClick={() => void search()}
 						>
 							<Search size={14} />

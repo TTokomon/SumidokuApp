@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
@@ -283,7 +283,11 @@ export default function MangaDetailPage() {
 	const enqueueDownloads = useEnqueueDownloads();
 	const categoriesQuery = useCategories();
 
-	const unread = useMemo(() => chapters.filter((c) => !c.isRead).length, [chapters]);
+	const readable = useCallback((chapter: ChapterWithDownload) => chapter.readable ??
+		(!chapter.trashed && (chapter.isDownloaded || (!sourceUnavailable && !chapter.locked))), [sourceUnavailable]);
+	const unread = chapters.filter((chapter) => readable(chapter) && !chapter.isRead).length;
+	const unavailable = chapters.filter((chapter) => !readable(chapter)).length;
+	const provisional = chapters.some((chapter) => chapter.provisional);
 	const downloadRuleIds = useMemo(
 		() => selectDownloadChapterIds(chapters, downloadRule, Number(downloadLatest)),
 		[chapters, downloadRule, downloadLatest]
@@ -317,7 +321,6 @@ export default function MangaDetailPage() {
 	}, [chapters, prefs, search]);
 
 	const continueCh = useMemo(() => {
-		const readable = (c: ChapterWithDownload) => !c.trashed && (!c.locked || !!c.isDownloaded);
 		const resume = visible
 			.filter((c) => readable(c) && !c.isRead && (c.lastReadAt ?? 0) > 0)
 			.reduce<ChapterWithDownload | null>(
@@ -327,7 +330,7 @@ export default function MangaDetailPage() {
 		if (resume) return resume;
 		const order = prefs.asc ? visible : [...visible].reverse();
 		return order.find((c) => readable(c) && !c.isRead) ?? order[0] ?? null;
-	}, [visible, prefs.asc]);
+	}, [visible, prefs.asc, readable]);
 
 	const allSelected = visible.length > 0 && visible.every((c) => selected.has(c.id));
 	const batchBusy = batchChapters.isPending || enqueueDownloads.isPending || deleteFinished.isPending;
@@ -753,7 +756,7 @@ export default function MangaDetailPage() {
 						<div className="manga-hero__actions">
 							<Button
 								variant="primary"
-								disabled={!continueCh || (sourceUnavailable && !continueCh.hasFinishedDownload)}
+								disabled={!continueCh}
 								onClick={() => continueCh && navigate(readTarget(continueCh))}
 							>
 								<BookOpen size={16} />
@@ -907,7 +910,10 @@ export default function MangaDetailPage() {
 				<div className="manga-chaps__head">
 					<h2>{t('mangaDetail.chapters')}</h2>
 					<span className="faint">
-						{t('mangaDetail.chapterStats', { total: chapters.length, unread, count: chapters.length })}
+						{sourceUnavailable || provisional
+							? t('mangaDetail.savedChapterStats', { total: chapters.length, unread, defaultValue: '{{total}} saved chapter records · {{unread}} readable unread' })
+							: t('mangaDetail.chapterStats', { total: chapters.length, unread, count: chapters.length })}
+						{unavailable > 0 && <>, {t('mangaDetail.unavailableChapterCount', { count: unavailable, defaultValue: '{{count}} unavailable' })}</>}
 					</span>
 					{/* The local source has no filesystem watch: added/deleted chapters only surface via a manual rescan, so the button sits prominently */}
 					{isLocal && (

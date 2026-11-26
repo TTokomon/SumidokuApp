@@ -8,13 +8,13 @@ import { compareSourceName } from '../../lib/source';
 import { Button } from '../../components';
 
 function RowIcon({ source }: { source: Source }) {
-	const [failed, setFailed] = useState(false);
-	if (failed) {
+	const [failedRevision, setFailedRevision] = useState<number | null>(null);
+	if (failedRevision === source.updatedAt) {
 		return <span className="dest-picker__icon dest-picker__icon--fallback">{source.name.slice(0, 1)}</span>;
 	}
 	return (
 		<span className="dest-picker__icon">
-			<img src={sourceIconUrl(source.id)} alt="" loading="lazy" onError={() => setFailed(true)} />
+			<img src={sourceIconUrl(source.id, source.updatedAt)} alt="" loading="lazy" onError={() => setFailedRevision(source.updatedAt)} />
 		</span>
 	);
 }
@@ -51,11 +51,11 @@ export function DestinationPicker({ selected, onChange, originSourceId }: Destin
 
 	const otherSources = available.filter((source) => source.id !== originSourceId);
 	function addOtherSources() {
-		onChange([...selected, ...otherSources.map((source) => source.id)]);
+		onChange([...chosenIds, ...otherSources.map((source) => source.id)]);
 	}
 
 	function addAllPinned() {
-		onChange([...selected, ...pinnedRest.map((s) => s.id)]);
+		onChange([...chosenIds, ...pinnedRest.map((s) => s.id)]);
 	}
 
 	function onDrop(target: number) {
@@ -63,7 +63,7 @@ export function DestinationPicker({ selected, onChange, originSourceId }: Destin
 		setDragIndex(null);
 		setOverIndex(null);
 		if (from === null || from === target) return;
-		const next = [...selected];
+		const next = [...chosenIds];
 		const [moved] = next.splice(from, 1);
 		next.splice(target, 0, moved);
 		onChange(next);
@@ -147,7 +147,7 @@ export function DestinationPicker({ selected, onChange, originSourceId }: Destin
 							type="button"
 							className="dest-picker__row dest-picker__row--add"
 							title={t('destinationPicker.add', { name: s.name })}
-							onClick={() => onChange([...selected, s.id])}
+							onClick={() => onChange([...chosenIds, s.id])}
 						>
 							<RowIcon source={s} />
 							<span className="dest-picker__name">{s.name}</span>

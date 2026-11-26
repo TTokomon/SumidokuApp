@@ -9,7 +9,6 @@ import { sse } from '../api/sse';
 import { translateApiError } from '../i18n';
 import { chapterLabel, relativeTime } from '../lib/format';
 import {
-	Badge,
 	Button,
 	Cover,
 	InfiniteList,
@@ -53,7 +52,10 @@ export default function UpdatesPage() {
 
 	const updateSections = useMemo(() => {
 		const days = new Map<string, Map<number, typeof recentEntries>>();
+		const seen = new Set<number>();
 		for (const entry of recentEntries) {
+			if (seen.has(entry.chapter.id)) continue;
+			seen.add(entry.chapter.id);
 			const date = new Date(entry.fetchedAt * 1000).toLocaleDateString(undefined, { dateStyle: 'full' });
 			const day = days.get(date) ?? new Map<number, typeof recentEntries>();
 			const entries = day.get(entry.manga.id) ?? []; entries.push(entry); day.set(entry.manga.id, entries); days.set(date, day);
@@ -159,7 +161,9 @@ export default function UpdatesPage() {
 							</span>
 						)}
 					</div>
-					<div className="updates-summary__counts">
+					<details className="updates-summary__diagnostics">
+						<summary>{t('updates.diagnostics', { defaultValue: 'Update diagnostics' })}</summary>
+						<div className="updates-summary__counts">
 						<div className="updates-stat">
 							<div className="updates-stat__v">{summary.total}</div>
 							<div className="updates-stat__k">{t('updates.total')}</div>
@@ -180,7 +184,8 @@ export default function UpdatesPage() {
 							<div className="updates-stat__v">{summary.pending}</div>
 							<div className="updates-stat__k">{t('updates.pending')}</div>
 						</div>
-					</div>
+						</div>
+					</details>
 					<div className="updates-summary__ops">
 						<span
 							className={online ? 'ws-dot ws-dot--on' : 'ws-dot'}
@@ -247,6 +252,8 @@ export default function UpdatesPage() {
 						<Skeleton key={i} height={76} />
 					))}
 				</div>
+			) : recent.isError ? (
+				<p role="alert">{t('updates.recentError', { defaultValue: 'Chapter updates could not be loaded.' })} <Button onClick={() => void recent.refetch()}>{t('common.retry', { defaultValue: 'Retry' })}</Button></p>
 			) : recentEntries.length === 0 ? (
 				<div className="updates-empty faint">{t('updates.recentEmpty')}</div>
 			) : (
@@ -257,23 +264,30 @@ export default function UpdatesPage() {
 				>
 					<div className="updates-sections">
 						{updateSections.map(([date, groups]) => <section key={date}><h3 className="activity-date">{date}</h3><div className="updates-list">
-						{groups.map((group) => { const e = group[0]!; return (
-							<Link key={e.manga.id} className="updates-item card" to={`/manga/${e.manga.id}`}>
-								<div className="updates-item__thumb">
-									<Cover src={coverUrl(e.manga.id, e.manga.cover)} title={e.manga.title} />
-								</div>
+						{groups.map((group) => {
+							const latest = group[0]!;
+							const chapterList = (items: typeof group) => <ul className="updates-item__chapters">
+								{items.map(({ chapter }) => (
+									<li key={chapter.id}>
+										<Link to={`/reader/${chapter.id}?manga=${latest.manga.id}`}>{chapterLabel(chapter)}</Link>
+									</li>
+								))}
+							</ul>;
+							return <article key={latest.manga.id} className="updates-item card">
+								<Link className="updates-item__thumb" to={`/manga/${latest.manga.id}`}>
+									<Cover src={coverUrl(latest.manga.id, latest.manga.cover)} title={latest.manga.title} />
+								</Link>
 								<div className="updates-item__meta">
-									<div className="updates-item__title">{e.manga.title}</div>
-									<div className="muted updates-item__chapter">
-										{chapterLabel(e.chapter)}
-										<Badge>{t('updates.addedChapters', { count: group.length })}</Badge>
-									</div>
-									<div className="faint updates-item__time">
-										{relativeTime(e.fetchedAt)}
-									</div>
+									<Link className="updates-item__title" to={`/manga/${latest.manga.id}`}>{latest.manga.title}</Link>
+									<div className="faint updates-item__time">{relativeTime(latest.fetchedAt)}</div>
+									{chapterList(group.slice(0, 5))}
+									{group.length > 5 && <details>
+										<summary>{t('updates.addedChapters', { count: group.length - 5 })}</summary>
+										{chapterList(group.slice(5))}
+									</details>}
 								</div>
-							</Link>
-						); })}</div></section>)}
+							</article>;
+						})}</div></section>)}
 					</div>
 				</InfiniteList>
 			)}

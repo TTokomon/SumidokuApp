@@ -38,18 +38,18 @@ configuration channels.
 
 ## Tracker OAuth
 
-Tracker sign-ins (AniList, MyAnimeList, Bangumi, MangaBaka) use OAuth apps
-registered to the project, with the redirect URI hosted at
-`https://sumidoku.github.io/oauth` (the `Sumidoku/oauth` Pages site): the
-provider returns there and the relay bounces the browser to the instance
-callback named in the OAuth state. The client credentials are **compile-time**
-values, not runtime configuration: official release binaries bake them in
-(`option_env!`), and a build without them serves tracker browsing normally
-but answers the OAuth start endpoint with an error naming the missing
-variable. Self-builders who want sign-ins set the eight
-`SUMIDOKU_OAUTH_<PROVIDER>_CLIENT_ID` / `_CLIENT_SECRET` pairs in the
-environment when compiling (a `cargo build` with the variables exported is
-enough; cross builds forward them via `Cross.toml`).
+Tracker sign-in with AniList, MyAnimeList, Bangumi, and MangaBaka requires
+a registered client and an owner-controlled HTTPS relay. Set
+`SUMIDOKU_OAUTH_<PROVIDER>_CLIENT_ID`, `SUMIDOKU_OAUTH_<PROVIDER>_CLIENT_SECRET`,
+and `SUMIDOKU_OAUTH_RELAY_ROOT` in the server process environment. Register
+`<relay>/<provider>/callback/` with the provider. Release builders receive no
+OAuth secrets. Existing tracker bindings remain available without configuration.
+
+The relay returns the browser to the instance callback. The initiating browser
+session must remain authenticated through the callback, which consumes a
+single-use nonce belonging to that account. AniList's authorization-code grant
+requires a confidential client. A native AniList public-client flow and secure
+storage for newly authorized native tokens require separate integration work.
 
 ## Server
 

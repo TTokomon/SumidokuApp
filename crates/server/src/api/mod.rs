@@ -359,29 +359,9 @@ async fn get_source_icon(
 	Path(id): Path<i64>,
 ) -> ApiResult<Response> {
 	let row = source_row(&state, id).await?;
-	let Some(path) = row.icon_path else {
-		return Err(ApiError::not_found("icon not found"));
-	};
-	let bytes = match tokio::fs::read(&path).await {
-		Ok(bytes) => bytes,
-		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-			return Err(ApiError::not_found("icon not found"));
-		}
-		Err(e) => return Err(ApiError::from(sqlx::Error::Io(e))),
-	};
-	let mime = match path
-		.rsplit('.')
-		.next()
-		.map(str::to_ascii_lowercase)
-		.as_deref()
-	{
-		Some("png") => "image/png",
-		Some("jpg" | "jpeg") => "image/jpeg",
-		Some("webp") => "image/webp",
-		Some("gif") => "image/gif",
-		_ => "application/octet-stream",
-	};
-	Ok(cover::bytes_response(bytes, mime, 86400))
+	let (bytes, mime) = crate::source::icon::resolve(&state, &row).await
+		.ok_or_else(|| ApiError::not_found("icon not found"))?;
+	Ok(cover::bytes_response(bytes, mime, 300))
 }
 
 /// When a dynamic capability (filters/listings/home/deep-link) is unsupported, the endpoint convention answers 501 unsupported
@@ -2006,6 +1986,9 @@ async fn chapters_json(state: &AppState, user_id: i64, manga_id: i64, order_by: 
 	.bind(manga_id)
 	.fetch_all(&state.pool)
 	.await?;
+	let source_enabled: bool = sqlx::query_scalar(
+		"SELECT s.enabled FROM manga m JOIN source s ON s.id = m.source_id WHERE m.id = ?",
+	).bind(manga_id).fetch_one(&state.pool).await?;
 	let downloaded: HashSet<i64> = sqlx::query_scalar(
 		"SELECT chapter_id FROM chapter_user WHERE user_id = ? AND is_downloaded = 1
 		 AND chapter_id IN (SELECT id FROM chapter WHERE manga_id = ?)",
@@ -2032,8 +2015,12 @@ async fn chapters_json(state: &AppState, user_id: i64, manga_id: i64, order_by: 
 		let object = value
 			.as_object_mut()
 			.ok_or_else(|| ApiError::bad_request("unexpected chapter shape"))?;
-		object.insert("isDownloaded".into(), json!(downloaded.contains(&row.chapter.id)),
-		);
+		let is_downloaded = downloaded.contains(&row.chapter.id);
+		let readable = row.chapter.trashed_at.is_none()
+			&& (is_downloaded || (source_enabled && row.chapter.fetched_at > 0 && !row.chapter.locked));
+		object.insert("isDownloaded".into(), json!(is_downloaded));
+		object.insert("readable".into(), json!(readable));
+		object.insert("provisional".into(), json!(row.chapter.fetched_at == 0));
 		object.insert(
 			"hasFinishedDownload".into(),
 			json!(finished.contains(&row.chapter.id)),);

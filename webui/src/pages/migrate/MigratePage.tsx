@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Trans, useTranslation } from 'react-i18next';
 import { ArrowLeft, ArrowRight, Search, TriangleAlert } from 'lucide-react';
 import { coverUrl } from '../../api/client';
-import { migrateLookup, useLibrary, useMigrate, useMigrateSources } from '../../api/hooks';
+import { useLibrary, useMigrate, useMigrateSources } from '../../api/hooks';
 import type { LibraryEntry, MigrateMode, MigrateResult, SearchManga } from '../../api/types';
 import { mapPool } from '../../lib/pool';
 import { compareSourceName } from '../../lib/source';
@@ -21,6 +21,7 @@ import {
 } from '../../components';
 import { DestinationPicker } from './DestinationPicker';
 import { uniqueTitleMatch } from './matchCandidate';
+import { searchDestinations } from './searchDestinations';
 import './migrate.css';
 
 type Step = 'source' | 'series' | 'destinations' | 'match';
@@ -29,30 +30,24 @@ interface Row {
 	manga: LibraryEntry;
 	state: 'pending' | 'matching' | 'matched' | 'notfound';
 	target?: SearchManga;
+	candidates?: SearchManga[];
+	failedSources?: number[];
 	result?: MigrateResult;
 }
 
-/** Batch auto-match: only select a unique exact normalized title without conflicting known authors. */
+
 async function autoMatch(
-	rows: Row[],
-	destinations: number[],
-	update: (id: number, patch: Partial<Row>) => void
+	rows: Row[], destinations: number[], signal: AbortSignal, update: (id: number, patch: Partial<Row>) => void
 ) {
 	await mapPool(rows, 3, async (row) => {
+		if (signal.aborted) return;
 		update(row.manga.id, { state: 'matching' });
-		for (const destId of destinations) {
-			try {
-				const r = await migrateLookup(row.manga.id, destId);
-				const match = uniqueTitleMatch(row.manga, r.candidates);
-				if (match) {
-					update(row.manga.id, { state: 'matched', target: match });
-					return;
-				}
-			} catch {
-				// A failed search against one target source counts as no hit; continue with the next target source
-			}
-		}
-		update(row.manga.id, { state: 'notfound' });
+		const { candidates, failures } = await searchDestinations(row.manga, destinations, signal);
+		if (signal.aborted) return;
+		const target = failures.length === 0 ? uniqueTitleMatch(row.manga, candidates) : undefined;
+		update(row.manga.id, {
+			state: target ? 'matched' : 'notfound', target, candidates, failedSources: failures
+		});
 	});
 }
 
@@ -81,6 +76,9 @@ export default function MigratePage() {
 	const sameSource = params.get('sameSource') === '1';
 	const [step, setStep] = useState<Step>(incoming.length ? 'destinations' : prefill ? 'series' : 'source');
 	const [sourceId, setSourceId] = useState<number | null>(prefill);
+	const [selectingAll, setSelectingAll] = useState(false);
+	const searchRequest = useRef<AbortController | null>(null);
+	useEffect(() => () => searchRequest.current?.abort(), []);
 	const [selected, setSelected] = useState<Set<number>>(() => new Set(incoming.map(entry => entry.id)));
 	const [destinations, setDestinations] = useState<number[]>(
 		sameSource && prefill ? [prefill] : []
@@ -92,7 +90,7 @@ export default function MigratePage() {
 	const [executed, setExecuted] = useState(false);
 
 	const sourcesQuery = useMigrateSources();
-	const libraryQuery = useLibrary({ sourceId: sourceId ?? 0 });
+	const libraryQuery = useLibrary({ sourceId: sourceId ?? undefined });
 	const migrate = useMigrate();
 
 	// The migration source list sorts alphabetically by name, same as the installed-source list
@@ -102,10 +100,11 @@ export default function MigratePage() {
 	);
 
 	const series = useMemo(
-		() => incoming.length ? incoming : (sourceId === null ? [] : (libraryQuery.data?.pages.flatMap((p) => p.entries) ?? [])),
+		() => incoming.length ? incoming : (libraryQuery.data?.pages.flatMap((p) => p.entries) ?? []),
 		[libraryQuery.data, sourceId, incoming]
 	);
 	const sourceName = incoming.length ? t('aidokuWizard.selectedTitles', { defaultValue: 'Selected titles' }) : ((sourcesQuery.data ?? []).find((s) => s.id === sourceId)?.name ?? '');
+	const eligibleDestinations = destinations.filter((id) => sourcesQuery.data?.some((source) => source.id === id && source.enabled));
 	const destName = (id: number) => (sourcesQuery.data ?? []).find((s) => s.id === id)?.name ?? `#${id}`;
 
 	const MODE_LABEL: Record<MigrateMode, string> = {
@@ -123,23 +122,55 @@ export default function MigratePage() {
 		setRows((prev) => prev.map((r) => (r.manga.id === id ? { ...r, ...patch } : r)));
 	}
 
-	function pickSource(id: number) {
+	function pickSource(id: number | null) {
 		setSourceId(id);
 		setSelected(new Set());
 		setStep('series');
 	}
 
-	function startMatch() {
-		const picked = series.filter((m) => selected.has(m.id));
-		setRows(picked.map((manga) => ({ manga, state: 'pending' })));
-		setExecuted(false);
-		setStep('match');
-		setMatching(true);
-		const initial: Row[] = picked.map((manga) => ({ manga, state: 'pending' }));
-		void autoMatch(initial, destinations, patchRow).finally(() => setMatching(false));
+	async function toggleAllSeries() {
+		if (!libraryQuery.hasNextPage && selected.size === series.length) {
+			setSelected(new Set());
+			return;
+		}
+		setSelectingAll(true);
+		try {
+			let data = libraryQuery.data;
+			let more = libraryQuery.hasNextPage;
+			while (more) {
+				const page = await libraryQuery.fetchNextPage({ cancelRefetch: false, throwOnError: true });
+				data = page.data;
+				more = page.hasNextPage;
+			}
+			setSelected(new Set((data?.pages.flatMap((page) => page.entries) ?? series).map((entry) => entry.id)));
+		} catch {
+			pushToast('Could not load the complete library selection.', 'error');
+		} finally {
+			setSelectingAll(false);
+		}
 	}
 
-	const matchedRows = rows.filter((r) => r.state === 'matched' && r.target && !r.result?.ok);
+	function matchRows(items: Row[]) {
+		searchRequest.current?.abort();
+		const request = new AbortController();
+		searchRequest.current = request;
+		setMatching(true);
+		void autoMatch(items, eligibleDestinations, request.signal, patchRow).finally(() => {
+			if (!request.signal.aborted) setMatching(false);
+		});
+	}
+
+	function startMatch() {
+		if (!eligibleDestinations.length) return;
+		const initial: Row[] = series.filter((entry) => selected.has(entry.id))
+			.map((manga) => ({ manga, state: 'pending' }));
+		setRows(initial);
+		setExecuted(false);
+		setStep('match');
+		matchRows(initial);
+	}
+
+	const matchedRows = rows.filter((r) => r.state === 'matched' && r.target && eligibleDestinations.includes(r.target.sourceId) && !r.result?.ok);
 	const failedRows = rows.filter((r) => r.result && !r.result.ok);
 	const doneCount = rows.filter((r) => r.result?.ok).length;
 
@@ -185,7 +216,7 @@ export default function MigratePage() {
 					step !== 'source' ? (
 						<Button
 							size="sm"
-							disabled={matching || migrate.isPending}
+							disabled={matching || migrate.isPending || selectingAll}
 							onClick={() => incoming.length && step === 'series' ? navigate('/library') : setStep(step === 'series' ? 'source' : step === 'destinations' ? 'series' : 'destinations')}
 						>
 							<ArrowLeft size={14} />
@@ -206,6 +237,13 @@ export default function MigratePage() {
 					<>
 						<p className="muted">{t('migrate.pickSourceHint')}</p>
 						<div className="migrate-source-list">
+							{migrateSources.some((source) => source.mangaCount > 0) && (
+								<button type="button" className="migrate-source" onClick={() => pickSource(null)}>
+									<span className="migrate-source__name">{t('migrate.allSources', { defaultValue: 'All library sources' })}</span>
+									<span className="migrate-source__count">{t('migrate.inLibrary', { count: migrateSources.reduce((sum, source) => sum + source.mangaCount, 0) })}</span>
+									<ArrowRight size={16} />
+								</button>
+							)}
 							{migrateSources
 								.filter((s) => s.mangaCount > 0)
 								.map((s) => (
@@ -237,15 +275,10 @@ export default function MigratePage() {
 								components={{ b: <b /> }}
 							/>
 						</span>
-						<Button
-							size="sm"
-							onClick={() =>
-								setSelected(selected.size === series.length ? new Set() : new Set(series.map((m) => m.id)))
-							}
-						>
-							{selected.size === series.length ? t('migrate.clearAll') : t('migrate.selectAll')}
+						<Button size="sm" loading={selectingAll} disabled={!series.length} onClick={() => void toggleAllSeries()}>
+							{!libraryQuery.hasNextPage && selected.size === series.length ? t('migrate.clearAll') : t('migrate.selectAll')}
 						</Button>
-						<Button size="sm" variant="primary" disabled={selected.size === 0} onClick={() => setStep('destinations')}>
+						<Button size="sm" variant="primary" disabled={selected.size === 0 || selectingAll} onClick={() => setStep('destinations')}>
 							{t('migrate.pickDestinations')}
 							<ArrowRight size={14} />
 						</Button>
@@ -284,7 +317,7 @@ export default function MigratePage() {
 				<>
 					<DestinationPicker selected={destinations} onChange={setDestinations} originSourceId={sourceId} />
 					<div className="migrate-toolbar">
-						<Button variant="primary" disabled={destinations.length === 0} onClick={startMatch}>
+						<Button variant="primary" disabled={eligibleDestinations.length === 0} onClick={startMatch}>
 							{t('migrate.startMatch', { count: selected.size })}
 							<ArrowRight size={14} />
 						</Button>
@@ -308,10 +341,10 @@ export default function MigratePage() {
 						{executed && failedRows.length > 0 && <Button size="sm" onClick={() => setExecuted(false)}>{t('aidokuWizard.retryFailed', { defaultValue: 'Retry failed transfers' })}</Button>}
 						{!matching && !executed && (
 							<>
-								<Button size="sm" onClick={() => { setMatching(true); void autoMatch(rows.filter((r) => r.state === 'notfound'), destinations, patchRow).finally(() => setMatching(false)); }}>
+								<Button size="sm" onClick={() => matchRows(rows.filter((r) => r.state === 'notfound'))}>
 									{t('migrate.retryUnmatched')}
 								</Button>
-								{(['copy', 'migrate', 'migrateWithHistory'] as MigrateMode[]).map((mode) => (
+								{(['copy', 'migrateWithHistory'] as MigrateMode[]).map((mode) => (
 									<Button
 										key={mode}
 										size="sm"
@@ -394,7 +427,7 @@ export default function MigratePage() {
 			{rematchRow && (
 				<RematchModal
 					row={rematchRow}
-					destinations={destinations}
+					destinations={eligibleDestinations}
 					destName={destName}
 					onPick={(candidate) => {
 						patchRow(rematchRow.manga.id, { state: 'matched', target: candidate, result: undefined });
@@ -458,19 +491,22 @@ function RematchModal({
 	const { t } = useTranslation();
 	const [query, setQuery] = useState(row.manga.title);
 	const [searching, setSearching] = useState(false);
-	const [results, setResults] = useState<SearchManga[] | null>(null);
+	const [results, setResults] = useState<SearchManga[] | null>(row.candidates ?? null);
+	const [failedSources, setFailedSources] = useState(row.failedSources ?? []);
+	const searchRequest = useRef<AbortController | null>(null);
+	useEffect(() => () => searchRequest.current?.abort(), []);
 
 	async function search() {
+		if (!query.trim()) return;
+		searchRequest.current?.abort();
+		const request = new AbortController();
+		searchRequest.current = request;
 		setSearching(true);
 		setResults(null);
-		const hits = await mapPool(destinations, 3, async (destId) => {
-			try {
-				return await migrateLookup(row.manga.id, destId, query);
-			} catch {
-				return null;
-			}
-		});
-		setResults(hits.flatMap((h) => h?.candidates ?? []));
+		const { candidates, failures } = await searchDestinations(row.manga, destinations, request.signal, query);
+		if (request.signal.aborted) return;
+		setResults(candidates);
+		setFailedSources(failures);
 		setSearching(false);
 	}
 
@@ -487,6 +523,10 @@ function RematchModal({
 					{t('common.search')}
 				</Button>
 			</div>
+			{!searching && failedSources.length > 0 && <p role="status">{t('migrate.searchFailed', {
+				defaultValue: 'Search incomplete: {{sources}} could not be checked.',
+				sources: failedSources.map(destName).join(', ')
+			})}</p>}
 			{searching ? (
 				<Spinner />
 			) : results === null ? (
@@ -497,6 +537,7 @@ function RematchModal({
 				<div className="migrate-rematch__list">
 					{results.map((c) => (
 						<button key={`${c.sourceId}:${c.key}`} type="button" className="migrate-rematch__item" onClick={() => onPick(c)}>
+							<Cover src={c.id === undefined ? c.cover : coverUrl(c.id, c.cover)} title={c.title} />
 							<span className="migrate-rematch__title">{c.title}</span>
 							<span className="migrate-rematch__source">{destName(c.sourceId!)}</span>
 						</button>

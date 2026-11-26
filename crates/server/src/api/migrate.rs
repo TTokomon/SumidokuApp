@@ -10,7 +10,7 @@ use axum::extract::{Query, State};
 use axum::response::Json;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Source list for migration: all installed sources (the target-side selector needs them too); mangaCount is the requesting user's in-library count
@@ -169,7 +169,14 @@ pub async fn migrate_execute(
 	if request.entries.is_empty() {
 		return Err(ApiError::bad_request("entries must not be empty"));
 	}
+	let origins: HashSet<_> = request.entries.iter().map(|entry| entry.from_manga_id).collect();
+	if request.safe_page_offsets && origins.len() != request.entries.len() {
+		return Err(ApiError::bad_request("an original manga can only appear once in a migration batch"));
+	}
 	for entry in &request.entries {
+		if entry.to_manga.as_ref().is_some_and(|manga| manga.key != entry.to_manga_key) {
+			return Err(ApiError::bad_request("the destination key does not match the selected candidate"));
+		}
 		if entry.to_manga_key.is_empty() {
 			return Err(ApiError::bad_request("toMangaKey must not be empty"));
 		}
@@ -237,11 +244,12 @@ async fn run_entry(
 	let mut to_manga_id = None;
 	let mut fetched = None;
 	if let Some((id,)) = existing {
-		let (chapters,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM chapter WHERE manga_id = ?")
-			.bind(id)
-			.fetch_one(&state.pool)
-			.await?;
-		if chapters > 0 {
+		let current: bool = sqlx::query_scalar(
+			"SELECT EXISTS(SELECT 1 FROM chapter c JOIN manga m ON m.id = c.manga_id
+			 WHERE m.id = ? AND c.locked = 0 AND c.trashed_at IS NULL AND c.fetched_at > 0
+			 AND COALESCE(m.chapters_last_fetched_at, c.fetched_at) >= ?)",
+		).bind(id).bind(unix_now() - 7 * 24 * 60 * 60).fetch_one(&state.pool).await?;
+		if current {
 			to_manga_id = Some(id);
 		}
 	}
@@ -267,12 +275,31 @@ async fn run_entry(
 	}
 
 	let mut warnings = Vec::new();
+	if fetched.as_ref().is_some_and(|manga| manga.key != entry.to_manga_key) {
+		return Ok(failed_with("fetch_failed", "The source returned a different manga key. Select the destination again.".into()));
+	}
+
 	let mut tx = crate::db::begin_write(&state.pool).await?;
+	let origin_is_shelved: bool = sqlx::query_scalar(
+		"SELECT EXISTS(SELECT 1 FROM manga_user WHERE manga_id = ? AND user_id = ? AND in_library = 1)",
+	).bind(origin.id).bind(user_id).fetch_one(&mut *tx).await?;
+	if !origin_is_shelved {
+		return Ok(failed("not_in_library"));
+	}
+	let source_is_current: bool = sqlx::query_scalar(
+		"SELECT EXISTS(SELECT 1 FROM source WHERE id = ? AND enabled = 1
+		 AND version = ? AND updated_at = ? AND wasm_path = ?)",
+	).bind(target_source.id).bind(target_source.version).bind(target_source.updated_at)
+		.bind(&target_source.wasm_path).fetch_one(&mut *tx).await?;
+	if !source_is_current {
+		return Ok(failed_with("source_not_found", "Destination source changed during transfer. Select it again.".into()));
+	}
 	let to_manga_id = match (to_manga_id, &fetched) {
 		(Some(id), _) => id,
 		(None, Some(updated)) => {
 			let id = upsert_manga(&mut tx, entry.to_source_id, updated, true, true, true).await?;
-			reconcile_chapters(&mut tx, id, &updated.chapters.clone().unwrap_or_default(), &[]).await?;
+			reconcile_chapters(&mut tx, id, updated.chapters.as_deref().unwrap_or_default(), &[]).await?;
+			crate::store::manga::set_chapters_fetched_at(&mut tx, id, unix_now()).await?;
 			id
 		}
 		(None, None) => unreachable!("fetched is Some when to_manga_id is None"),
@@ -315,14 +342,24 @@ async fn run_entry(
 	.fetch_all(&mut *tx)
 	.await?;
 	let targets: Vec<TargetChapter> = sqlx::query_as(
-		"SELECT id, key, number, volume, language, page_count FROM chapter WHERE manga_id = ? AND locked = 0 ORDER BY source_order ASC",
+		"SELECT c.id, c.key, c.number, c.volume, c.language, c.page_count
+		 FROM chapter c JOIN manga m ON m.id = c.manga_id
+		 WHERE m.id = ? AND m.source_id = ? AND m.key = ?
+		 AND c.locked = 0 AND c.trashed_at IS NULL AND c.fetched_at > 0 ORDER BY c.source_order ASC",
 	)
-	.bind(to_manga_id)
-	.fetch_all(&mut *tx)
-	.await?;
-	for row in &origin_progress {
-		let same_source = origin.source_id == entry.to_source_id;
-		let Some(target) = match_target(&targets, row, same_source) else {
+	.bind(to_manga_id).bind(entry.to_source_id).bind(&entry.to_manga_key)
+	.fetch_all(&mut *tx).await?;
+	if targets.is_empty() {
+		return Ok(failed_with("fetch_failed", "No readable chapters were found at the destination.".into()));
+	}
+	let same_source = origin.source_id == entry.to_source_id;
+	let matches: Vec<_> = origin_progress.iter().map(|row| match_target(&targets, row, same_source)).collect();
+	let mut match_counts = HashMap::new();
+	for target in matches.iter().flatten() {
+		*match_counts.entry(target.id).or_insert(0) += 1;
+	}
+	for (row, target) in origin_progress.iter().zip(matches) {
+		let Some(target) = target.filter(|target| match_counts[&target.id] == 1) else {
 			warnings.push(format!(
 				"progress not carried: no unambiguous target chapter matches source chapter {}",
 				chapter_label(row)
@@ -396,7 +433,7 @@ async fn run_entry(
 			crate::store::category::clear_manga(&mut tx, origin.id, user_id).await?;
 			if partial {
 				warnings.push("Moved to the new source; unmatched history remains on the original manga outside your library.".into());
-			} else if mode == MigrateMode::Migrate {
+			} else if mode == MigrateMode::Migrate && !safe_page_offsets {
 				crate::store::progress::reset_manga(&mut tx, origin.id, user_id).await?;
 			}
 		}

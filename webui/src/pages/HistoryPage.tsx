@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Clock } from 'lucide-react';
@@ -16,13 +16,21 @@ interface HistoryRow {
 
 export default function HistoryPage() {
 	const { t } = useTranslation();
-	const query = useHistory();
 	const [search, setSearch] = useState('');
+	const [submittedSearch, setSubmittedSearch] = useState('');
+	useEffect(() => {
+		const timer = setTimeout(() => setSubmittedSearch(search.trim()), 250);
+		return () => clearTimeout(timer);
+	}, [search]);
+	const query = useHistory(submittedSearch);
 	const rows = useMemo<HistoryRow[]>(() => {
 		const all = query.data?.pages.flatMap((p) => p.entries) ?? [];
 		// Group by manga + calendar day, keep the latest entry and count how many were collapsed
 		const groups = new Map<string, HistoryRow>();
+		const seen = new Set<number>();
 		for (const e of all) {
+			if (seen.has(e.chapter.id)) continue;
+			seen.add(e.chapter.id);
 			const d = new Date(e.lastReadAt * 1000);
 			const key = `${e.manga.id}@${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 			const cur = groups.get(key);
@@ -41,16 +49,15 @@ export default function HistoryPage() {
 	const sections = useMemo(() => {
 		const grouped = new Map<string, HistoryRow[]>();
 		for (const row of rows) {
-			if (search.trim() && !row.entry.manga.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())) continue;
 			const date = new Date(row.entry.lastReadAt * 1000).toLocaleDateString(undefined, { dateStyle: 'full' });
 			const group = grouped.get(date) ?? []; group.push(row); grouped.set(date, group);
 		}
 		return [...grouped];
-	}, [rows, search]);
+	}, [rows]);
 
 	return (
 		<div className="page container">
-			<PageHeader title={t('common.nav.history')} actions={<Input type="search" value={search} onChange={e => setSearch(e.currentTarget.value)} aria-label="Search loaded history" placeholder="Search history…" />} />
+			<PageHeader title={t('common.nav.history')} actions={<Input type="search" value={search} onChange={e => setSearch(e.currentTarget.value)} aria-label="Search history" placeholder="Search history…" />} />
 
 			{query.isPending ? (
 				<div className="history-list">
@@ -58,6 +65,10 @@ export default function HistoryPage() {
 						<Skeleton key={i} height={76} />
 					))}
 				</div>
+			) : query.isError ? (
+				<p role="alert">{t('history.loadError', { defaultValue: 'History could not be loaded.' })} <Button onClick={() => void query.refetch()}>{t('common.retry', { defaultValue: 'Retry' })}</Button></p>
+			) : submittedSearch && rows.length === 0 ? (
+				<EmptyState icon={Clock} title={t('history.noMatches', { defaultValue: 'No matching history' })} />
 			) : rows.length === 0 ? (
 				<EmptyState
 					icon={Clock}
@@ -81,7 +92,9 @@ export default function HistoryPage() {
 							<Link
 								key={h.chapter.id}
 								className="history-item card"
-								to={`/manga/${h.manga.id}`}
+								to={h.readable && !h.isRead
+									? `/reader/${h.chapter.id}?manga=${h.manga.id}&page=${h.lastPageRead + 1}`
+									: `/manga/${h.manga.id}`}
 							>
 								<div className="history-item__thumb">
 									<Cover src={coverUrl(h.manga.id, h.manga.cover)} title={h.manga.title} />

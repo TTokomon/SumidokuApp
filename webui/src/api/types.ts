@@ -12,6 +12,7 @@ export type AddToLibraryRequest = {
 
 export type AidokuImportResponse = {
 	dryRun: boolean;
+	previewFingerprint?: string;
 	imported: ImportCounts;
 	included?: Array<AidokuIncluded>;
 	categoryNames?: Array<string>;
@@ -48,7 +49,7 @@ export type AidokuSkipped = {
 };
 
 export type ApiError = {
-	code: "bad_request" | "unauthorized" | "not_found" | "unsupported" | "payload_too_large" | "source_disabled" | "duplicate" | "no_update" | "resync_required" | "not_in_library" | "bad_gateway" | "source_error" | "timeout" | "internal" | "busy" | "task_finished" | "not_trashed" | "gone" | "root_unavailable" | "tracker_auth" | "tracker_rate_limited";
+	code: "bad_request" | "unauthorized" | "not_found" | "unsupported" | "payload_too_large" | "source_disabled" | "duplicate" | "no_update" | "resync_required" | "not_in_library" | "bad_gateway" | "source_error" | "timeout" | "internal" | "busy" | "task_finished" | "not_trashed" | "gone" | "root_unavailable" | "tracker_auth" | "tracker_rate_limited" | "aidoku_preview_changed" | "too_many_requests";
 	message: string;
 };
 
@@ -99,6 +100,7 @@ export type BackupChapter = {
 	url?: string | null;
 	dateUploaded?: number | null;
 	sourceOrder?: number;
+	locked?: boolean;
 	pageCount?: number;
 };
 
@@ -303,6 +305,8 @@ export type ChapterSort = "source" | "chapter" | "date";
 
 export type ChapterWithDownload = Chapter & {
 	isDownloaded: boolean;
+	readable?: boolean;
+	provisional?: boolean;
 	hasFinishedDownload: boolean;
 };
 
@@ -485,11 +489,13 @@ export type HistoryEntry = {
 	manga: Manga;
 	lastReadAt: number;
 	lastPageRead: number;
+	readable?: boolean;
 	isRead: boolean;
 };
 
 export type HistoryPage = {
 	entries: Array<HistoryEntry>;
+	nextCursor?: string | null;
 	hasNextPage: boolean;
 };
 
@@ -1447,6 +1453,7 @@ export type TrackerLinkUpsert = {
 };
 
 export type TrackerOAuthStatus = {
+	configured?: boolean;
 	logged_in: boolean;
 	username?: string | null;
 };

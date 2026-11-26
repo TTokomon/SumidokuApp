@@ -122,7 +122,7 @@ fn aix_bytes_with_config(
 }
 
 /// Packs an .aix test package from the manifest text
-fn aix_package(manifest: &str, icon: &str) -> Vec<u8> {
+fn aix_package(manifest: &str, icon: &[u8]) -> Vec<u8> {
 	let wasm = std::fs::read(fixture_dir().join("main.wasm")).expect("fixture wasm");
 	let mut cursor = std::io::Cursor::new(Vec::new());
 	{
@@ -134,15 +134,18 @@ fn aix_package(manifest: &str, icon: &str) -> Vec<u8> {
 		writer.start_file("Payload/main.wasm", options).unwrap();
 		std::io::Write::write_all(&mut writer, &wasm).unwrap();
 		writer.start_file("Payload/icon.png", options).unwrap();
-		std::io::Write::write_all(&mut writer, icon.as_bytes()).unwrap();
+		std::io::Write::write_all(&mut writer, icon).unwrap();
 		writer.finish().unwrap();
 	}
 	cursor.into_inner()
 }
 
-/// The icon content carries the version number, so tests can assert the .png next to the package is overwritten after an update
-fn icon_bytes(key: &str, version: i64) -> String {
-	format!("PNG-{key}-v{version}")
+/// Distinct, valid PNGs verify that package updates replace the old icon.
+fn icon_bytes(_key: &str, version: i64) -> Vec<u8> {
+	let icon = image::RgbImage::from_pixel(2, 2, image::Rgb([version as u8, 0, 0]));
+	let mut buffer = std::io::Cursor::new(Vec::new());
+	icon.write_to(&mut buffer, image::ImageFormat::Png).unwrap();
+	buffer.into_inner()
 }
 
 fn repo_entry(key: &str, name: &str, version: i64, langs: &[&str], rating: i64) -> Value {
@@ -290,7 +293,7 @@ async fn repo_lifecycle_install_and_update() {
 	let icon_file = app.tmp.path().join("sources/en.repo-source.png");
 	assert_eq!(
 		std::fs::read(&icon_file).expect("icon written next to aix"),
-		icon_bytes("en.repo-source", 1).as_bytes()
+		icon_bytes("en.repo-source", 1)
 	);
 	let (status, headers, bytes) = request_full(
 		&app.app,
@@ -304,7 +307,7 @@ async fn repo_lifecycle_install_and_update() {
 		headers.get("content-type").and_then(|v| v.to_str().ok()),
 		Some("image/png")
 	);
-	assert_eq!(bytes, icon_bytes("en.repo-source", 1).as_bytes());
+	assert_eq!(bytes, icon_bytes("en.repo-source", 1));
 	let (status, body) = request(
 		&app.app,
 		"POST",
@@ -356,7 +359,7 @@ async fn repo_lifecycle_install_and_update() {
 	// the update also refreshes the icon next to the package
 	assert_eq!(
 		std::fs::read(&icon_file).expect("icon updated"),
-		icon_bytes("en.repo-source", 2).as_bytes()
+		icon_bytes("en.repo-source", 2)
 	);
 	let (status, body) = request(
 		&app.app,
@@ -940,4 +943,43 @@ async fn installing_exact_missing_aidoku_package_reconnects_imported_identity() 
 	let preview: Value = serde_json::from_slice(&bytes).unwrap();
 	assert_eq!(preview["missingSources"], json!([]));
 	assert_eq!(request(&t.app, "GET", "/api/v1/downloads", None).await.1, json!([]));
+}
+
+#[tokio::test]
+async fn source_icon_falls_back_only_to_the_installed_package_repository() {
+	let app = test_app().await;
+	let repo = serve_repo().await;
+	let other = serve_repo().await;
+	let key = "en.icon-fallback";
+	repo.mock.set_index(json!([repo_entry(key, "Icon fallback", 1, &["en"], 0)]));
+	other.mock.set_index(json!([repo_entry(key, "Other repository", 1, &["en"], 0)]));
+	let bytes = icon_bytes(key, 1);
+	repo.mock.set_file(&format!("files/{key}-v1.png"), bytes.clone());
+	other.mock.set_file(&format!("files/{key}-v1.png"), icon_bytes(key, 9));
+	let (status, entry) = add_repo(&app.app, &repo.url).await;
+	assert_eq!(status, StatusCode::OK, "{entry}");
+	let repo_id = entry["id"].as_i64().unwrap();
+	assert_eq!(add_repo(&app.app, &other.url).await.0, StatusCode::OK);
+
+	let pool = common::connect_db(&app.db_path).await;
+	let source_id: i64 = sqlx::query_scalar(
+		"INSERT INTO source (key, name, version, repo_id, wasm_path)
+		 VALUES (?, 'Icon fallback', 1, ?, 'test.aix') RETURNING id",
+	).bind(key).bind(repo_id).fetch_one(&pool).await.unwrap();
+	let route = format!("/api/v1/sources/{source_id}/icon");
+	let (status, headers, content) = request_full(&app.app, "GET", &route, None).await;
+	assert_eq!(status, StatusCode::OK);
+	assert_eq!(headers["content-type"], "image/png");
+	assert_eq!(content, bytes);
+
+	repo.serve.abort();
+	let (status, _, cached) = request_full(&app.app, "GET", &route, None).await;
+	assert_eq!(status, StatusCode::OK);
+	assert_eq!(cached, bytes);
+
+	sqlx::query("UPDATE source SET version = 2 WHERE id = ?")
+		.bind(source_id).execute(&pool).await.unwrap();
+	let (status, _, _) = request_full(&app.app, "GET", &route, None).await;
+	assert_eq!(status, StatusCode::NOT_FOUND);
+	other.serve.abort();
 }

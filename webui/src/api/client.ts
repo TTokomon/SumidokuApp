@@ -31,16 +31,18 @@ export interface ApiOptions {
 	formData?: FormData;
 	/** Probing requests (e.g. a 501 meaning listings are unsupported) don't pop an error toast */
 	silent?: boolean;
+	signal?: AbortSignal;
 }
 
 export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
-	const { method = 'GET', body, formData, silent = false } = opts;
+	const { method = 'GET', body, formData, silent = false, signal } = opts;
 	// Binary uploads (.aib) skip JSON encoding
 	const raw = body instanceof Blob || body instanceof ArrayBuffer;
 	let res: Response;
 	try {
 		res = await fetch(BASE + path, {
 			method,
+			signal,
 			headers:
 				formData !== undefined
 					? undefined
@@ -49,7 +51,8 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
 						: undefined,
 			body: formData ?? (body !== undefined ? (raw ? (body as BodyInit) : JSON.stringify(body)) : undefined)
 		});
-	} catch {
+	} catch (error) {
+		if (signal?.aborted) throw error;
 		const err = new ApiError(0, 'network', '网络请求失败');
 		if (!silent) pushToast(translateApiError(err.code, err.message));
 		throw err;
@@ -192,7 +195,8 @@ export const chapterFileUrl = (chapterId: number) => `${BASE}/chapter/${chapterI
 /** Full backup download URL; pair with `<a download>` to make the browser save it */
 export const backupUrl = () => `${BASE}/backups/document`;
 
-export const sourceIconUrl = (sourceId: number) => `${BASE}/sources/${sourceId}/icon`;
+export const sourceIconUrl = (sourceId: number, revision?: number) =>
+	`${BASE}/sources/${sourceId}/icon${revision === undefined ? '' : `?v=${revision}`}`;
 
 /** Only the server can attach the anti-hotlink headers a source image host declares, so browse/home covers are fetched through the server proxy */
 export const sourceImageUrl = (sourceId: number, url: string) =>

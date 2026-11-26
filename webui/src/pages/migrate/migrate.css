@@ -351,3 +351,9 @@
 .migrate-rematch {
 	width: min(560px, 92vw);
 }
+
+.migrate-rematch__item .cover {
+	width: 28px;
+	height: 40px;
+	flex-shrink: 0;
+}

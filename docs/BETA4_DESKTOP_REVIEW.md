@@ -21,3 +21,24 @@ Sumidoku provides the base URL and generates a dedicated revocable backup-only t
 - Sources: compact rows with real package icons where available, reliable cache/retry and meaningful fallback, pinned ordering, no duplicate rows or long origin URLs in main list; verify icon retrieval failures rather than masking them.
 - Migration: move vs copy, complete library pagination, candidate discovery and chapter matching.
 - Chapter counts, transient unavailable notifications, real tracker OAuth and backup-receiver protocol remain separate implementation gates. No release or native test claimed for these changes.
+
+
+## Implementation status
+
+- Navigation uses seven Preferences destinations, with all repository actions
+  in Settings → Sources. Legacy Library and Source Lists links redirect to
+  their canonical panels.
+- Native server checks distinguish liveness, temporary session-check failures,
+  and confirmed sign-out. Aidoku import keeps the original file and recovery
+  choices in memory and requires a fresh preview after failures.
+- The library and chapter detail share the readable-unread criteria.
+  Migration keeps originals and their history available off the shelf after
+  moves and leaves failed originals shelved. No schema migration is required.
+- Attached source artwork uses a validated, cached fallback from the exact
+  associated repository and package version.
+- Native tracker sign-in still needs provider registration, a callback flow
+  that preserves the initiating account, and secure native token storage.
+  Release builds receive no confidential OAuth settings at compile time.
+- The supported Aidoku transfer is a local `.aib` export and reviewed import.
+  The Base URL and token workflow requires confirmation of the Aidoku sender
+  and protocol. Storage & Backups places other import formats behind a disclosure.

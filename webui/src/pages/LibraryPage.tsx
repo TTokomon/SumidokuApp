@@ -23,7 +23,7 @@ import type { LibrarySort } from '../api/types';
 import type { TriStateSelection } from '../lib/triState';
 import { compareSourceName } from '../lib/source';
 import { downloadEligibleIds } from '../lib/librarySelection';
-import { hasLibraryFilterPrefs, loadLibraryFilters, saveLibraryFilters } from '../lib/libraryFilterPrefs';
+import { hasLibraryFilterPrefs, loadLibraryFilters, loadLibraryLayout, saveLibraryFilters, saveLibraryLayout, type LibraryLayout } from '../lib/libraryFilterPrefs';
 import { BatchActionBar, Button, CoverCard, EmptyState, InfiniteList, PageHeader, Skeleton, pushToast } from '../components';
 import { LibraryToolbar, UNCATEGORIZED, type RemovableFilterKind } from './library/LibraryToolbar';
 import { ChangeCategoriesModal, RemoveFromLibraryModal } from './library/LibraryBatchModals';
@@ -72,8 +72,11 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 	const [params] = useSearchParams();
-	const [layout, setLayout] = useState<'grid' | 'list'>(() => { try { return localStorage.getItem('sumidoku.library.layout') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; } });
-	function changeLayout(value: 'grid' | 'list') { setLayout(value); try { localStorage.setItem('sumidoku.library.layout', value); } catch { /* storage unavailable */ } }
+	const [layout, setLayout] = useState(loadLibraryLayout);
+	function changeLayout(value: LibraryLayout) {
+		setLayout(value);
+		saveLibraryLayout(value);
+	}
 	// Controls restore from localStorage; the prefs are loaded once — the pruning effect below drops ids that no longer exist
 	const [initialPrefs] = useState(loadLibraryFilters);
 	const [searchInput, setSearchInput] = useState(initialPrefs.search);
@@ -489,7 +492,7 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 								key={m.id}
 								src={coverUrl(m.id, m.cover)}
 								title={m.title || m.key}
-								subtitle={sourcesQuery.isSuccess && !availableSourceIds.has(m.sourceId) ? t('aidokuWizard.sourceUnavailable', { defaultValue: 'Source unavailable' }) : undefined}
+								subtitle={sourcesQuery.isSuccess && !availableSourceIds.has(m.sourceId) ? t('aidokuWizard.sourceUnavailable', { defaultValue: 'Source unavailable' }) : layout === 'list' ? sourcesQuery.data?.find((source) => source.id === m.sourceId)?.name : undefined}
 								unreadCount={m.unreadCount}
 								trackerProviders={m.trackerProviders}
 								trashed={m.trashed}

@@ -60,7 +60,7 @@ async fn scan_loads_aix_package() {
 				}"#,
 			),
 			("Payload/main.wasm", &fixture_wasm()),
-			("Payload/icon.png", b"PNG-packed-icon"),
+			("Payload/icon.png", common::PNG),
 			(
 				"Payload/settings.json",
 				br#"[{"type": "switch", "key": "dataSaver", "title": "DS", "default": true}]"#,
@@ -106,7 +106,7 @@ async fn scan_loads_aix_package() {
 	// the icon embedded in the .aix lands on disk next to the package, readable through the icon endpoint
 	assert_eq!(
 		std::fs::read(app.tmp.path().join("sources/en.packed-source-v3.png")).expect("icon written"),
-		b"PNG-packed-icon"
+		common::PNG
 	);
 	let (status, headers, bytes) =
 		request_full(&app.app, "GET", &format!("/api/v1/sources/{id}/icon"), None).await;
@@ -115,7 +115,7 @@ async fn scan_loads_aix_package() {
 		headers.get("content-type").and_then(|v| v.to_str().ok()),
 		Some("image/png")
 	);
-	assert_eq!(bytes, b"PNG-packed-icon");
+	assert_eq!(bytes, common::PNG);
 }
 
 #[tokio::test]
@@ -155,7 +155,7 @@ async fn uninstall_removes_aix_package_and_icon_sidecar() {
 				br#"{"info": {"id": "en.packed-source", "name": "Packed", "version": 1, "languages": ["en"]}}"#,
 			),
 			("Payload/main.wasm", &fixture_wasm()),
-			("Payload/icon.png", b"PNG-packed-icon"),
+			("Payload/icon.png", common::PNG),
 		],
 	);
 	let (status, _) = request(&app.app, "POST", "/api/v1/sources/scan", None).await;

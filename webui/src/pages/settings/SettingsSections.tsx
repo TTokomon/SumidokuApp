@@ -1169,7 +1169,7 @@ function SuwayomiImportResultView({ result }: { result: SuwayomiImportResponse }
 
 export function BackupSection() {
 	const navigate = useNavigate();
-	const { aib, setAib, result: aibResult, setResult: setAibResult, paused: aibPaused, setPaused: setAibPaused, acceptSkips, setAcceptSkips, step: aibStep, setStep: setAibStep, selected, setSelected } = useAidokuImportSession();
+	const { aib, setAib, result: aibResult, setResult: setAibResult, paused: aibPaused, setPaused: setAibPaused, acceptSkips, setAcceptSkips, step: aibStep, setStep: setAibStep, selected, setSelected, seenDefaults } = useAidokuImportSession();
 	const [recoveryBusy, setRecoveryBusy] = useState(false);
 	const { t } = useTranslation();
 	const restore = useRestoreBackup();
@@ -1178,7 +1178,7 @@ export function BackupSection() {
 	const [picked, setPicked] = useState<string[]>([]);
 	const [result, setResult] = useState<BackupRestoreResponse | null>(null);
 	const importAidoku = useImportAidoku();
-	const canConfirmAib = !!aib && (Object.values(aib.preview.imported).some((count) => count > 0) || (aib.preview.archivedTrackers ?? 0) > 0) && (aib.preview.skipped.length === 0 || acceptSkips);
+	const canConfirmAib = !!aib?.current && (Object.values(aib.preview.imported).some((count) => count > 0) || (aib.preview.archivedTrackers ?? 0) > 0) && (aib.preview.skipped.length === 0 || acceptSkips);
 	const aibFileRef = useRef<HTMLInputElement>(null);
 	const importSuwayomi = useImportSuwayomi();
 	const swFileRef = useRef<HTMLInputElement>(null);
@@ -1232,7 +1232,8 @@ export function BackupSection() {
 		if (!file) return;
 		try {
 			const dryPreview = await importAidoku.mutateAsync({ file, dryRun: true });
-			setAib({ file, preview: dryPreview });
+			setAib({ file, preview: dryPreview, current: true });
+			seenDefaults.current.clear();
 			setSelected([]);
 			setAibPaused(false); setAcceptSkips(false); setAibStep(1);
 			setAibResult(null);
@@ -1244,11 +1245,23 @@ export function BackupSection() {
 	async function confirmAibImport() {
 		if (!aib || !canConfirmAib || aibStep !== 3 || recoveryBusy || importAidoku.isPending) return;
 		try {
-			const res = await importAidoku.mutateAsync({ file: aib.file, dryRun: false });
+			const res = await importAidoku.mutateAsync({ file: aib.file, dryRun: false, previewFingerprint: aib.preview.previewFingerprint });
 			setAibResult(res);
 		} catch {
-			// api() already popped an error toast
+			invalidateAibPreview();
+			setAibStep(2);
 		}
+	}
+
+	function invalidateAibPreview() {
+		setAib((draft) => draft ? { ...draft, current: false } : draft);
+		setAcceptSkips(false);
+	}
+
+	async function recheckAib(file: File) {
+		invalidateAibPreview();
+		const updated = await importAidoku.mutateAsync({ file, dryRun: true });
+		setAib((draft) => draft?.file === file ? { ...draft, preview: updated, current: true } : draft);
 	}
 
 	function closeAibModal() {
@@ -1328,18 +1341,30 @@ export function BackupSection() {
 					hidden
 					onChange={(e) => void onFile(e)}
 				/>
-				{aibPaused && aib && <Button loading={importAidoku.isPending} onClick={() => { void importAidoku.mutateAsync({ file: aib.file, dryRun: true }).then((preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); setAibStep(2); setAibPaused(false); }).catch(() => {}); }}>{t('aidokuWizard.resume')}</Button>}
-				<Button loading={importAidoku.isPending && !aib} onClick={() => aibFileRef.current?.click()}>
-					<FileUp size={15} />
-					{t('settings.importAidoku')}
-				</Button>
-				<input
-					ref={aibFileRef}
-					type="file"
-					accept=".aib"
-					hidden
-					onChange={(e) => void onAibFile(e)}
-				/>
+			</div>
+			<section className="settings-backup__aidoku" aria-label="Aidoku backups">
+				<h3>{t('aidokuWizard.backupsTitle', { defaultValue: 'Aidoku backups' })}</h3>
+				<p className="muted">{t('aidokuWizard.exportHelp', {
+					defaultValue: 'In Aidoku, open Settings → Backups. Export a backup to Files, then choose its .aib file here.'
+				})}</p>
+				<div className="settings-backup__ops">
+					{aibPaused && aib && <Button loading={importAidoku.isPending} onClick={() => { void recheckAib(aib.file).then(() => { setAibStep(2); setAibPaused(false); }).catch(() => {}); }}>{t('aidokuWizard.resume')}</Button>}
+					<Button loading={importAidoku.isPending && !aib} onClick={() => aibFileRef.current?.click()}>
+						<FileUp size={15} />
+						{t('settings.importAidoku')}
+					</Button>
+					<input
+						ref={aibFileRef}
+						type="file"
+						accept=".aib"
+						hidden
+						onChange={(e) => void onAibFile(e)}
+					/>
+				</div>
+			</section>
+			<details className="settings-backup__advanced">
+				<summary>{t('aidokuWizard.otherImports', { defaultValue: 'Other backup formats' })}</summary>
+
 				<Button loading={importSuwayomi.isPending && !sw} onClick={() => swFileRef.current?.click()}>
 					<FileUp size={15} />
 					{t('settings.importSuwayomi')}
@@ -1351,7 +1376,7 @@ export function BackupSection() {
 					hidden
 					onChange={(e) => void onSwFile(e)}
 				/>
-			</div>
+			</details>
 
 			<Modal
 				open={sw !== null}
@@ -1432,7 +1457,7 @@ export function BackupSection() {
 						<Button disabled={recoveryBusy || importAidoku.isPending} onClick={closeAibModal}>{t('common.cancel')}</Button>
 						{aibStep > 1 && <Button disabled={recoveryBusy || importAidoku.isPending} onClick={() => setAibStep(aibStep === 3 ? 2 : 1)}>{t('aidokuWizard.back')}</Button>}
 						{aibStep < 3 ? (
-							<Button variant="primary" disabled={recoveryBusy || importAidoku.isPending} onClick={() => setAibStep(aibStep === 1 ? 2 : 3)}>{t(aibStep === 1 ? 'aidokuWizard.next' : 'aidokuWizard.review')}</Button>
+							<Button variant="primary" disabled={recoveryBusy || importAidoku.isPending || (aibStep === 2 && !aib?.current)} onClick={() => setAibStep(aibStep === 1 ? 2 : 3)}>{t(aibStep === 1 ? 'aidokuWizard.next' : 'aidokuWizard.review')}</Button>
 						) : (
 							<Button variant="primary" loading={importAidoku.isPending} disabled={!canConfirmAib || recoveryBusy} onClick={() => void confirmAibImport()}>{t('settings.confirmImport')}</Button>
 						)}
@@ -1451,8 +1476,10 @@ export function BackupSection() {
 						{aibStep === 1 && <AidokuWizardSummary result={aib.preview} />}
 						{aibStep === 2 && (
 							missingAidokuIds(aib.preview).length > 0 ? (
-								<AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} onBusyChange={setRecoveryBusy} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/settings?section=source-lists'); }} />
-							) : <p className="settings-modal-text">{t('aidokuWizard.sourcesReady')}</p>
+								<AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} seenDefaults={seenDefaults} onPreviewInvalidated={invalidateAibPreview} onBusyChange={setRecoveryBusy} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview, current: true } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/settings?section=source-lists'); }} />
+							) : aib.current ? <p className="settings-modal-text">{t('aidokuWizard.sourcesReady')}</p> : (
+								<Button loading={importAidoku.isPending} onClick={() => void recheckAib(aib.file).catch(() => {})}>{t('aidokuWizard.recheck')}</Button>
+							)
 						)}
 						{aibStep === 3 && <>
 							<AidokuWizardSummary result={aib.preview} />

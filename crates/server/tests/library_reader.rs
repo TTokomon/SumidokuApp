@@ -1690,3 +1690,26 @@ async fn batch_manga_expansion_beyond_sql_variable_limit() {
 	assert_eq!(status, StatusCode::OK);
 	assert_eq!(body["updated"], 0);
 }
+
+#[tokio::test]
+async fn history_search_filters_before_pagination_and_escapes_wildcards() {
+	let TestApp { app, db_path, .. } = test_app().await;
+	let pool = connect_db(&db_path).await;
+	let id = register_example_manga(&app).await;
+	sqlx::query("UPDATE manga SET title = 'Only_This%Title' WHERE id = ?")
+		.bind(id).execute(&pool).await.unwrap();
+	let chapter: i64 = sqlx::query_scalar("SELECT MIN(id) FROM chapter WHERE manga_id = ?")
+		.bind(id).fetch_one(&pool).await.unwrap();
+	sqlx::query("INSERT INTO chapter_user (chapter_id, user_id, last_page_read, last_read_at) VALUES (?, 1, 3, 456)")
+		.bind(chapter).execute(&pool).await.unwrap();
+
+	let (status, results) = request(&app, "GET", "/api/v1/history?search=only%5Fthis%25title", None).await;
+	assert_eq!(status, StatusCode::OK, "{results}");
+	assert_eq!(results["entries"].as_array().unwrap().len(), 1);
+	assert_eq!(results["entries"][0]["chapter"]["id"], chapter);
+	assert_eq!(results["entries"][0]["lastPageRead"], 3);
+	let (_, before) = request(&app, "GET", &format!("/api/v1/history?before=456:{chapter}"), None).await;
+	assert_eq!(before["entries"], json!([]));
+	let (_, escaped) = request(&app, "GET", "/api/v1/history?search=only%25title", None).await;
+	assert_eq!(escaped["entries"], json!([]));
+}

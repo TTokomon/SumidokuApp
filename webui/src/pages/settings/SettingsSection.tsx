@@ -10,7 +10,7 @@ export function Section({
 	children: ReactNode;
 }) {
 	return (
-		<section className="settings-section card">
+		<section className="settings-section card" aria-label={title}>
 			<h2 className="settings-section__title">{title}</h2>
 			{desc && <p className="settings-section__desc">{desc}</p>}
 			<div className="settings-section__body">{children}</div>

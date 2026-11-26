@@ -103,7 +103,7 @@ async fn import_installs_aix_package() {
 			}"#,
 		),
 		("Payload/main.wasm", &fixture_wasm()),
-		("Payload/icon.png", b"PNG-imported-icon"),
+		("Payload/icon.png", common::PNG),
 		(
 			"Payload/settings.json",
 			br#"[{"type": "switch", "key": "dataSaver", "title": "DS", "default": true}]"#,
@@ -160,7 +160,7 @@ async fn import_installs_aix_package() {
 		headers.get("content-type").and_then(|v| v.to_str().ok()),
 		Some("image/png")
 	);
-	assert_eq!(bytes, b"PNG-imported-icon");
+	assert_eq!(bytes, common::PNG);
 }
 
 #[tokio::test]

@@ -585,3 +585,22 @@ async fn safe_transfer_retains_unverified_page_offsets_and_origin_preferences() 
 	let preferences: (i64, bool, String) = sqlx::query_as("SELECT viewer_flags, incognito, sort_key FROM manga_user WHERE manga_id = ? AND user_id = 1").bind(target).fetch_one(&pool).await.unwrap();
 	assert_eq!(preferences, (9, true, "newest".into()));
 }
+
+#[tokio::test]
+async fn migration_refuses_duplicate_originals_and_mismatched_candidate_identity() {
+	let TestApp { app, tmp, .. } = test_app().await;
+	let (source, destination) = two_sources(&app, &tmp).await;
+	let (origin, key, _) = stocked_origin(&app, source).await;
+	let entry = json!({"fromMangaId": origin, "toSourceId": destination, "toMangaKey": key});
+	let before = common::db_dump(&tmp.path().join("test.db")).await;
+
+	let (status, _) = request(&app, "POST", "/api/v1/migrate", Some(json!({
+		"mode": "migrateWithHistory", "safePageOffsets": true, "entries": [entry, entry],
+	}))).await;
+	assert_eq!(status, StatusCode::BAD_REQUEST);
+	let mut mismatched = entry;
+	mismatched["toManga"] = json!({"key": "different-manga", "title": "Different manga"});
+	let (status, _) = migrate(&app, "migrateWithHistory", json!([mismatched])).await;
+	assert_eq!(status, StatusCode::BAD_REQUEST);
+	assert_eq!(common::db_dump(&tmp.path().join("test.db")).await, before);
+}

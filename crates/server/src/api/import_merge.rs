@@ -105,6 +105,9 @@ pub async fn ensure_manga_row(
 
 /// Intermediate shape of a chapter row's metadata
 pub struct ChapterMeta<'a> {
+	pub thumbnail: Option<&'a str>,
+	pub page_count: i64,
+	pub locked: bool,
 	pub title: Option<&'a str>,
 	pub number: Option<f64>,
 	pub volume: Option<f64>,
@@ -123,6 +126,9 @@ pub async fn ensure_chapter_row(
 	meta: Option<&ChapterMeta<'_>>,
 ) -> ApiResult<i64> {
 	let empty = ChapterMeta {
+		thumbnail: None,
+		page_count: 0,
+		locked: false,
 		title: None,
 		number: None,
 		volume: None,
@@ -144,12 +150,12 @@ pub async fn ensure_chapter_row(
 			volume: meta.volume,
 			scanlators: &meta.scanlators,
 			language: meta.language,
-			thumbnail: None,
+			thumbnail: meta.thumbnail,
 			url: meta.url,
 			date_uploaded: meta.date_uploaded,
 			source_order: meta.source_order,
-			page_count: 0,
-			locked: false,
+			page_count: meta.page_count,
+			locked: meta.locked,
 		},
 		now,
 	)
