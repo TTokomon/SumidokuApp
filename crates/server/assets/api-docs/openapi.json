@@ -10307,6 +10307,11 @@
             "items": {
               "$ref": "#/components/schemas/MigrateEntry"
             }
+          },
+          "safePageOffsets": {
+            "type": "boolean",
+            "default": false,
+            "description": "Preserve original page offsets rather than applying them to unverified layouts."
           }
         }
       },

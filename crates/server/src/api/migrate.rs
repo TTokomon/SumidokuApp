@@ -122,6 +122,9 @@ pub struct MigrateEntry {
 pub struct MigrateRequest {
 	pub mode: MigrateMode,
 	pub entries: Vec<MigrateEntry>,
+	/// New desktop clients preserve partial offsets only for an identical known chapter layout.
+	#[serde(default)]
+	pub safe_page_offsets: bool,
 }
 
 struct EntryOutcome {
@@ -174,7 +177,7 @@ pub async fn migrate_execute(
 	// The batch runs serially: one transaction per entry, a partial failure does not roll back completed entries, each gets ok/reason
 	let mut results = Vec::with_capacity(request.entries.len());
 	for entry in &request.entries {
-		let run = run_entry(&state, user.id, request.mode, entry).await?;
+		let run = run_entry(&state, user.id, request.mode, request.safe_page_offsets, entry).await?;
 		let value = match run {
 			EntryRun::Ok(outcome) => json!({
 				"fromMangaId": entry.from_manga_id,
@@ -198,6 +201,7 @@ async fn run_entry(
 	state: &Arc<AppState>,
 	user_id: i64,
 	mode: MigrateMode,
+	safe_page_offsets: bool,
 	entry: &MigrateEntry,
 ) -> ApiResult<EntryRun> {
 	let Ok(origin) = manga_row(&state.pool, entry.from_manga_id).await else {
@@ -251,7 +255,10 @@ async fn run_entry(
 				Err(e) => return Ok(failed_with("fetch_failed", e.message().to_string())),
 			}
 		} else {
-			let handle = state.get_handle(entry.to_source_id).await?;
+			let handle = match state.get_handle(entry.to_source_id).await {
+				Ok(handle) => handle,
+				Err(e) => return Ok(failed_with("fetch_failed", e.message().to_string())),
+			};
 			match handle.get_manga_update(initial, true, true).await {
 				Ok(updated) => fetched = Some(updated),
 				Err(e) => return Ok(failed_with("fetch_failed", e.to_string())),
@@ -272,13 +279,19 @@ async fn run_entry(
 	};
 
 	// In-library state carry-over: a target already shelved keeps its own first-shelved time, otherwise it inherits the source entry's
-	let origin_at: Option<i64> =
-		sqlx::query_scalar("SELECT in_library_at FROM manga_user WHERE manga_id = ? AND user_id = ?")
-			.bind(origin.id)
-			.bind(user_id)
-			.fetch_optional(&mut *tx)
-			.await?;
-	crate::store::library::shelve(&mut tx, to_manga_id, user_id, origin_at.unwrap_or_else(unix_now)).await?;
+	let (origin_at, viewer_flags, incognito, sort_key): (Option<i64>, i64, bool, String) =
+		sqlx::query_as("SELECT in_library_at, viewer_flags, incognito, sort_key FROM manga_user WHERE manga_id = ? AND user_id = ?")
+			.bind(origin.id).bind(user_id).fetch_one(&mut *tx).await?;
+	let target_has_settings: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM manga_user WHERE manga_id = ? AND user_id = ?)")
+		.bind(to_manga_id).bind(user_id).fetch_one(&mut *tx).await?;
+	if target_has_settings {
+		crate::store::library::shelve(&mut tx, to_manga_id, user_id, origin_at.unwrap_or_else(unix_now)).await?;
+	} else {
+		crate::store::library::upsert(&mut tx, &crate::store::library::LibraryEntry {
+			manga_id: to_manga_id, user_id, in_library: true,
+			in_library_at: Some(origin_at.unwrap_or_else(unix_now)), viewer_flags, incognito, sort_key: &sort_key,
+		}).await?;
+	}
 
 	// Categories are a union: the target's existing categories are kept, the source entry's are added in
 	let category_ids: Vec<i64> =
@@ -292,7 +305,7 @@ async fn run_entry(
 	}
 
 	let origin_progress: Vec<OriginProgress> = sqlx::query_as(
-		"SELECT c.key, c.number, c.volume, cu.last_page_read, cu.is_read, cu.is_bookmarked, cu.last_read_at
+		"SELECT c.key, c.number, c.volume, c.language, c.page_count, cu.last_page_read, cu.is_read, cu.is_bookmarked, cu.last_read_at
 		 FROM chapter_user cu JOIN chapter c ON c.id = cu.chapter_id
 		 WHERE cu.user_id = ? AND c.manga_id = ?
 		 AND (cu.last_page_read > 0 OR cu.is_read = 1 OR cu.is_bookmarked = 1 OR cu.last_read_at IS NOT NULL)",
@@ -302,18 +315,27 @@ async fn run_entry(
 	.fetch_all(&mut *tx)
 	.await?;
 	let targets: Vec<TargetChapter> = sqlx::query_as(
-		"SELECT id, number, volume, source_order FROM chapter WHERE manga_id = ? ORDER BY source_order ASC",
+		"SELECT id, key, number, volume, language, page_count FROM chapter WHERE manga_id = ? AND locked = 0 ORDER BY source_order ASC",
 	)
 	.bind(to_manga_id)
 	.fetch_all(&mut *tx)
 	.await?;
 	for row in &origin_progress {
-		let Some(target) = match_target(&targets, row) else {
+		let same_source = origin.source_id == entry.to_source_id;
+		let Some(target) = match_target(&targets, row, same_source) else {
 			warnings.push(format!(
 				"progress not carried: no unambiguous target chapter matches source chapter {}",
 				chapter_label(row)
 			));
 			continue;
+		};
+		let compatible_layout = same_source && row.key == target.key && row.page_count > 0
+			&& row.page_count == target.page_count && row.language == target.language;
+		let page_offset = if safe_page_offsets && row.last_page_read > 0 && !compatible_layout {
+			warnings.push(format!("Page position retained on original: chapter {} has an unverified page layout.", chapter_label(row)));
+			0
+		} else {
+			row.last_page_read
 		};
 		// Existing target progress keeps the newer values: page number takes the max, read/bookmarked take OR, read time takes the newer
 		crate::store::progress::merge(
@@ -321,7 +343,7 @@ async fn run_entry(
 			target.id,
 			user_id,
 			&crate::model::ChapterProgress {
-				last_page_read: row.last_page_read,
+				last_page_read: page_offset,
 				is_read: row.is_read,
 				is_bookmarked: row.is_bookmarked,
 				last_read_at: row.last_read_at,
@@ -381,6 +403,8 @@ struct OriginProgress {
 	key: String,
 	number: Option<f64>,
 	volume: Option<f64>,
+	language: Option<String>,
+	page_count: i64,
 	last_page_read: i64,
 	is_read: bool,
 	is_bookmarked: bool,
@@ -390,28 +414,43 @@ struct OriginProgress {
 #[derive(Debug, sqlx::FromRow)]
 struct TargetChapter {
 	id: i64,
+	key: String,
 	number: Option<f64>,
 	volume: Option<f64>,
+	language: Option<String>,
+	page_count: i64,
 }
 
 /// Refuse ambiguous chapter-number matches instead of taking the first translation.
 /// Volume-only records match only other volume-only records.
-fn match_target<'t>(targets: &'t [TargetChapter], row: &OriginProgress) -> Option<&'t TargetChapter> {
+fn match_target<'t>(targets: &'t [TargetChapter], row: &OriginProgress, same_source: bool) -> Option<&'t TargetChapter> {
+	let language_matches = |t: &&TargetChapter| match (&row.language, &t.language) {
+		(Some(old), Some(new)) if !old.is_empty() && !new.is_empty() => old.eq_ignore_ascii_case(new),
+		_ => true,
+	};
+	if same_source {
+		let mut exact = targets.iter().filter(language_matches).filter(|t| t.key == row.key
+			&& (row.number.is_none() || t.number == row.number)
+			&& (row.volume.is_none() || t.volume == row.volume));
+		if let Some(first) = exact.next() {
+			return exact.next().is_none().then_some(first);
+		}
+	}
 	if let Some(number) = row.number {
 		if let Some(volume) = row.volume {
-			let mut exact = targets.iter().filter(|t| t.number == Some(number) && t.volume == Some(volume));
+			let mut exact = targets.iter().filter(language_matches).filter(|t| t.number == Some(number) && t.volume == Some(volume));
 			if let Some(first) = exact.next() {
 				return exact.next().is_none().then_some(first);
 			}
 		}
-		let mut matches = targets.iter().filter(|t| {
+		let mut matches = targets.iter().filter(language_matches).filter(|t| {
 			t.number == Some(number) && (row.volume.is_none() || t.volume.is_none())
 		});
 		let first = matches.next()?;
 		return matches.next().is_none().then_some(first);
 	}
 	if let Some(volume) = row.volume {
-		let mut matches = targets.iter().filter(|t| t.number.is_none() && t.volume == Some(volume));
+		let mut matches = targets.iter().filter(language_matches).filter(|t| t.number.is_none() && t.volume == Some(volume));
 		let first = matches.next()?;
 		return matches.next().is_none().then_some(first);
 	}

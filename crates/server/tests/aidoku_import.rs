@@ -464,6 +464,10 @@ async fn import_aidoku_preserves_missing_sources_without_installing_packages() {
 	let (status, _) = post_aib(&app.app, "?preserveMissingSources=true").await;
 	assert_eq!(status, StatusCode::OK);
 	assert_eq!(db_dump(&app.db_path).await, after);
+	let chapter = chapter_by_key(&app.app, manga_id, "9").await;
+	let (status, queued) = request(&app.app, "POST", "/api/v1/downloads", Some(json!({"chapterIds": [chapter["id"].as_i64().unwrap()]}))).await;
+	assert_eq!(status, StatusCode::OK, "{queued}");
+	assert_eq!(queued["queued"], json!([]));
 }
 
 #[tokio::test]
@@ -486,7 +490,7 @@ async fn unsupported_aidoku_bindings_are_inactive_and_survive_portable_backup() 
 	assert_eq!(entries[0]["trackerId"], "shikimori");
 	assert_eq!(entries[0]["trackId"], "303");
 	assert_eq!(entries[0]["sourceKey"], "en.example-source");
-	let manga = library_entry(&app.app, "Example Manga").await;
+	let manga = library_entry(&app.app, "Aib Title One").await;
 	assert!(!tracker_links(&app.app, manga["id"].as_i64().unwrap()).await.iter().any(|row| row["provider"] == "shikimori"));
 	let (_, settings) = request(&app.app, "GET", "/api/v1/settings", None).await;
 	assert!(settings.get(archive_key).is_none());

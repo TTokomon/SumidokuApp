@@ -240,6 +240,7 @@ export function SourceCard({
 				)}
 			</div>
 			<div className="source-card__actions">
+				<IconButton label={t('aidokuWizard.transferSource', { defaultValue: 'Transfer source' })} onClick={(e) => { e.stopPropagation(); navigate(`/migrate?source=${s.id}`); }}><ArrowLeftRight size={17} /></IconButton>
 				{s.updateVersion !== null && <UpdateButton source={s} onUpdate={update.onUpdate} pending={update.pending} />}
 				<IconButton
 					label={s.pinned ? t('browse.unpin', { name: s.name }) : t('browse.pin', { name: s.name })}
@@ -296,6 +297,7 @@ export function SourceCard({
 									<CircleArrowUp size={14} />
 								</button>
 							)}
+							<button type="button" className="menu-row" onClick={() => { close(); navigate(`/migrate?source=${s.id}`); }}><span>{t('aidokuWizard.transferSource', { defaultValue: 'Transfer source' })}</span><ArrowLeftRight size={14} /></button>
 							<button type="button" className="menu-row" onClick={() => { close(); onTogglePin(s); }}>
 								<span>{s.pinned ? t('browse.unpinAction') : t('browse.pinAction')}</span>
 								{s.pinned ? <PinOff size={14} /> : <Pin size={14} />}

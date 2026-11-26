@@ -779,6 +779,7 @@ export type MigrateMode = "copy" | "migrate" | "migrateWithHistory";
 export type MigrateRequest = {
 	mode: MigrateMode;
 	entries: Array<MigrateEntry>;
+	safePageOffsets?: boolean;
 };
 
 export type MigrateResponse = {

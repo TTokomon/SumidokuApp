@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Trans, useTranslation } from 'react-i18next';
 import { ArrowLeft, ArrowRight, Search, TriangleAlert } from 'lucide-react';
 import { coverUrl } from '../../api/client';
@@ -73,12 +73,15 @@ function Reason({ item }: { item: MigrateResult }) {
 export default function MigratePage() {
 	const { t } = useTranslation();
 	const [params] = useSearchParams();
+	const navigate = useNavigate();
+	const location = useLocation();
+	const [incoming] = useState<LibraryEntry[]>(() => Array.isArray(location.state?.transferEntries) ? location.state.transferEntries.filter((entry: LibraryEntry) => entry.inLibrary && Number.isSafeInteger(entry.id)) : []);
 	// breaking-change guidance entry: ?source=<id> prefills the origin, sameSource=1 allows and preselects a same-source target
 	const prefill = Number(params.get('source')) || null;
 	const sameSource = params.get('sameSource') === '1';
-	const [step, setStep] = useState<Step>(prefill ? 'series' : 'source');
+	const [step, setStep] = useState<Step>(incoming.length ? 'destinations' : prefill ? 'series' : 'source');
 	const [sourceId, setSourceId] = useState<number | null>(prefill);
-	const [selected, setSelected] = useState<Set<number>>(new Set());
+	const [selected, setSelected] = useState<Set<number>>(() => new Set(incoming.map(entry => entry.id)));
 	const [destinations, setDestinations] = useState<number[]>(
 		sameSource && prefill ? [prefill] : []
 	);
@@ -99,10 +102,10 @@ export default function MigratePage() {
 	);
 
 	const series = useMemo(
-		() => (sourceId === null ? [] : (libraryQuery.data?.pages.flatMap((p) => p.entries) ?? [])),
-		[libraryQuery.data, sourceId]
+		() => incoming.length ? incoming : (sourceId === null ? [] : (libraryQuery.data?.pages.flatMap((p) => p.entries) ?? [])),
+		[libraryQuery.data, sourceId, incoming]
 	);
-	const sourceName = (sourcesQuery.data ?? []).find((s) => s.id === sourceId)?.name ?? '';
+	const sourceName = incoming.length ? t('aidokuWizard.selectedTitles', { defaultValue: 'Selected titles' }) : ((sourcesQuery.data ?? []).find((s) => s.id === sourceId)?.name ?? '');
 	const destName = (id: number) => (sourcesQuery.data ?? []).find((s) => s.id === id)?.name ?? `#${id}`;
 
 	const MODE_LABEL: Record<MigrateMode, string> = {
@@ -136,7 +139,8 @@ export default function MigratePage() {
 		void autoMatch(initial, destinations, patchRow).finally(() => setMatching(false));
 	}
 
-	const matchedRows = rows.filter((r) => r.state === 'matched' && r.target);
+	const matchedRows = rows.filter((r) => r.state === 'matched' && r.target && !r.result?.ok);
+	const failedRows = rows.filter((r) => r.result && !r.result.ok);
 	const doneCount = rows.filter((r) => r.result?.ok).length;
 
 	function execute(mode: MigrateMode) {
@@ -150,7 +154,7 @@ export default function MigratePage() {
 			}));
 		if (entries.length === 0) return;
 		migrate.mutate(
-			{ mode, entries },
+			{ mode, entries, safePageOffsets: true },
 			{
 				onSuccess: (res) => {
 					setExecuted(true);
@@ -181,7 +185,8 @@ export default function MigratePage() {
 					step !== 'source' ? (
 						<Button
 							size="sm"
-							onClick={() => setStep(step === 'series' ? 'source' : step === 'destinations' ? 'series' : 'destinations')}
+							disabled={matching || migrate.isPending}
+							onClick={() => incoming.length && step === 'series' ? navigate('/library') : setStep(step === 'series' ? 'source' : step === 'destinations' ? 'series' : 'destinations')}
 						>
 							<ArrowLeft size={14} />
 							{t('migrate.back')}
@@ -300,16 +305,17 @@ export default function MigratePage() {
 							})}
 						</span>
 						{matching && <Spinner size={16} />}
+						{executed && failedRows.length > 0 && <Button size="sm" onClick={() => setExecuted(false)}>{t('aidokuWizard.retryFailed', { defaultValue: 'Retry failed transfers' })}</Button>}
 						{!matching && !executed && (
 							<>
-								<Button size="sm" onClick={() => void autoMatch(rows.filter((r) => r.state === 'notfound'), destinations, patchRow)}>
+								<Button size="sm" onClick={() => { setMatching(true); void autoMatch(rows.filter((r) => r.state === 'notfound'), destinations, patchRow).finally(() => setMatching(false)); }}>
 									{t('migrate.retryUnmatched')}
 								</Button>
 								{(['copy', 'migrate', 'migrateWithHistory'] as MigrateMode[]).map((mode) => (
 									<Button
 										key={mode}
 										size="sm"
-										variant={mode === 'migrate' ? 'primary' : undefined}
+										variant={mode === 'migrateWithHistory' ? 'primary' : undefined}
 										disabled={matchedRows.length === 0}
 										onClick={() => setConfirmMode(mode)}
 									>
@@ -327,7 +333,7 @@ export default function MigratePage() {
 								</span>
 								<div className="migrate-row__side">
 									<div className="migrate-row__title">{row.manga.title}</div>
-									<div className="migrate-row__meta">{sourceName}</div>
+									<div className="migrate-row__meta">{destName(row.manga.sourceId)}</div>
 								</div>
 								<ArrowRight size={16} className="migrate-row__arrow" />
 								<div className="migrate-row__side">
@@ -351,7 +357,7 @@ export default function MigratePage() {
 										))}
 									{(row.result?.warnings ?? []).map((warning) => <p className="muted" key={warning}>{warning}</p>)}
 								</div>
-								{!executed && !matching && (
+								{!executed && !matching && !row.result?.ok && (
 									<RowMenu
 										onRematch={() => setRematchRow(row)}
 										onRemove={() => setRows((prev) => prev.filter((r) => r.manga.id !== row.manga.id))}
@@ -381,6 +387,7 @@ export default function MigratePage() {
 				}
 			>
 				<p className="muted">{confirmMode ? MODE_HINT[confirmMode] : ''}</p>
+				<p className="muted">{t('aidokuWizard.safeTransferHelp', { defaultValue: 'Unverified page positions stay with the original manga. Partial transfers keep the original in your library.' })}</p>
 				<p className="muted">{t('migrate.unmatchedUntouched', { count: rows.length - matchedRows.length })}</p>
 			</Modal>
 
@@ -390,7 +397,7 @@ export default function MigratePage() {
 					destinations={destinations}
 					destName={destName}
 					onPick={(candidate) => {
-						patchRow(rematchRow.manga.id, { state: 'matched', target: candidate });
+						patchRow(rematchRow.manga.id, { state: 'matched', target: candidate, result: undefined });
 						setRematchRow(null);
 					}}
 					onClose={() => setRematchRow(null)}

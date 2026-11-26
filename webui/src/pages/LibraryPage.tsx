@@ -1,4 +1,4 @@
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CategoriesSection, FilterGroupsSection, LibraryDisplaySection } from './library/LibraryManagement';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -71,6 +71,7 @@ export interface LibraryPageProps {
 export default function LibraryPage({ initialSelecting = false }: LibraryPageProps) {
 	const { t } = useTranslation();
 	const qc = useQueryClient();
+	const navigate = useNavigate();
 	const [params, setParams] = useSearchParams();
 	const panel = params.get('panel');
 	const setPanel = (value: string | null) => setParams((previous) => { const next = new URLSearchParams(previous); if (value) next.set('panel', value); else next.delete('panel'); return next; });
@@ -503,6 +504,7 @@ export default function LibraryPage({ initialSelecting = false }: LibraryPagePro
 
 			{selecting && (
 				<BatchActionBar count={t('library.selectedShort', { count: selectedEntries.length })}>
+					<Button size="sm" disabled={selectedEntries.length === 0 || batchBusy} onClick={() => navigate('/migrate', { state: { transferEntries: selectedEntries } })}>{t('aidokuWizard.transferSource', { defaultValue: 'Transfer source' })}</Button>
 					<Button
 						size="sm"
 						variant="primary"

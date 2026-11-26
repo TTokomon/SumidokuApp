@@ -61,6 +61,7 @@ export function MigrateModal({ manga, onClose }: { manga: Manga; onClose: () => 
 		migrate.mutate(
 			{
 				mode,
+				safePageOffsets: true,
 				entries: [
 					{
 						fromMangaId: manga.id,
@@ -119,7 +120,7 @@ export function MigrateModal({ manga, onClose }: { manga: Manga; onClose: () => 
 					{error && <p className="migrate-single__error">{error}</p>}
 					<div className="migrate-single__actions">
 						{(['copy', 'migrate', 'migrateWithHistory'] as MigrateMode[]).map((mode) => (
-							<Button key={mode} size="sm" disabled={busy} title={MODE_HINT[mode]} onClick={() => execute(mode)}>
+							<Button key={mode} size="sm" variant={mode === 'migrateWithHistory' ? 'primary' : undefined} disabled={busy} title={MODE_HINT[mode]} onClick={() => execute(mode)}>
 								{MODE_LABEL[mode]}
 							</Button>
 						))}
@@ -130,7 +131,7 @@ export function MigrateModal({ manga, onClose }: { manga: Manga; onClose: () => 
 							{t('migrateModal.backToCandidates')}
 						</Button>
 					</div>
-					<p className="muted">{MODE_HINT.migrate}</p>
+					<p className="muted">{t('aidokuWizard.safeTransferHelp', { defaultValue: 'Unverified page positions stay with the original manga. Partial transfers keep the original in your library.' })}</p>
 				</div>
 			) : (
 				<>

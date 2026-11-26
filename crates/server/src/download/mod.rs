@@ -393,6 +393,15 @@ impl DownloadManager {
 				self.settle_finished(chapter_id, user_id, &path, &shared_format).await;
 				continue;
 			}
+			// A retained unavailable source must not create failed jobs merely because a
+			// backup supplied its chapter identity. Existing local artifacts above still work.
+			let available = sqlx::query_scalar::<_, bool>(
+				"SELECT EXISTS(SELECT 1 FROM chapter c JOIN manga m ON m.id = c.manga_id
+				 JOIN source s ON s.id = m.source_id WHERE c.id = ? AND s.enabled = 1)",
+			).bind(chapter_id).fetch_one(&self.pool).await;
+			if !matches!(available, Ok(true)) {
+				continue;
+			}
 			let status: Option<(String,)> =
 				match sqlx::query_as("SELECT status FROM download WHERE chapter_id = ? AND user_id = ?")
 					.bind(chapter_id)

@@ -651,7 +651,8 @@ async fn select_manga(
 	// until a scan restores them
 	const BASE: &str = "SELECT m.* FROM manga m
 	 JOIN manga_user mu ON mu.manga_id = m.id AND mu.user_id = ?
-	 WHERE mu.in_library = 1 AND m.update_strategy != 1 AND m.trashed_at IS NULL";
+	 WHERE mu.in_library = 1 AND m.update_strategy != 1 AND m.trashed_at IS NULL
+	 AND NOT EXISTS (SELECT 1 FROM source s WHERE s.id = m.source_id AND s.kind = 'aidoku' AND s.wasm_path = '' AND s.enabled = 0)";
 	let settings = LibraryUpdateSettings::load(pool, config_interval_hours).await?;
 	let seconds = interval_seconds(settings.update_interval_hours);
 	// When updating from a specific category, Aidoku ignores that category in the global exclusion list

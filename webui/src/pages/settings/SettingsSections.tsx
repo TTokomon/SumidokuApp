@@ -1423,7 +1423,10 @@ export function BackupSection() {
 				panelClassName="aidoku-wizard"
 				onClose={closeAibModal}
 				footer={aibResult ? (
-					<Button variant="primary" onClick={closeAibModal}>{t('settings.done')}</Button>
+					<>
+						{(aibResult.missingSources ?? []).length > 0 && <Button onClick={() => { closeAibModal(); navigate('/migrate'); }}>{t('aidokuWizard.transferSource', { defaultValue: 'Transfer source' })}</Button>}
+						<Button variant="primary" onClick={closeAibModal}>{t('settings.done')}</Button>
+					</>
 				) : (
 					<>
 						<Button disabled={recoveryBusy || importAidoku.isPending} onClick={closeAibModal}>{t('common.cancel')}</Button>
