@@ -158,7 +158,8 @@ pub async fn publish(conn: &mut SqliteConnection, id: i64) -> ApiResult<()> {
 }
 
 /// A refresh rewrites everything the source owns and revives a trashed row; `page_count` and the
-/// fetch times stay with the local row.
+/// fetch times stay with a confirmed local row. Confirming a provisional backup chapter
+/// makes it readable while retaining the marker that excludes it from the new-release feed.
 pub async fn upsert_from_source(conn: &mut SqliteConnection, manga_id: i64, chapter: &ChapterFields<'_>, now: i64) -> ApiResult<()> {
 	let before = published_by_key(conn, manga_id, chapter.key).await?;
 	let id: i64 = sqlx::query_scalar(
@@ -170,7 +171,9 @@ pub async fn upsert_from_source(conn: &mut SqliteConnection, manga_id: i64, chap
 		 scanlators = excluded.scanlators, language = excluded.language,
 		 thumbnail = excluded.thumbnail, url = excluded.url,
 		 date_uploaded = excluded.date_uploaded, source_order = excluded.source_order,
-		 locked = excluded.locked, fetched_at = chapter.fetched_at, created_at = chapter.created_at,
+		 locked = excluded.locked,
+		 fetched_at = CASE WHEN chapter.fetched_at = 0 THEN excluded.fetched_at ELSE chapter.fetched_at END,
+		 created_at = CASE WHEN chapter.fetched_at = 0 THEN 0 ELSE chapter.created_at END,
 		 trashed_at = NULL
 		 RETURNING id",
 	)

@@ -78,6 +78,7 @@ pub async fn get_recent(
 			AND (mu.in_library_at IS NULL OR COALESCE(c.created_at, c.fetched_at) >= mu.in_library_at)
 		 LEFT JOIN chapter_user cu ON cu.chapter_id = c.id AND cu.user_id = ?
 		 WHERE c.fetched_at > 0 AND c.trashed_at IS NULL AND c.locked = 0
+		 AND COALESCE(c.created_at, c.fetched_at) > 0
 		 ORDER BY c.fetched_at DESC, c.id DESC LIMIT ? OFFSET ?",
 	)
 	.bind(user.id)

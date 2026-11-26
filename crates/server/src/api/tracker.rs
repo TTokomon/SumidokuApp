@@ -517,7 +517,12 @@ mod tests {
 		let app = Router::new()
 			.route(
 				"/token/anilist",
-				axum::routing::post(|| async {
+				axum::routing::post(|Json(body): Json<serde_json::Value>| async move {
+					assert_eq!(body["grant_type"], "authorization_code");
+					assert_eq!(body["code"], "ok");
+					assert_eq!(body["client_id"], "id-anilist");
+					assert_eq!(body["redirect_uri"], "https://sumidoku.github.io/oauth/anilist/callback/");
+					assert!(body.get("code_verifier").is_none());
 					Json(serde_json::json!({
 						"access_token": "access-token",
 						"refresh_token": "refresh-token",
@@ -804,8 +809,9 @@ mod tests {
 		let query: HashMap<_, _> = authorize.query_pairs().into_owned().collect();
 		assert_eq!(query["client_id"], "id-anilist");
 		assert_eq!(query["redirect_uri"], "https://sumidoku.github.io/oauth/anilist/callback/");
-		assert!(query.contains_key("code_challenge"));
-		assert_eq!(query["code_challenge_method"], "S256");
+		assert_eq!(query["response_type"], "code");
+		assert!(!query.contains_key("code_challenge"));
+		assert!(!query.contains_key("code_challenge_method"));
 		let state: serde_json::Value = serde_json::from_str(&query["state"]).unwrap();
 		assert_eq!(state["redirectUrl"], "http://sumidoku.test/api/v1/trackers/oauth/anilist/callback");
 
@@ -856,6 +862,10 @@ mod tests {
 		let query: HashMap<_, _> = authorize.query_pairs().into_owned().collect();
 		let encoded_state = url::form_urlencoded::byte_serialize(query["state"].as_bytes()).collect::<String>();
 		let callback = format!("/api/v1/trackers/oauth/anilist/callback?code=ok&state={encoded_state}");
+
+		let state: serde_json::Value = serde_json::from_str(&query["state"]).unwrap();
+		let nonce = state["nonce"].as_str().unwrap();
+		assert!(dao::consume_pending(&pool, Provider::Anilist, 2, nonce).await.unwrap().is_none());
 
 		let (status, _, _) = get(&app, &callback, None).await;
 		assert_eq!(status, StatusCode::UNAUTHORIZED);

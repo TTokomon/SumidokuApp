@@ -1062,7 +1062,9 @@ pub async fn reconcile_chapters_detailed(
 			.bind(&chapter.key)
 			.fetch_one(&mut *conn)
 			.await?;
-		new_ids.push(id);
+		if !rekeyed_ids.contains(&id) {
+			new_ids.push(id);
+		}
 	}
 	Ok(ReconcileOutcome {
 		new_ids,
@@ -1970,7 +1972,7 @@ mod tests {
 		std::fs::write(&artifact, b"downloaded").expect("artifact");
 
 		let first = run_reconcile(&pool, manga_id, &[reconcile_chapter("new", Some(1.0), Some(2.0))]).await;
-		assert_eq!(first.new_ids, vec![old_id]);
+		assert!(first.new_ids.is_empty(), "a rekey is not a newly released chapter");
 		assert_eq!(first.previous_latest_chapter_number, Some(1.0));
 		let row: (i64, String, i64, i64) = sqlx::query_as(
 			"SELECT id, key, fetched_at, page_count FROM chapter WHERE id = ?",
@@ -2033,6 +2035,27 @@ mod tests {
 			.await
 			.expect("rekey timestamp");
 		assert_eq!(old_fetched_at, 123);
+	}
+
+	#[tokio::test]
+	async fn confirmed_backup_chapter_becomes_readable_without_becoming_a_new_release() {
+		let (pool, manga_id, _tmp) = reconcile_db().await;
+		let id: i64 = sqlx::query_scalar(
+			"INSERT INTO chapter (manga_id, key, number, locked, fetched_at, created_at)
+			 VALUES (?, 'backup', 1, 1, 0, 123) RETURNING id",
+		).bind(manga_id).fetch_one(&pool).await.unwrap();
+		sqlx::query("INSERT INTO chapter_user (chapter_id, user_id, last_page_read) VALUES (?, 1, 4)")
+			.bind(id).execute(&pool).await.unwrap();
+		let confirmed = reconcile_chapter("backup", Some(1.0), None);
+		let result = run_reconcile(&pool, manga_id, std::slice::from_ref(&confirmed)).await;
+		assert!(result.new_ids.is_empty());
+		let row: (i64, i64, i64, bool, i64) = sqlx::query_as(
+			"SELECT c.id, c.fetched_at, c.created_at, c.locked, u.last_page_read FROM chapter c
+			 JOIN chapter_user u ON u.chapter_id = c.id WHERE c.id = ?",
+		).bind(id).fetch_one(&pool).await.unwrap();
+		assert!(row.1 > 0);
+		assert_eq!((row.0, row.2, row.3, row.4), (id, 0, false, 4));
+		assert!(run_reconcile(&pool, manga_id, &[confirmed]).await.new_ids.is_empty());
 	}
 
 	#[tokio::test]

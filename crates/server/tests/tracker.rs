@@ -165,12 +165,12 @@ async fn remote_routes_require_a_connected_account() {
 }
 
 #[tokio::test]
-async fn oauth_status_and_start_without_build_credentials() {
+async fn oauth_status_and_start_without_runtime_configuration() {
 	let TestApp { app, .. } = test_app().await;
 
 	let (status, body) = request(&app, "GET", "/api/v1/trackers/oauth/anilist/status", None).await;
 	assert_eq!(status, StatusCode::OK);
-	assert_eq!(body, json!({"logged_in": false, "username": null}));
+	assert_eq!(body, json!({"logged_in": false, "configured": false, "username": null}));
 
 	let (status, body) = request(&app, "POST", "/api/v1/trackers/oauth/anilist/logout", None).await;
 	assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
@@ -180,8 +180,7 @@ async fn oauth_status_and_start_without_build_credentials() {
 	let (status, _) = request(&app, "GET", "/api/v1/trackers/oauth/anilist/start", None).await;
 	assert_eq!(status, StatusCode::BAD_REQUEST);
 
-	// release builds bake the client credentials in; the test binary has none,
-	// so start fails with the build-time configuration error
+	// The test server has no runtime OAuth registration.
 	let (status, body) = request_with_host(&app, "/api/v1/trackers/oauth/anilist/start").await;
 	assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
 	assert!(body["error"]["message"].as_str().unwrap().contains("SUMIDOKU_OAUTH_ANILIST_CLIENT_ID"));

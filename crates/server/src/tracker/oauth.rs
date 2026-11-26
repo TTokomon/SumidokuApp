@@ -329,12 +329,15 @@ impl OAuthManager {
 
 	async fn exchange(&self, provider: Provider, form: &[(&str, String)]) -> Result<dao::TrackerOAuthToken, TrackerError> {
 		let app = self.app(provider);
-		let response = self
-			.http
-			.post(&app.token_url)
-			.header(reqwest::header::USER_AGENT, Self::user_agent())
-			.form(form)
-			.send()
+		let request = self.http.post(&app.token_url)
+			.header(reqwest::header::USER_AGENT, Self::user_agent());
+		let request = if provider == Provider::Anilist {
+			let payload: HashMap<_, _> = form.iter().map(|(key, value)| (*key, value)).collect();
+			request.json(&payload)
+		} else {
+			request.form(form)
+		};
+		let response = request.send()
 			.await
 			.map_err(|error| TrackerError::Provider { provider, message: format!("OAuth token request failed: {}", request_failure(error)) })?;
 		let status = response.status();
@@ -572,6 +575,24 @@ mod tests {
 			HashMap::from([(Provider::Bangumi, app)]),
 		);
 		Fixture { oauth, pool, endpoint, _tmp: tmp }
+	}
+
+	#[tokio::test]
+	async fn mangabaka_keeps_s256_and_never_places_the_secret_in_the_authorize_url() {
+		let fixture = fixture(TokenMode::Rejected).await;
+		let mut app = OAuthApp::for_provider(Provider::Mangabaka);
+		app.client_id = Some("fixture-client".into());
+		app.client_secret = Some("fixture-secret".into());
+		let manager = OAuthManager::with_apps(
+			fixture.pool.clone(), reqwest::Client::new(), OAUTH_RELAY_ROOT.into(),
+			HashMap::from([(Provider::Mangabaka, app)]),
+		);
+		let address = manager.start(Provider::Mangabaka, 1, "http://127.0.0.1:3001").await.unwrap();
+		let url = reqwest::Url::parse(&address).unwrap();
+		let params: HashMap<_, _> = url.query_pairs().into_owned().collect();
+		assert_eq!(params["code_challenge_method"], "S256");
+		assert_eq!(params["code_challenge"].len(), 43);
+		assert!(!address.contains("fixture-secret"));
 	}
 
 	async fn seed(pool: &SqlitePool, expires_at: Option<i64>, refresh: bool) {
