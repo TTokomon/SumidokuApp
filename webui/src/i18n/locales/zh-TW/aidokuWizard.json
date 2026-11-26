@@ -1,0 +1,19 @@
+{
+	"aidokuWizard": {
+		"steps": "匯入步驟",
+		"reviewBackup": "檢查備份",
+		"restoreSources": "還原來源",
+		"finish": "完成",
+		"back": "返回",
+		"next": "繼續",
+		"review": "檢查匯入",
+		"resume": "繼續 Aidoku 匯入",
+		"details": "進階匯入詳情",
+		"sourcesReady": "所有必要來源皆已安裝。請檢查匯入內容。",
+		"ready": "備份已就緒",
+		"complete": "匯入完成",
+		"previewHelp": "這些記錄可以新增或合併。尚未匯入任何資料。",
+		"missing": "需要處理的來源：{{count}} 個。",
+		"offlineHelp": "還原完全相符的來源即可閱讀這些作品。無法還原的記錄將另外列出。"
+	}
+}

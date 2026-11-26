@@ -1,0 +1,19 @@
+{
+	"aidokuWizard": {
+		"steps": "Importschritte",
+		"reviewBackup": "Sicherung prüfen",
+		"restoreSources": "Quellen wiederherstellen",
+		"finish": "Abschließen",
+		"back": "Zurück",
+		"next": "Weiter",
+		"review": "Import prüfen",
+		"resume": "Aidoku-Import fortsetzen",
+		"details": "Erweiterte Importdetails",
+		"sourcesReady": "Alle benötigten Quellen sind installiert. Prüfe den Import.",
+		"ready": "Deine Sicherung ist bereit",
+		"complete": "Import abgeschlossen",
+		"previewHelp": "Diese Einträge können hinzugefügt oder zusammengeführt werden. Es wurde noch nichts importiert.",
+		"missing": "Quellen, die Aufmerksamkeit benötigen: {{count}}.",
+		"offlineHelp": "Installiere exakt passende Quellen, um die Titel zu lesen. Nicht wiederherstellbare Einträge werden separat aufgeführt."
+	}
+}

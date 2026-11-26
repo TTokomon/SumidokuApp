@@ -1,0 +1,19 @@
+{
+	"aidokuWizard": {
+		"steps": "Import steps",
+		"reviewBackup": "Review backup",
+		"restoreSources": "Restore sources",
+		"finish": "Finish",
+		"back": "Back",
+		"next": "Continue",
+		"review": "Review import",
+		"resume": "Resume Aidoku Import",
+		"details": "Advanced import details",
+		"sourcesReady": "All required sources are installed. Continue to review your import.",
+		"ready": "Your backup is ready",
+		"complete": "Import complete",
+		"previewHelp": "These records can be added or merged. Nothing has been imported yet.",
+		"missing": "Sources needing attention: {{count}}.",
+		"offlineHelp": "Recover exact matching sources to read those titles. Records that cannot be restored are listed separately."
+	}
+}

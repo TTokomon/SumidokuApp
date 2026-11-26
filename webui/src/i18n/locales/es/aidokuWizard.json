@@ -1,0 +1,19 @@
+{
+	"aidokuWizard": {
+		"steps": "Pasos de importación",
+		"reviewBackup": "Revisar copia",
+		"restoreSources": "Restaurar fuentes",
+		"finish": "Finalizar",
+		"back": "Atrás",
+		"next": "Continuar",
+		"review": "Revisar importación",
+		"resume": "Reanudar importación de Aidoku",
+		"details": "Detalles avanzados",
+		"sourcesReady": "Todas las fuentes necesarias están instaladas. Revisa la importación.",
+		"ready": "Tu copia está lista",
+		"complete": "Importación completada",
+		"previewHelp": "Estos registros se pueden añadir o combinar. Aún no se ha importado nada.",
+		"missing": "Fuentes que requieren atención: {{count}}.",
+		"offlineHelp": "Recupera las fuentes exactas para leer esos títulos. Los registros que no se puedan restaurar se muestran por separado."
+	}
+}

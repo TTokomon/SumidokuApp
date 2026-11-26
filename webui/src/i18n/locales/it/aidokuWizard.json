@@ -1,0 +1,19 @@
+{
+	"aidokuWizard": {
+		"steps": "Passaggi di importazione",
+		"reviewBackup": "Controlla backup",
+		"restoreSources": "Ripristina fonti",
+		"finish": "Fine",
+		"back": "Indietro",
+		"next": "Continua",
+		"review": "Controlla importazione",
+		"resume": "Riprendi importazione Aidoku",
+		"details": "Dettagli avanzati",
+		"sourcesReady": "Tutte le fonti necessarie sono installate. Controlla l’importazione.",
+		"ready": "Il backup è pronto",
+		"complete": "Importazione completata",
+		"previewHelp": "Questi dati possono essere aggiunti o uniti. Non è ancora stato importato nulla.",
+		"missing": "Fonti da verificare: {{count}}.",
+		"offlineHelp": "Ripristina le fonti esatte per leggere quei titoli. I dati non ripristinabili sono elencati separatamente."
+	}
+}

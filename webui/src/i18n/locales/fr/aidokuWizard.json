@@ -1,0 +1,19 @@
+{
+	"aidokuWizard": {
+		"steps": "Étapes d’importation",
+		"reviewBackup": "Vérifier la sauvegarde",
+		"restoreSources": "Restaurer les sources",
+		"finish": "Terminer",
+		"back": "Retour",
+		"next": "Continuer",
+		"review": "Vérifier l’importation",
+		"resume": "Reprendre l’importation Aidoku",
+		"details": "Détails avancés",
+		"sourcesReady": "Toutes les sources nécessaires sont installées. Vérifiez l’importation.",
+		"ready": "Votre sauvegarde est prête",
+		"complete": "Importation terminée",
+		"previewHelp": "Ces entrées peuvent être ajoutées ou fusionnées. Rien n’a encore été importé.",
+		"missing": "Sources à vérifier : {{count}}.",
+		"offlineHelp": "Restaurez les sources exactes pour lire ces titres. Les entrées non récupérables sont indiquées séparément."
+	}
+}

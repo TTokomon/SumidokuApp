@@ -68,6 +68,7 @@ import { SkippedItems } from './SkippedItems';
 import '../settings.css';
 import { Section } from './SettingsSection';
 import { AidokuImportReport } from './AidokuImportReport';
+import { AidokuWizardSummary, AidokuWizardSteps } from './AidokuImportWizard';
 import { AidokuSourceRecovery, missingAidokuIds } from './AidokuSourceRecovery';
 import { useAidokuImportSession } from './AidokuImportSession';
 
@@ -1168,7 +1169,8 @@ function SuwayomiImportResultView({ result }: { result: SuwayomiImportResponse }
 
 export function BackupSection() {
 	const navigate = useNavigate();
-	const { aib, setAib, result: aibResult, setResult: setAibResult, paused: aibPaused, setPaused: setAibPaused, acceptSkips, setAcceptSkips, selected, setSelected } = useAidokuImportSession();
+	const { aib, setAib, result: aibResult, setResult: setAibResult, paused: aibPaused, setPaused: setAibPaused, acceptSkips, setAcceptSkips, step: aibStep, setStep: setAibStep, selected, setSelected } = useAidokuImportSession();
+	const [recoveryBusy, setRecoveryBusy] = useState(false);
 	const { t } = useTranslation();
 	const restore = useRestoreBackup();
 	const fileRef = useRef<HTMLInputElement>(null);
@@ -1232,7 +1234,7 @@ export function BackupSection() {
 			const dryPreview = await importAidoku.mutateAsync({ file, dryRun: true });
 			setAib({ file, preview: dryPreview });
 			setSelected([]);
-			setAibPaused(false); setAcceptSkips(false);
+			setAibPaused(false); setAcceptSkips(false); setAibStep(1);
 			setAibResult(null);
 		} catch {
 			// api() already popped an error toast
@@ -1240,7 +1242,7 @@ export function BackupSection() {
 	}
 
 	async function confirmAibImport() {
-		if (!aib || !canConfirmAib) return;
+		if (!aib || !canConfirmAib || aibStep !== 3 || recoveryBusy || importAidoku.isPending) return;
 		try {
 			const res = await importAidoku.mutateAsync({ file: aib.file, dryRun: false });
 			setAibResult(res);
@@ -1250,6 +1252,10 @@ export function BackupSection() {
 	}
 
 	function closeAibModal() {
+		if (recoveryBusy || importAidoku.isPending) return;
+		setAibStep(1);
+		setAibPaused(false);
+		setAcceptSkips(false);
 		setAib(null);
 		setAibResult(null);
 		setSelected([]);
@@ -1322,7 +1328,7 @@ export function BackupSection() {
 					hidden
 					onChange={(e) => void onFile(e)}
 				/>
-				{aibPaused && aib && <Button onClick={() => { setAibPaused(false); void importAidoku.mutateAsync({ file: aib.file, dryRun: true }).then((preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }).catch(() => {}); }}>Resume Aidoku Import</Button>}
+				{aibPaused && aib && <Button loading={importAidoku.isPending} onClick={() => { void importAidoku.mutateAsync({ file: aib.file, dryRun: true }).then((preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); setAibStep(2); setAibPaused(false); }).catch(() => {}); }}>{t('aidokuWizard.resume')}</Button>}
 				<Button loading={importAidoku.isPending && !aib} onClick={() => aibFileRef.current?.click()}>
 					<FileUp size={15} />
 					{t('settings.importAidoku')}
@@ -1414,32 +1420,43 @@ export function BackupSection() {
 			<Modal
 				open={!aibPaused && aib !== null}
 				title={t('settings.importAidoku')}
+				panelClassName="aidoku-wizard"
 				onClose={closeAibModal}
-				footer={
-					aibResult ? (
-						<Button variant="primary" onClick={closeAibModal}>
-							{t('settings.done')}
-						</Button>
-					) : (
-						<>
-							<Button onClick={closeAibModal}>{t('common.cancel')}</Button>
-							<Button variant="primary" loading={importAidoku.isPending} disabled={!canConfirmAib} onClick={() => void confirmAibImport()}>
-								{t('settings.confirmImport')}
-							</Button>
-						</>
-					)
-				}
+				footer={aibResult ? (
+					<Button variant="primary" onClick={closeAibModal}>{t('settings.done')}</Button>
+				) : (
+					<>
+						<Button disabled={recoveryBusy || importAidoku.isPending} onClick={closeAibModal}>{t('common.cancel')}</Button>
+						{aibStep > 1 && <Button disabled={recoveryBusy || importAidoku.isPending} onClick={() => setAibStep(aibStep === 3 ? 2 : 1)}>{t('aidokuWizard.back')}</Button>}
+						{aibStep < 3 ? (
+							<Button variant="primary" disabled={recoveryBusy || importAidoku.isPending} onClick={() => setAibStep(aibStep === 1 ? 2 : 3)}>{t(aibStep === 1 ? 'aidokuWizard.next' : 'aidokuWizard.review')}</Button>
+						) : (
+							<Button variant="primary" loading={importAidoku.isPending} disabled={!canConfirmAib || recoveryBusy} onClick={() => void confirmAibImport()}>{t('settings.confirmImport')}</Button>
+						)}
+					</>
+				)}
 			>
 				{aibResult ? (
-					<AidokuImportReport result={aibResult} />
-				) : (
-					aib && (
-						<>
-							{missingAidokuIds(aib.preview).length > 0 && <AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/browse?view=lists'); }} />}
-							<AidokuImportReport result={aib.preview} />
-							{aib.preview.skipped.length > 0 && <label><input type="checkbox" checked={acceptSkips} onChange={(event) => setAcceptSkips(event.currentTarget.checked)} /> {t('settings.aidokuReport.confirmSkips')}</label>}
-						</>
-					)
+					<>
+						<AidokuWizardSteps step={3} />
+						<AidokuWizardSummary result={aibResult} />
+						<details className="settings-backup__skipped"><summary>{t('aidokuWizard.details')}</summary><AidokuImportReport result={aibResult} /></details>
+					</>
+				) : aib && (
+					<>
+						<AidokuWizardSteps step={aibStep} />
+						{aibStep === 1 && <AidokuWizardSummary result={aib.preview} />}
+						{aibStep === 2 && (
+							missingAidokuIds(aib.preview).length > 0 ? (
+								<AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} onBusyChange={setRecoveryBusy} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/browse?view=lists'); }} />
+							) : <p className="settings-modal-text">{t('aidokuWizard.sourcesReady')}</p>
+						)}
+						{aibStep === 3 && <>
+							<AidokuWizardSummary result={aib.preview} />
+							<details className="settings-backup__skipped"><summary>{t('aidokuWizard.details')}</summary><AidokuImportReport result={aib.preview} /></details>
+							{aib.preview.skipped.length > 0 && <label className="aidoku-wizard__ack"><input type="checkbox" checked={acceptSkips} onChange={(event) => setAcceptSkips(event.currentTarget.checked)} /> {t('settings.aidokuReport.confirmSkips')}</label>}
+						</>}
+					</>
 				)}
 			</Modal>
 

@@ -1,0 +1,19 @@
+{
+	"aidokuWizard": {
+		"steps": "가져오기 단계",
+		"reviewBackup": "백업 검토",
+		"restoreSources": "소스 복원",
+		"finish": "완료",
+		"back": "뒤로",
+		"next": "계속",
+		"review": "가져오기 검토",
+		"resume": "Aidoku 가져오기 재개",
+		"details": "상세 가져오기 정보",
+		"sourcesReady": "필요한 소스가 모두 설치되었습니다. 가져오기 내용을 검토하세요.",
+		"ready": "백업이 준비되었습니다",
+		"complete": "가져오기 완료",
+		"previewHelp": "이 기록은 추가하거나 병합할 수 있습니다. 아직 가져온 데이터는 없습니다.",
+		"missing": "확인이 필요한 소스: {{count}}개.",
+		"offlineHelp": "정확히 일치하는 소스를 복원하여 작품을 읽을 수 있습니다. 복원할 수 없는 기록은 별도로 표시됩니다."
+	}
+}

@@ -1,0 +1,19 @@
+{
+	"aidokuWizard": {
+		"steps": "导入步骤",
+		"reviewBackup": "检查备份",
+		"restoreSources": "恢复来源",
+		"finish": "完成",
+		"back": "返回",
+		"next": "继续",
+		"review": "检查导入",
+		"resume": "继续 Aidoku 导入",
+		"details": "高级导入详情",
+		"sourcesReady": "所有所需来源均已安装。请检查导入内容。",
+		"ready": "备份已就绪",
+		"complete": "导入完成",
+		"previewHelp": "这些记录可以添加或合并。尚未导入任何数据。",
+		"missing": "需要处理的来源：{{count}} 个。",
+		"offlineHelp": "恢复完全匹配的来源即可阅读这些作品。无法恢复的记录将单独列出。"
+	}
+}
