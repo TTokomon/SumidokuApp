@@ -53,6 +53,37 @@ with tempfile.TemporaryDirectory(prefix='sumidoku-native-ui-fixture-') as tempor
     (repo_dir/'index.json').write_text(json.dumps({'name':'Recovery Fixture','sources':[{'id':'en.example-source','name':'Exact Fixture','version':1,'downloadURL':'example.aix','languages':['en'],'contentRating':0}]}))
     class QuietRepo(http.server.SimpleHTTPRequestHandler):
         def log_message(self,*args): pass
+    class ProbeFixture(http.server.BaseHTTPRequestHandler):
+        """Disposable protocol fixture for the native health and session boundary."""
+        mode = "ready"
+
+        def log_message(self, *_args):
+            pass
+
+        def do_GET(self):
+            modes = {"ready", "busy", "offline", "expired"}
+            if self.path.startswith("/fixture/") and self.path.removeprefix("/fixture/") in modes:
+                ProbeFixture.mode = self.path.removeprefix("/fixture/")
+                status, payload = 200, {"status": "ok"}
+            elif self.path == "/health":
+                status = 503 if ProbeFixture.mode == "offline" else 200
+                payload = {"status": "unavailable" if status == 503 else "ok"}
+            elif self.path == "/api/v1/auth/status":
+                status = {"busy": 503, "expired": 401}.get(ProbeFixture.mode, 200)
+                payload = {"enabled": True, "user": {"id": 1}, "username": "Fixture User"}
+            else:
+                status, payload = 200, {"fixture": True}
+            body = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    probe = http.server.ThreadingHTTPServer(('127.0.0.1', 0), ProbeFixture)
+    assert probe.server_port != 3000 and probe.server_port != port
+    (root/'probe-port').write_text(str(probe.server_port))
+    threading.Thread(target=probe.serve_forever, daemon=True).start()
     repo=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(QuietRepo,directory=str(repo_dir)))
     threading.Thread(target=repo.serve_forever,daemon=True).start()
     with (root/'server.log').open('w') as log:
@@ -101,6 +132,7 @@ with tempfile.TemporaryDirectory(prefix='sumidoku-native-ui-fixture-') as tempor
             arguments=['/usr/bin/open','-n','-W',str(app),'--args',str(root),str(output)]
             if os.environ.get('SUMIDOKU_TEST_SIDEBAR_ONLY')=='1': arguments.append('--sidebar-only')
             if os.environ.get('SUMIDOKU_TEST_NO_CAPTURE')=='1': arguments.append('--no-capture')
+            if os.environ.get('SUMIDOKU_TEST_PROBE_ONLY')=='1': arguments.append('--probe-only')
             subprocess.run(arguments,env=env,check=True,timeout=150)
             result=json.loads((root/'render-result.json').read_text())
             if not result['success']:raise RuntimeError(json.dumps(result))
@@ -109,6 +141,7 @@ with tempfile.TemporaryDirectory(prefix='sumidoku-native-ui-fixture-') as tempor
             print('Native fixture renders:' if result.get('nativeWindowCaptures') else 'Native behavior checks passed; visual capture explicitly NOT performed:',output)
         finally:
             repo.shutdown();repo.server_close()
+            probe.shutdown();probe.server_close()
             server.send_signal(signal.SIGINT)
             try:server.wait(timeout=20)
             except subprocess.TimeoutExpired:server.kill();server.wait()

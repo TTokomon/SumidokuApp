@@ -116,7 +116,7 @@ struct DesktopRenderTests {
         guard let window = NSApp.windows.first(where: { $0.isVisible && !$0.isSheet }) else { throw UpdateFailure("Preview window missing") }
         if !sidebarOnly && controller.nativePanel == nil {
             let view = controller.webView
-            guard view.window === window, view.bounds.width > 500, view.bounds.height > 400 else { throw UpdateFailure("Embedded web view has no visible layout: \(view.bounds)") }
+            guard view.window === window, view.bounds.width > 320, view.bounds.height > 400 else { throw UpdateFailure("Embedded web view has no visible layout: \(view.bounds)") }
             let snapshot = try await view.takeSnapshot(configuration: nil)
             if let tiff = snapshot.tiffRepresentation, let png = NSBitmapImageRep(data:tiff)?.representation(using:.png,properties:[:]) {
                 try png.write(to:output.appendingPathComponent(name+"-webview.png"))
@@ -153,8 +153,20 @@ struct DesktopRenderTests {
         guard let window = controller.webView.window else { throw UpdateFailure("Sidebar variant window missing") }
         controller.navigate("/settings?section=source-lists")
         try await wait("location.search === '?section=source-lists'")
-        window.setContentSize(NSSize(width: 920, height: 640))
-        try await capture("sidebar-small")
+        for theme in ["light", "dark"] {
+            try await run("localStorage.setItem('sumidoku.theme','\(theme)');location.reload()")
+            try await wait("document.documentElement.dataset.theme === '\(theme)' && document.querySelector('[data-settings-panel=source-lists]')")
+            for (size, width, height) in [("minimum", 760, 540), ("normal", 1120, 820), ("large", 1440, 960)] {
+                window.setContentSize(NSSize(width: width, height: height))
+                guard abs(window.contentLayoutRect.width - CGFloat(width)) < 1,
+                      abs(window.contentLayoutRect.height - CGFloat(height)) < 1 else {
+                    throw UpdateFailure("The native window did not reach the requested content size.")
+                }
+                try await capture("sidebar-\(size)-\(theme)")
+            }
+        }
+        try await run("localStorage.setItem('sumidoku.theme','light');location.reload()")
+        try await wait("document.documentElement.dataset.theme === 'light'")
         window.setContentSize(NSSize(width: 1120, height: 820))
         controller.webView.pageZoom = 1.35
         try await capture("sidebar-large-text")
@@ -176,8 +188,61 @@ struct DesktopRenderTests {
             try await capture("footer-" + mode)
         }
     }
+    func verifyServerProbe() async throws {
+        let portFile = root.appendingPathComponent("probe-port")
+        guard let raw = try? String(contentsOf: portFile, encoding: .utf8),
+              let fixturePort = Int(raw), (1024...65535).contains(fixturePort), fixturePort != port, fixturePort != 3000 else {
+            throw UpdateFailure("Missing isolated probe fixture")
+        }
+        let testManager = LibraryManager(
+            home: root.appendingPathComponent("ProbeHome"), binary: root.appendingPathComponent("unused"),
+            runner: root.appendingPathComponent("unused-runner"), service: PreviewService(), port: fixturePort
+        )
+        let subject = ServerController(manager: testManager, dataStore: .nonPersistent())
+        subject.library = controller.library
+        func set(_ mode: String) async throws {
+            _ = try await Task.detached { try testManager.api.request("fixture/\(mode)") }.value
+        }
+        try await set("ready")
+        await subject.check()
+        guard subject.available, subject.signedIn, !subject.reconnecting else {
+            throw UpdateFailure("Healthy fixture did not validate its session")
+        }
+        try await set("busy")
+        await subject.check()
+        guard subject.available, subject.signedIn, subject.reconnecting else {
+            throw UpdateFailure("Transient session failure tore down the signed-in shell")
+        }
+        try await set("offline")
+        await subject.check()
+        guard subject.available, subject.signedIn, subject.reconnecting else {
+            throw UpdateFailure("An isolated health failure was reported as an outage")
+        }
+        await subject.check()
+        await subject.check()
+        guard !subject.available, subject.signedIn, !subject.reconnecting else {
+            throw UpdateFailure("Confirmed server outage did not preserve the signed-in shell")
+        }
+        try await set("ready")
+        await subject.check()
+        guard subject.available, subject.signedIn, !subject.reconnecting else {
+            throw UpdateFailure("Healthy fixture did not recover")
+        }
+        try await set("expired")
+        await subject.check()
+        guard subject.available, !subject.signedIn, !subject.reconnecting else {
+            throw UpdateFailure("Confirmed expired session did not request a new sign-in")
+        }
+        print("PASS: native HTTP health, transient auth failure, sustained outage, recovery and session expiry")
+    }
     func render() async {
         do {
+            try await verifyServerProbe()
+            if CommandLine.arguments.contains("--probe-only") {
+                let result: [String: Bool] = ["success": true, "nativeWindowCaptures": false, "nativeServerProbe": true]
+                try JSONSerialization.data(withJSONObject: result).write(to: root.appendingPathComponent("render-result.json"))
+                exit(0)
+            }
                         fputs("UI fixture: loading library\n", stderr)
                         controller.webView.load(URLRequest(url:URL(string:"http://127.0.0.1:\(port)/library")!))
                         try await wait("document.querySelectorAll('.cover-card').length >= 4")
@@ -195,15 +260,15 @@ struct DesktopRenderTests {
                         try await verifyAutomationAndTrackers()
                         try await verifyGroupedSettingsAndRecovery()
                         if sidebarOnly {
-                            try JSONSerialization.data(withJSONObject:["success":true,"mode":"focused-sidebar","nativeWindowCaptures":capturesEnabled,"nativeDestinations":11,"legacySettingsRoutes":9,"nativeFooterActions":2,"settingsCategories":6,"persistentSettingsPanels":8,"aidokuExactFileResumed":true,"recoverySelectionPreserved":true,"libraryOrganization":true,"settingsPersisted":true,"trackerControlsFixtureVerified":true]).write(to:root.appendingPathComponent("render-result.json"))
+                            try JSONSerialization.data(withJSONObject:["success":true,"mode":"focused-sidebar","nativeWindowCaptures":capturesEnabled,"nativeServerProbe":true,"nativeDestinations":12,"legacySettingsRoutes":10,"nativeFooterActions":2,"settingsCategories":7,"activeSettingsPanels":1,"aidokuExactFileResumed":true,"recoverySelectionPreserved":true,"libraryOrganization":true,"settingsPersisted":true,"trackerControlsFixtureVerified":true]).write(to:root.appendingPathComponent("render-result.json"))
                             exit(0)
                         }
                         let fixture = try JSONSerialization.jsonObject(with:Data(contentsOf:root.appendingPathComponent("preview.json"))) as! [String:Int]
-                        let routes = [("manga-details","/manga/\(fixture["manga"]!)"),("sources","/browse"),("source-lists","/settings?section=source-lists"),("automation","/settings?section=automation"),("history","/history"),("backup-import","/settings?section=backups"),("reader","/reader/\(fixture["chapter"]!)")]
+                        let routes = [("manga-details","/manga/\(fixture["manga"]!)"),("sources","/browse"),("source-lists","/settings?section=source-lists"),("automation","/settings?section=automation"),("history","/history"),("chapter-updates","/updates"),("backup-import","/settings?section=backups"),("reader","/reader/\(fixture["chapter"]!)")]
                         for (name,route) in routes {
                             controller.navigate(route)
                             try await wait("location.pathname + location.search === '\(route)'")
-                            if name == "automation" {
+                            if name == "source-lists" {
                                 try await wait("document.querySelector('input[aria-label=\"Automatically install source updates\"]') !== null")
                                 _ = try await controller.webView.evaluateJavaScript("document.querySelector('input[aria-label=\"Automatically install source updates\"]').click()")
                                 try await wait("Array.from(document.querySelectorAll('button')).some(b => b.textContent === 'Enable automatic source updates')")
@@ -225,7 +290,7 @@ struct DesktopRenderTests {
                         try await captureSidebarVariants()
                         try await verifyFooterStates()
                         try await captureAccessibility()
-                        try JSONSerialization.data(withJSONObject:["success":true,"nativeWindowCaptures":capturesEnabled,"nativeDestinations":11,"nativeFooterActions":2,"footerFixtureStates":4,"settingsCategories":6,"persistentSettingsPanels":8,"aidokuExactFileResumed":true]).write(to:root.appendingPathComponent("render-result.json"))
+                        try JSONSerialization.data(withJSONObject:["success":true,"nativeWindowCaptures":capturesEnabled,"nativeServerProbe":true,"nativeDestinations":12,"nativeFooterActions":2,"footerFixtureStates":4,"settingsCategories":7,"activeSettingsPanels":1,"aidokuExactFileResumed":true]).write(to:root.appendingPathComponent("render-result.json"))
                         print("PASS: native shell and embedded library/detail/sources/history/backups/reader/update/settings rendered; disposable fixtures only")
                         exit(0)
         } catch {
@@ -251,7 +316,7 @@ struct DesktopRenderTests {
         controller.webView.configuration.userContentController.addUserScript(WKUserScript(source: fixtureScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let releases = PreviewReleases()
         let updates=AppUpdates(defaults:UserDefaults(suiteName:"SumidokuUIFixture."+root.lastPathComponent)!,schedule:false,fetcher:releases)
-        let host=NSHostingView(rootView:AnyView(DesktopShell(controller:controller,updates:updates).frame(minWidth:780,minHeight:600)))
+        let host=NSHostingView(rootView:AnyView(DesktopShell(controller:controller,updates:updates).frame(minWidth:760,minHeight:540)))
         let window=NSWindow(contentRect:NSRect(x:0,y:0,width:1120,height:CommandLine.arguments.contains("--sidebar-only") ? 1000 : 820),styleMask:[.titled,.closable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
         window.title="Sumidoku — Disposable UI Fixture"
         window.contentView=host;window.orderFrontRegardless();window.makeKeyAndOrderFront(nil);window.display()

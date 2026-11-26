@@ -61,6 +61,12 @@ struct DesktopShell: View {
         }
     }
 
+    private var serverStatus: String {
+        if controller.checking { return "Checking" }
+        if controller.reconnecting { return "Reconnecting" }
+        return controller.available ? "Running" : "Offline"
+    }
+
     var selection: Binding<String?> {
         Binding(
             get: {
@@ -146,13 +152,13 @@ struct DesktopShell: View {
                                     .frame(width: 20)
                                 Text("Local Server").font(.callout)
                                 Spacer(minLength: 4)
-                                Circle().fill(controller.checking ? Color.gray : controller.available ? Color.green : Color.orange)
+                                Circle().fill(controller.checking ? Color.gray : serverStatus == "Running" ? Color.green : Color.orange)
                                     .frame(width: 8, height: 8)
-                                Text(controller.checking ? "Checking" : controller.available ? "Running" : "Offline")
+                                Text(serverStatus)
                                     .font(.caption).foregroundStyle(.secondary)
                             }.contentShape(Rectangle())
                         }.buttonStyle(.plain)
-                            .accessibilityLabel(controller.available ? "Local server running. Open server controls." : "Local server unavailable. Open server controls.")
+                            .accessibilityLabel("Local server: \(serverStatus). Open server controls.")
                     }
                     .padding(13)
                     .modifier(NativeControlSurface())
