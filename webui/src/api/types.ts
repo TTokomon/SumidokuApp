@@ -17,6 +17,7 @@ export type AidokuImportResponse = {
 	categoryNames?: Array<string>;
 	skipped: Array<AidokuSkipped>;
 	missingSources?: Array<string>;
+	archivedTrackers?: number;
 };
 
 export type AidokuIncluded = {

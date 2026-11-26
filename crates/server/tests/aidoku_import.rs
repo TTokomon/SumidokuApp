@@ -431,12 +431,13 @@ async fn import_aidoku_preserves_missing_sources_without_installing_packages() {
 	assert_eq!(preview["imported"]["progress"], 4);
 	assert_eq!(preview["imported"]["trackers"], 3);
 	assert_eq!(preview["missingSources"], json!(["en.ghost-source"]));
-	assert_eq!(preview["skipped"].as_array().unwrap().len(), 1);
+	assert_eq!(preview["skipped"].as_array().unwrap().len(), 0);
+	assert_eq!(preview["archivedTrackers"], 1);
 	assert_eq!(db_dump(&app.db_path).await, before);
 
 	let (status, committed) = post_aib(&app.app, "?preserveMissingSources=true").await;
 	assert_eq!(status, StatusCode::OK, "{committed}");
-	for field in ["imported", "included", "categoryNames", "missingSources", "skipped"] {
+	for field in ["imported", "included", "categoryNames", "missingSources", "archivedTrackers", "skipped"] {
 		assert_eq!(committed[field], preview[field], "{field} differs from preview");
 	}
 	let pool = connect_db(&app.db_path).await;
@@ -463,4 +464,42 @@ async fn import_aidoku_preserves_missing_sources_without_installing_packages() {
 	let (status, _) = post_aib(&app.app, "?preserveMissingSources=true").await;
 	assert_eq!(status, StatusCode::OK);
 	assert_eq!(db_dump(&app.db_path).await, after);
+}
+
+#[tokio::test]
+async fn unsupported_aidoku_bindings_are_inactive_and_survive_portable_backup() {
+	let app = test_app().await;
+	scan(&app.app).await;
+	let before = db_dump(&app.db_path).await;
+	let (status, preview) = post_aib(&app.app, "?dryRun=true&preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK, "{preview}");
+	assert_eq!(preview["archivedTrackers"], 1);
+	assert_eq!(db_dump(&app.db_path).await, before);
+	let (status, committed) = post_aib(&app.app, "?preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK, "{committed}");
+	assert_eq!(committed["archivedTrackers"], 1);
+	let archive_key = "aidoku.inactive_tracker_bindings.v1";
+	let (status, backup) = request(&app.app, "GET", "/api/v1/backups/document", None).await;
+	assert_eq!(status, StatusCode::OK);
+	let entries = backup["settings"][archive_key].as_array().unwrap();
+	assert_eq!(entries.len(), 1);
+	assert_eq!(entries[0]["trackerId"], "shikimori");
+	assert_eq!(entries[0]["trackId"], "303");
+	assert_eq!(entries[0]["sourceKey"], "en.example-source");
+	let manga = library_entry(&app.app, "Example Manga").await;
+	assert!(!tracker_links(&app.app, manga["id"].as_i64().unwrap()).await.iter().any(|row| row["provider"] == "shikimori"));
+	let (_, settings) = request(&app.app, "GET", "/api/v1/settings", None).await;
+	assert!(settings.get(archive_key).is_none());
+	let (status, _) = request(&app.app, "PUT", "/api/v1/settings", Some(json!({(archive_key): []}))).await;
+	assert_eq!(status, StatusCode::OK);
+	let (_, after_settings) = request(&app.app, "GET", "/api/v1/backups/document", None).await;
+	assert_eq!(after_settings["settings"][archive_key], backup["settings"][archive_key]);
+
+	let target = test_app().await;
+	for _ in 0..2 {
+		let (status, result) = request(&target.app, "POST", "/api/v1/backups/document?sections=settings", Some(backup.clone())).await;
+		assert_eq!(status, StatusCode::OK, "{result}");
+	}
+	let (_, restored) = request(&target.app, "GET", "/api/v1/backups/document", None).await;
+	assert_eq!(restored["settings"][archive_key], backup["settings"][archive_key]);
 }

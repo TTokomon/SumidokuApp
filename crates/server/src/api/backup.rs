@@ -843,6 +843,13 @@ async fn restore_settings(
 	restored: &mut Restored,
 ) -> ApiResult<()> {
 	for (key, value) in &doc.settings {
+		if key == crate::settings::AIDOKU_TRACKER_ARCHIVE {
+			let incoming = serde_json::from_value(value.clone())
+				.map_err(|_| ApiError::bad_request("Invalid inactive Aidoku tracker archive in backup"))?;
+			crate::settings::merge_aidoku_tracker_archive(tx, incoming).await?;
+			restored.settings += 1;
+			continue;
+		}
 		// Literal user.* keys are rejected (same rule as /settings PUT)
 		// Instance-owned values must not overwrite the target; category restoration handles raw exclusion ids separately.
 		if key.starts_with("user.") || crate::settings::omitted_from_backup(key) {

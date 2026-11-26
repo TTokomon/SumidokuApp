@@ -195,6 +195,8 @@ struct ImportReport<'a> {
 	categories: HashSet<String>,
 	preserve_missing_sources: bool,
 	missing_sources: HashSet<String>,
+	archived_trackers: Vec<crate::settings::ArchivedAidokuTracker>,
+	archived_count: usize,
 }
 
 /// A Swift Date in a plist is CFAbsoluteTime; the plist crate has already normalized it to SystemTime
@@ -349,6 +351,10 @@ pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_
 		import_library(&mut tx, user_id, &doc, &manga_meta, &mut report).await?;
 		import_progress(&mut tx, user_id, &doc, &manga_meta, &chapter_meta, &mut report).await?;
 		import_trackers(&mut tx, user_id, &doc, &manga_meta, &mut report).await?;
+		let archived_count = report.archived_trackers.len();
+		crate::settings::merge_aidoku_tracker_archive(&mut tx, std::mem::take(&mut report.archived_trackers)).await?;
+		// Retain the reported count (including existing matches) for preview/commit parity.
+		report.archived_count = archived_count;
 		if dry_run {
 			tx.rollback().await?;
 		} else {
@@ -372,6 +378,7 @@ pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_
 		"included": included.into_iter().map(entry_json).collect::<Vec<_>>(),
 		"categoryNames": categories,
 		"missingSources": missing_sources,
+		"archivedTrackers": report.archived_count,
 		"skipped": skipped.into_iter().map(entry_json).collect::<Vec<_>>(),
 	}))
 }
@@ -519,11 +526,27 @@ async fn import_trackers<'a>(
 			tracker_id: Some(&entry.tracker_id),
 			reason: None,
 		};
+		let provider = aidoku_tracker_provider(&entry.tracker_id);
+		// An unsupported provider is an inactive association, never a live link or
+		// a credential. Archive the original identity even when its source is absent.
+		if provider.is_none() && report.preserve_missing_sources {
+			report.archived_trackers.push(crate::settings::ArchivedAidokuTracker {
+				source_key: entry.source_id.clone(),
+				manga_key: entry.manga_id.clone(),
+				tracker_id: entry.tracker_id.clone(),
+				track_id: entry.id.clone(),
+				title: entry.title.clone(),
+				chapter_offset: entry.chapter_offset,
+				track_mode: track_mode_from_settings(&doc.settings, &entry.source_id, &entry.manga_id).as_str().to_string(),
+			});
+			report.entries.push(ReportEntry { section: "archivedTrackers", ..row });
+			continue;
+		}
 		let Some(source_id) = source_id_by_key(tx, &entry.source_id, report).await? else {
 			report.entries.push(ReportEntry { reason: Some("source not installed"), ..row });
 			continue;
 		};
-		let Some(provider) = aidoku_tracker_provider(&entry.tracker_id) else {
+		let Some(provider) = provider else {
 			report.entries.push(ReportEntry { reason: Some("tracker not supported"), ..row });
 			continue;
 		};

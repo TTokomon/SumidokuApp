@@ -56,6 +56,65 @@ const TRACKER_DEFAULT_PROVIDER_KEY: &str = "tracker.default_provider";
 /// Modeled so a full settings write can't replay it: only `/trackers/preferences` and logout change it
 pub(crate) const TRACKER_DEFAULT_PROVIDER: Key<String> = Key::new(TRACKER_DEFAULT_PROVIDER_KEY);
 
+/// Inactive imported bindings, stored in a versioned owner-only backup envelope
+/// rather than a schema migration: Stable and Beta currently require schema 37.
+/// This key is not a user setting and never participates in active tracker sync.
+pub(crate) const AIDOKU_TRACKER_ARCHIVE: &str = "aidoku.inactive_tracker_bindings.v1";
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ArchivedAidokuTracker {
+	pub source_key: String,
+	pub manga_key: String,
+	pub tracker_id: String,
+	pub track_id: String,
+	pub title: Option<String>,
+	pub chapter_offset: Option<i64>,
+	pub track_mode: String,
+}
+
+impl ArchivedAidokuTracker {
+	fn identity(&self) -> (String, String, String, String) {
+		(self.source_key.clone(), self.manga_key.clone(), self.tracker_id.clone(), self.track_id.clone())
+	}
+}
+
+/// Merge on exact identities inside the caller's import transaction. Existing
+/// archive entries win; never replace a corrupt or newer-format envelope silently.
+pub(crate) async fn merge_aidoku_tracker_archive(
+	tx: &mut sqlx::Transaction<'_, Sqlite>,
+	incoming: Vec<ArchivedAidokuTracker>,
+) -> ApiResult<()> {
+	if incoming.is_empty() {
+		return Ok(());
+	}
+	if incoming.iter().any(|item| item.source_key.is_empty() || item.manga_key.is_empty()
+		|| item.track_id.is_empty() || !matches!(item.track_mode.as_str(), "auto" | "chapter" | "volume")) {
+		return Err(crate::error::ApiError::bad_request("Invalid inactive Aidoku tracker binding"));
+	}
+	let raw: Option<String> = sqlx::query_scalar("SELECT value FROM setting WHERE key = ?")
+		.bind(AIDOKU_TRACKER_ARCHIVE).fetch_optional(&mut **tx).await?;
+	let mut existing: Vec<ArchivedAidokuTracker> = match raw {
+		Some(raw) => serde_json::from_str(&raw).map_err(|_| crate::error::ApiError::internal("Inactive Aidoku tracker archive cannot be decoded; original data retained"))?,
+		None => Vec::new(),
+	};
+	let before = existing.len();
+	let mut seen: std::collections::HashSet<_> = existing.iter().map(ArchivedAidokuTracker::identity).collect();
+	for item in incoming {
+		if seen.insert(item.identity()) {
+			existing.push(item);
+		}
+	}
+	if existing.len() != before {
+		let raw = serde_json::to_string(&existing)?;
+		if raw.len() > 32 * 1024 * 1024 {
+			return Err(crate::error::ApiError::bad_request("Inactive tracker archive exceeds its storage limit; original data retained"));
+		}
+		write(&mut **tx, AIDOKU_TRACKER_ARCHIVE, &raw).await?;
+	}
+	Ok(())
+}
+
 /// One setting the server knows about. New settings are added here, and validation, the structured
 /// view and backups all follow from this entry.
 pub(crate) struct Definition {
@@ -206,7 +265,7 @@ pub(crate) fn definition(key: &str) -> Option<&'static Definition> {
 
 /// The `user.*` namespace was retired by migration 0033, and older backups can still name it
 pub(crate) fn ignored_on_write(key: &str) -> bool {
-	key.starts_with("user.") || RETIRED_KEYS.contains(&key) || crate::server_state::is_internal_key(key)
+	key == AIDOKU_TRACKER_ARCHIVE || key.starts_with("user.") || RETIRED_KEYS.contains(&key) || crate::server_state::is_internal_key(key)
 }
 
 /// Anything else is an unknown key, which the settings API stores and returns as it came

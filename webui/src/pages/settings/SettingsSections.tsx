@@ -1178,7 +1178,7 @@ export function BackupSection() {
 	const [picked, setPicked] = useState<string[]>([]);
 	const [result, setResult] = useState<BackupRestoreResponse | null>(null);
 	const importAidoku = useImportAidoku();
-	const canConfirmAib = !!aib && Object.values(aib.preview.imported).some((count) => count > 0) && (aib.preview.skipped.length === 0 || acceptSkips);
+	const canConfirmAib = !!aib && (Object.values(aib.preview.imported).some((count) => count > 0) || (aib.preview.archivedTrackers ?? 0) > 0) && (aib.preview.skipped.length === 0 || acceptSkips);
 	const aibFileRef = useRef<HTMLInputElement>(null);
 	const importSuwayomi = useImportSuwayomi();
 	const swFileRef = useRef<HTMLInputElement>(null);

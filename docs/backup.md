@@ -98,6 +98,20 @@ has an "从 Aidoku 导入" button under the backup section that walks upload →
 dry-run preview → confirm. Aidoku settings and source configs are out of
 scope.
 
+Desktop requests `preserveMissingSources=true` to retain valid missing external
+source identities as disabled package-less records and merge their library and
+history. Explicit installation of the exact source key reuses the retained ID.
+This mode also archives unsupported tracker associations separately from live
+tracker links, including source/manga keys, remote track ID, provider, title,
+offset and track mode. They never initiate tracker requests. The versioned
+`aidoku.inactive_tracker_bindings.v1` owner archive lives in the existing
+settings table so the current schema-37 updater can still restore Stable.
+Current settings writes cannot modify it; portable backup settings restores
+merge it by exact identity. Older Stable builds preserve the key as an unknown
+setting, but do not offer archive management or activation. Legacy import
+clients retain the original skip behavior. Archive counts are separate from
+active tracker counts; the original .aib remains unchanged.
+
 ## Importing from Suwayomi/Mihon
 
 `POST /api/v1/backups/import/suwayomi` imports a Suwayomi-Server or

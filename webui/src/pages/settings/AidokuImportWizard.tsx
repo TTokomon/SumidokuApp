@@ -26,6 +26,7 @@ export function AidokuWizardSummary({ result }: { result: AidokuImportResponse }
 			<dd>{format.format(result.imported[section])}</dd>
 		</div>)}</dl>
 		{missing > 0 && <p className="aidoku-wizard__notice">{t('aidokuWizard.missing', { count: missing })} {t('aidokuWizard.offlineHelp')}</p>}
+		{(result.archivedTrackers ?? 0) > 0 && <p className="aidoku-wizard__notice">{t('aidokuWizard.inactiveTrackers', { defaultValue: 'Inactive tracker bindings preserved' })}: {format.format(result.archivedTrackers ?? 0)}. {t('aidokuWizard.inactiveTrackerHelp', { defaultValue: 'These trackers are not supported yet. Their associations are saved but will not sync.' })}</p>}
 		{result.skipped.length > 0 && <p className="settings-backup__warn">{t(result.dryRun ? 'settings.aidokuReport.willSkip' : 'settings.aidokuReport.skipped', { count: result.skipped.length })}</p>}
 	</section>;
 }
