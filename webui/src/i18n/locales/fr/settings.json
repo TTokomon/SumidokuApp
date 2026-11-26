@@ -278,6 +278,33 @@
     "apiDocs": "Documentation API (Swagger UI)",
     "currentVersion": "Version actuelle v{{version}}",
     "newVersion": "Nouvelle version {{tag}} disponible",
-    "upToDate": "À jour"
+    "upToDate": "À jour",
+    "aidokuReport": {
+      "preview": "Aperçu de l’importation",
+      "previewHelp": "Vérifiez cette sauvegarde avant de confirmer. La bibliothèque n’a pas encore été modifiée.",
+      "completed": "Résultats de l’importation",
+      "completedHelp": "Ces éléments ont été traités. Votre sauvegarde d’origine reste intacte.",
+      "willMerge": "À ajouter ou à fusionner",
+      "merged": "Inclus dans la fusion",
+      "noEligible": "Aucun élément de cette sauvegarde ne peut être ajouté ou fusionné.",
+      "willSkip_other": "Sera ignoré ({{count}})",
+      "skipped_other": "Ignoré ({{count}})",
+      "noSkips": "Aucun élément n’a été ignoré.",
+      "showMore": "Afficher {{count}} de plus",
+      "unsupported": "Hors de cette importation",
+      "unsupportedHelp": "Les préférences, identifiants, extensions et listes de sources, favoris de lecture et chapitres téléchargés ne sont pas transférés. Les métadonnées des mangas servent à la bibliothèque, à l’historique et aux associations de suivi. Celles des chapitres servent uniquement à l’historique de lecture. Les informations existantes, l’ordre des catégories et les associations de suivi sont conservés. La progression de lecture ne peut qu’avancer.",
+      "confirmSkips": "Continuer en ignorant les éléments indiqués. La sauvegarde d’origine sera conservée.",
+      "sections": {
+        "library": "Éléments de bibliothèque",
+        "categories": "Catégories",
+        "progress": "Progression des chapitres",
+        "trackers": "Associations de suivi"
+      },
+      "reasons": {
+        "source not installed": "La source ayant cet identifiant exact n’est pas installée. Installez la source correspondante, puis vérifiez à nouveau la sauvegarde.",
+        "tracker not supported": "Sumidoku ne prend pas en charge ce service de suivi.",
+        "category assignment has a blank name": "Cette association de catégorie ne comporte aucun nom."
+      }
+    }
   }
 }

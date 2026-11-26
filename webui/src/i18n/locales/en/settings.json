@@ -278,6 +278,35 @@
     "apiDocs": "API Docs (Swagger UI)",
     "currentVersion": "Current version v{{version}}",
     "newVersion": "New version {{tag}} available",
-    "upToDate": "Up to date"
+    "upToDate": "Up to date",
+    "aidokuReport": {
+      "preview": "Import preview",
+      "previewHelp": "Review this backup before confirming. No library data has changed.",
+      "completed": "Import results",
+      "completedHelp": "These entries were processed during import. Your original backup is unchanged.",
+      "willMerge": "Will add or merge",
+      "merged": "Included in the merge",
+      "noEligible": "No entries in this backup can be added or merged.",
+      "willSkip_one": "Will skip ({{count}} entry)",
+      "willSkip_other": "Will skip ({{count}} entries)",
+      "skipped_one": "Skipped ({{count}} entry)",
+      "skipped_other": "Skipped ({{count}} entries)",
+      "noSkips": "No entries were skipped.",
+      "showMore": "Show {{count}} more",
+      "unsupported": "Outside this import",
+      "unsupportedHelp": "App preferences, account logins, source extensions and lists, bookmarks, and downloaded chapter files do not transfer. Manga metadata is used for library entries, history, and tracker bindings. Chapter metadata is used only for reading history. Sumidoku keeps existing library details, category order, and tracker bindings. Saved reading progress only advances.",
+      "confirmSkips": "Continue with the listed entries skipped. The original backup will be kept.",
+      "sections": {
+        "library": "Library entries",
+        "categories": "Categories",
+        "progress": "Chapter progress",
+        "trackers": "Tracker bindings"
+      },
+      "reasons": {
+        "source not installed": "The exact source ID is not installed. Install a matching source and recheck the backup.",
+        "tracker not supported": "Sumidoku does not support this tracker.",
+        "category assignment has a blank name": "This category assignment has no category name."
+      }
+    }
   }
 }

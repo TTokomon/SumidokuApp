@@ -278,6 +278,33 @@
     "apiDocs": "API-Dokumentation (Swagger UI)",
     "currentVersion": "Aktuelle Version v{{version}}",
     "newVersion": "Neue Version {{tag}} verfügbar",
-    "upToDate": "Auf dem neuesten Stand"
+    "upToDate": "Auf dem neuesten Stand",
+    "aidokuReport": {
+      "preview": "Importvorschau",
+      "previewHelp": "Prüfe diese Sicherung vor dem Bestätigen. Die Bibliothek wurde noch nicht geändert.",
+      "completed": "Importergebnis",
+      "completedHelp": "Diese Einträge wurden beim Import verarbeitet. Die ursprüngliche Sicherung bleibt erhalten.",
+      "willMerge": "Wird hinzugefügt oder zusammengeführt",
+      "merged": "Bei der Zusammenführung berücksichtigt",
+      "noEligible": "Aus dieser Sicherung kann nichts hinzugefügt oder zusammengeführt werden.",
+      "willSkip_other": "Wird übersprungen ({{count}})",
+      "skipped_other": "Übersprungen ({{count}})",
+      "noSkips": "Keine Einträge übersprungen.",
+      "showMore": "Weitere {{count}} anzeigen",
+      "unsupported": "Von diesem Import ausgenommen",
+      "unsupportedHelp": "App-Einstellungen, Anmeldungen, Quellerweiterungen und -listen, Lesezeichen und heruntergeladene Kapiteldateien werden nicht übertragen. Manga-Metadaten werden für Bibliothek, Verlauf und Tracker-Zuordnungen verwendet, Kapitelmetadaten nur für den Leseverlauf. Bestehende Bibliotheksdetails, Kategoriereihenfolge und Tracker-Zuordnungen bleiben erhalten. Der Lesefortschritt kann nur steigen.",
+      "confirmSkips": "Die aufgeführten Einträge überspringen und fortfahren. Die ursprüngliche Sicherung bleibt erhalten.",
+      "sections": {
+        "library": "Bibliothekseinträge",
+        "categories": "Kategorien",
+        "progress": "Kapitel-Fortschritt",
+        "trackers": "Tracker-Zuordnungen"
+      },
+      "reasons": {
+        "source not installed": "Die Quelle mit dieser ID ist nicht installiert. Installiere die passende Quelle und prüfe die Sicherung erneut.",
+        "tracker not supported": "Sumidoku unterstützt diesen Tracker nicht.",
+        "category assignment has a blank name": "Dieser Kategoriezuordnung fehlt der Kategoriename."
+      }
+    }
   }
 }

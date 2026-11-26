@@ -278,6 +278,33 @@
     "apiDocs": "Documentazione API (Swagger UI)",
     "currentVersion": "Versione attuale v{{version}}",
     "newVersion": "Nuova versione {{tag}} disponibile",
-    "upToDate": "Aggiornato"
+    "upToDate": "Aggiornato",
+    "aidokuReport": {
+      "preview": "Anteprima importazione",
+      "previewHelp": "Controlla questo backup prima di confermare. La raccolta non è ancora stata modificata.",
+      "completed": "Risultati dell’importazione",
+      "completedHelp": "Queste voci sono state elaborate. Il backup originale rimane intatto.",
+      "willMerge": "Da aggiungere o unire",
+      "merged": "Incluso nell’unione",
+      "noEligible": "Nessuna voce di questo backup può essere aggiunta o unita.",
+      "willSkip_other": "Da ignorare ({{count}})",
+      "skipped_other": "Ignorate ({{count}})",
+      "noSkips": "Nessuna voce ignorata.",
+      "showMore": "Mostra altre {{count}} voci",
+      "unsupported": "Fuori da questa importazione",
+      "unsupportedHelp": "Preferenze, accessi, estensioni ed elenchi delle fonti, segnalibri e capitoli scaricati non vengono trasferiti. I metadati dei manga servono per raccolta, cronologia e collegamenti ai tracker. I metadati dei capitoli servono solo per la cronologia di lettura. I dettagli esistenti, l’ordine delle categorie e i collegamenti ai tracker vengono mantenuti. Il progresso di lettura può solo avanzare.",
+      "confirmSkips": "Continua ignorando le voci elencate. Il backup originale verrà conservato.",
+      "sections": {
+        "library": "Voci della raccolta",
+        "categories": "Categorie",
+        "progress": "Progresso dei capitoli",
+        "trackers": "Collegamenti ai tracker"
+      },
+      "reasons": {
+        "source not installed": "La fonte con questo ID esatto non è installata. Installa la fonte corrispondente e ricontrolla il backup.",
+        "tracker not supported": "Sumidoku non supporta questo tracker.",
+        "category assignment has a blank name": "Questa assegnazione non ha un nome di categoria."
+      }
+    }
   }
 }

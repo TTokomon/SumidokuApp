@@ -11578,6 +11578,37 @@
           }
         }
       },
+      "AidokuIncluded": {
+        "type": "object",
+        "required": [
+          "section",
+          "sourceKey",
+          "mangaKey"
+        ],
+        "properties": {
+          "section": {
+            "type": "string"
+          },
+          "sourceKey": {
+            "type": "string"
+          },
+          "mangaKey": {
+            "type": "string"
+          },
+          "chapterKey": {
+            "type": "string"
+          },
+          "mangaTitle": {
+            "type": "string"
+          },
+          "chapterTitle": {
+            "type": "string"
+          },
+          "trackerId": {
+            "type": "string"
+          }
+        }
+      },
       "AidokuSkipped": {
         "type": "object",
         "required": [
@@ -11599,6 +11630,15 @@
           "chapterKey": {
             "type": "string"
           },
+          "mangaTitle": {
+            "type": "string"
+          },
+          "chapterTitle": {
+            "type": "string"
+          },
+          "trackerId": {
+            "type": "string"
+          },
           "reason": {
             "type": "string"
           }
@@ -11617,6 +11657,18 @@
           },
           "imported": {
             "$ref": "#/components/schemas/ImportCounts"
+          },
+          "included": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AidokuIncluded"
+            }
+          },
+          "categoryNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "skipped": {
             "type": "array",

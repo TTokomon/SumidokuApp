@@ -273,6 +273,33 @@
     "apiDocs": "API ドキュメント（Swagger UI）",
     "currentVersion": "現在のバージョン v{{version}}",
     "newVersion": "新しいバージョン {{tag}} が利用できます",
-    "upToDate": "最新です"
+    "upToDate": "最新です",
+    "aidokuReport": {
+      "preview": "インポートのプレビュー",
+      "previewHelp": "確定前にバックアップの内容を確認してください。ライブラリはまだ変更されていません。",
+      "completed": "インポート結果",
+      "completedHelp": "以下の項目が処理されました。元のバックアップは変更されていません。",
+      "willMerge": "追加または統合される項目",
+      "merged": "統合の対象になった項目",
+      "noEligible": "追加または統合できる項目がありません。",
+      "willSkip_other": "スキップ予定（{{count}} 件）",
+      "skipped_other": "スキップ済み（{{count}} 件）",
+      "noSkips": "スキップされた項目はありません。",
+      "showMore": "さらに {{count}} 件表示",
+      "unsupported": "今回の対象外",
+      "unsupportedHelp": "アプリ設定、ログイン情報、ソース拡張機能とリスト、ブックマーク、ダウンロードしたチャプターは移行されません。漫画のメタデータはライブラリ、履歴、トラッカーの関連付けに使われ、チャプターのメタデータは読書履歴にのみ使われます。既存のライブラリ情報、カテゴリの順番、トラッカーの関連付けは保持されます。既存の読書進捗が戻ることはありません。",
+      "confirmSkips": "記載された項目をスキップして続行します。元のバックアップは保持されます。",
+      "sections": {
+        "library": "ライブラリの項目",
+        "categories": "カテゴリ",
+        "progress": "チャプターの進捗",
+        "trackers": "トラッカーの関連付け"
+      },
+      "reasons": {
+        "source not installed": "この ID と完全に一致するソースがインストールされていません。一致するソースをインストールしてバックアップを再確認してください。",
+        "tracker not supported": "Sumidoku はこのトラッカーに対応していません。",
+        "category assignment has a blank name": "割り当て先のカテゴリ名がありません。"
+      }
+    }
   }
 }

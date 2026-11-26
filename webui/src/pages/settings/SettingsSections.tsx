@@ -35,8 +35,6 @@ import {
 	useWhoami
 } from '../../api/hooks';
 import type {
-	AidokuImportResponse,
-	AidokuSkipped,
 	ApiKeyCreated,
 	ApiKeyEntry,
 	AuthStatus,
@@ -69,6 +67,7 @@ import { ExcludedCategoriesSetting } from './ExcludedCategoriesSetting';
 import { SkippedItems } from './SkippedItems';
 import '../settings.css';
 import { Section } from './SettingsSection';
+import { AidokuImportReport } from './AidokuImportReport';
 import { AidokuSourceRecovery } from './AidokuSourceRecovery';
 import { useAidokuImportSession } from './AidokuImportSession';
 
@@ -1086,42 +1085,6 @@ function BackupResultView({ result }: { result: BackupRestoreResponse }) {
 	);
 }
 
-function aidokuSkippedLabel(t: TFunction, s: AidokuSkipped): string {
-	const what =
-		s.section === 'library'
-			? t('settings.libraryEntry')
-			: s.section === 'trackers'
-				? t('settings.trackerEntry')
-				: t('settings.progressEntry');
-	const chapter = s.chapterKey ? t('settings.chapterSuffix', { key: s.chapterKey }) : '';
-	return `${what} ${s.sourceKey}/${s.mangaKey}${chapter}: ${s.reason}`;
-}
-
-function AidokuImportResultView({ result }: { result: AidokuImportResponse }) {
-	const { t } = useTranslation();
-	return (
-		<div className="settings-backup__result">
-			<p className="settings-modal-text">
-				{t('settings.importedWithTrackers', {
-					library: result.imported.library,
-					categories: result.imported.categories,
-					progress: result.imported.progress,
-					trackers: result.imported.trackers
-				})}
-			</p>
-			{result.skipped.length === 0 ? (
-				<p className="faint">{t('settings.importedAll')}</p>
-			) : (
-				<SkippedItems
-					label={t('settings.skippedItemsCount', { count: result.skipped.length })}
-					description="Entries below were skipped for the reported reasons."
-					items={result.skipped.map((s) => aidokuSkippedLabel(t, s))}
-				/>
-			)}
-		</div>
-	);
-}
-
 function suwayomiSkippedLabel(t: TFunction, s: SuwayomiSkipped): string {
 	const what =
 		s.section === 'library'
@@ -1213,6 +1176,7 @@ export function BackupSection() {
 	const [picked, setPicked] = useState<string[]>([]);
 	const [result, setResult] = useState<BackupRestoreResponse | null>(null);
 	const importAidoku = useImportAidoku();
+	const canConfirmAib = !!aib && Object.values(aib.preview.imported).some((count) => count > 0) && (aib.preview.skipped.length === 0 || acceptSkips);
 	const aibFileRef = useRef<HTMLInputElement>(null);
 	const importSuwayomi = useImportSuwayomi();
 	const swFileRef = useRef<HTMLInputElement>(null);
@@ -1276,7 +1240,7 @@ export function BackupSection() {
 	}
 
 	async function confirmAibImport() {
-		if (!aib || (aib.preview.skipped.length > 0 && !acceptSkips)) return;
+		if (!aib || !canConfirmAib) return;
 		try {
 			const res = await importAidoku.mutateAsync({ file: aib.file, dryRun: false });
 			setAibResult(res);
@@ -1459,7 +1423,7 @@ export function BackupSection() {
 					) : (
 						<>
 							<Button onClick={closeAibModal}>{t('common.cancel')}</Button>
-							<Button variant="primary" loading={importAidoku.isPending} disabled={!!aib?.preview.skipped.length && !acceptSkips} onClick={() => void confirmAibImport()}>
+							<Button variant="primary" loading={importAidoku.isPending} disabled={!canConfirmAib} onClick={() => void confirmAibImport()}>
 								{t('settings.confirmImport')}
 							</Button>
 						</>
@@ -1467,28 +1431,13 @@ export function BackupSection() {
 				}
 			>
 				{aibResult ? (
-					<AidokuImportResultView result={aibResult} />
+					<AidokuImportReport result={aibResult} />
 				) : (
 					aib && (
 						<>
-							<p className="settings-modal-text">
-								{t('settings.willImportWithTrackers', {
-									library: aib.preview.imported.library,
-									categories: aib.preview.imported.categories,
-									progress: aib.preview.imported.progress,
-									trackers: aib.preview.imported.trackers
-								})}
-							</p>
-						<AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/browse?view=lists'); }} />
-						{aib.preview.skipped.length > 0 && <label><input type="checkbox" checked={acceptSkips} onChange={(event) => setAcceptSkips(event.currentTarget.checked)} /> I understand the exact entries and reasons below will be skipped. My original backup is retained.</label>}
-							<SkippedItems
-								label={t('settings.willSkipItemsCount', { count: aib.preview.skipped.length })}
-								description="Every skipped entry is listed with its exact reason. Keep the original backup."
-								items={aib.preview.skipped.map((s) => aidokuSkippedLabel(t, s))}
-							/>
-							<p className="settings-backup__warn">
-								{t('settings.importMergeWarn')}
-							</p>
+							<AidokuImportReport result={aib.preview} />
+							{aib.preview.skipped.some((entry) => entry.reason === 'source not installed') && <AidokuSourceRecovery file={aib.file} preview={aib.preview} selection={selected} onSelectionChange={setSelected} onPreview={(preview) => { setAib((current) => current?.file === aib.file ? { ...current, preview } : current); setAcceptSkips(false); }} onManageLists={() => { setAibPaused(true); navigate('/browse?view=lists'); }} />}
+							{aib.preview.skipped.length > 0 && <label><input type="checkbox" checked={acceptSkips} onChange={(event) => setAcceptSkips(event.currentTarget.checked)} /> {t('settings.aidokuReport.confirmSkips')}</label>}
 						</>
 					)
 				)}

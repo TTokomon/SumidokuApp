@@ -273,6 +273,33 @@
     "apiDocs": "API 文件（Swagger UI）",
     "currentVersion": "目前版本 v{{version}}",
     "newVersion": "有新版本 {{tag}} 可用",
-    "upToDate": "已是最新版本"
+    "upToDate": "已是最新版本",
+    "aidokuReport": {
+      "preview": "匯入預覽",
+      "previewHelp": "請在確認前檢查備份。書庫尚未變更。",
+      "completed": "匯入結果",
+      "completedHelp": "這些項目已在匯入過程中處理。原始備份保持不變。",
+      "willMerge": "將新增或合併",
+      "merged": "已納入合併",
+      "noEligible": "此備份沒有可以新增或合併的項目。",
+      "willSkip_other": "將略過（{{count}} 項）",
+      "skipped_other": "已略過（{{count}} 項）",
+      "noSkips": "沒有略過任何項目。",
+      "showMore": "再顯示 {{count}} 項",
+      "unsupported": "不屬於這次匯入",
+      "unsupportedHelp": "應用程式偏好、帳號登入資訊、來源擴充功能與清單、書籤以及已下載的章節檔案不會移轉。漫畫中繼資料用於書庫、歷史和追蹤綁定，章節中繼資料僅用於閱讀歷史。現有書庫詳細資料、分類順序和追蹤綁定保持不變。閱讀進度只會前進。",
+      "confirmSkips": "略過列出的項目並繼續。原始備份將保留。",
+      "sections": {
+        "library": "書庫項目",
+        "categories": "分類",
+        "progress": "章節進度",
+        "trackers": "追蹤綁定"
+      },
+      "reasons": {
+        "source not installed": "尚未安裝 ID 完全相符的來源。請安裝相符的來源，然後重新檢查備份。",
+        "tracker not supported": "Sumidoku 不支援此追蹤服務。",
+        "category assignment has a blank name": "此分類指派沒有分類名稱。"
+      }
+    }
   }
 }
