@@ -283,10 +283,21 @@ async fn import_aidoku_dry_run_reports_without_writing() {
 	assert_eq!(body["imported"]["progress"], 3);
 	assert_eq!(body["imported"]["trackers"], 2);
 	assert_eq!(body["skipped"].as_array().expect("skipped").len(), 4);
+	assert_eq!(body["categoryNames"], json!(["Evening", "Favorites", "Reading"]));
+	let included = body["included"].as_array().expect("included rows");
+	assert_eq!(included.len(), 7);
+	assert!(included.iter().any(|entry| entry["section"] == "library" && entry["mangaTitle"] == "Second Manga"));
+	assert!(included.iter().any(|entry| entry["section"] == "progress" && entry["chapterTitle"] == "Ch 3"));
+	assert!(body["skipped"].as_array().unwrap().iter().any(|entry| entry["reason"] == "tracker not supported" && entry["trackerId"] == "shikimori"));
 	assert_eq!(db_dump(&app.db_path).await, before);
 
 	let (_, lib) = request(&app.app, "GET", "/api/v1/library", None).await;
 	assert_eq!(lib["entries"].as_array().expect("entries").len(), 0);
+	let (status, committed) = post_aib(&app.app, "").await;
+	assert_eq!(status, StatusCode::OK);
+	for field in ["imported", "included", "categoryNames", "skipped"] {
+		assert_eq!(committed[field], body[field], "{field} differs from preview");
+	}
 }
 
 #[tokio::test]

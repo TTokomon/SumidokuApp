@@ -1251,7 +1251,10 @@ no alias is derived from migration text.
   changes nothing.
   Entries whose source is not installed are skipped and reported in the
   response `skipped` list with a reason; the `imported` map counts
-  processed entries per section. `?dryRun=true` runs the same single
+  processed entries per section. `included` identifies the manga, chapter and
+  tracker entries processed, including the backup titles when available, and
+  `categoryNames` lists the category names eligible for the merge. These
+  counts include existing rows that the merge keeps. `?dryRun=true` runs the same single
   transaction and rolls it back, so the report is identical to a real
   run's and the database is untouched; an unparseable or wrongly shaped
   file answers 400 with no writes. The web UI settings page has the

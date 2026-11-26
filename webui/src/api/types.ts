@@ -13,7 +13,19 @@ export type AddToLibraryRequest = {
 export type AidokuImportResponse = {
 	dryRun: boolean;
 	imported: ImportCounts;
+	included?: Array<AidokuIncluded>;
+	categoryNames?: Array<string>;
 	skipped: Array<AidokuSkipped>;
+};
+
+export type AidokuIncluded = {
+	section: string;
+	sourceKey: string;
+	mangaKey: string;
+	chapterKey?: string;
+	mangaTitle?: string;
+	chapterTitle?: string;
+	trackerId?: string;
 };
 
 export type AidokuListing = {
@@ -27,6 +39,9 @@ export type AidokuSkipped = {
 	sourceKey: string;
 	mangaKey: string;
 	chapterKey?: string;
+	mangaTitle?: string;
+	chapterTitle?: string;
+	trackerId?: string;
 	reason: string;
 };
 

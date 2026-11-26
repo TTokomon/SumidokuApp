@@ -138,13 +138,58 @@ struct AibChapter {
 	source_order: i64,
 }
 
-#[derive(Debug)]
-struct Skipped {
+struct ReportEntry<'a> {
 	section: &'static str,
-	source_key: String,
-	manga_key: String,
-	chapter_key: Option<String>,
-	reason: &'static str,
+	source_key: &'a str,
+	manga_key: &'a str,
+	chapter_key: Option<&'a str>,
+	tracker_id: Option<&'a str>,
+	reason: Option<&'static str>,
+}
+
+impl ReportEntry<'_> {
+	fn to_json(
+		&self,
+		manga: &HashMap<(&str, &str), &AibManga>,
+		chapters: &HashMap<(&str, &str, &str), &AibChapter>,
+	) -> Value {
+		let mut value = json!({
+			"section": self.section,
+			"sourceKey": self.source_key,
+			"mangaKey": self.manga_key,
+		});
+		if let Some(title) = manga
+			.get(&(self.source_key, self.manga_key))
+			.map(|m| m.title.as_str())
+			.filter(|title| !title.trim().is_empty())
+		{
+			value["mangaTitle"] = json!(title);
+		}
+		if let Some(key) = self.chapter_key {
+			value["chapterKey"] = json!(key);
+			if let Some(title) = chapters
+				.get(&(self.source_key, self.manga_key, key))
+				.and_then(|chapter| chapter.title.as_deref())
+				.filter(|title| !title.trim().is_empty())
+			{
+				value["chapterTitle"] = json!(title);
+			}
+		}
+		if let Some(tracker_id) = self.tracker_id {
+			value["trackerId"] = json!(tracker_id);
+		}
+		if let Some(reason) = self.reason {
+			value["reason"] = json!(reason);
+		}
+		value
+	}
+}
+
+#[derive(Default)]
+struct ImportReport<'a> {
+	imported: ImportCounts,
+	entries: Vec<ReportEntry<'a>>,
+	categories: HashSet<String>,
 }
 
 /// A Swift Date in a plist is CFAbsoluteTime; the plist crate has already normalized it to SystemTime
@@ -256,48 +301,34 @@ pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_
 		.map(|c| ((c.source_id.as_str(), c.manga_id.as_str(), c.id.as_str()), c))
 		.collect();
 
-	let mut imported = ImportCounts::default();
-	let mut skipped: Vec<Skipped> = Vec::new();
-	let mut seen_categories: HashSet<String> = HashSet::new();
+	let mut report = ImportReport::default();
 	{
 		let mut tx = crate::db::begin_write(&state.pool).await?;
-		import_categories(&mut tx, user_id, &doc, &mut seen_categories).await?;
-		import_library(&mut tx, user_id, &doc, &manga_meta, &mut imported, &mut skipped, &mut seen_categories)
-			.await?;
-		import_progress(&mut tx, user_id, &doc, &manga_meta, &chapter_meta, &mut imported, &mut skipped)
-			.await?;
-		import_trackers(&mut tx, user_id, &doc, &manga_meta, &mut imported, &mut skipped).await?;
-		imported.categories = seen_categories.len() as i64;
+		import_categories(&mut tx, user_id, &doc, &mut report.categories).await?;
+		import_library(&mut tx, user_id, &doc, &manga_meta, &mut report).await?;
+		import_progress(&mut tx, user_id, &doc, &manga_meta, &chapter_meta, &mut report).await?;
+		import_trackers(&mut tx, user_id, &doc, &manga_meta, &mut report).await?;
 		if dry_run {
 			tx.rollback().await?;
 		} else {
 			tx.commit().await?;
 		}
 	}
-	let skipped_json: Vec<Value> = skipped
-		.iter()
-		.map(|s| {
-			let mut value = json!({
-				"section": s.section,
-				"sourceKey": s.source_key,
-				"mangaKey": s.manga_key,
-				"reason": s.reason,
-			});
-			if let Some(chapter_key) = &s.chapter_key {
-				value["chapterKey"] = json!(chapter_key);
-			}
-			value
-		})
-		.collect();
+	let (skipped, included): (Vec<_>, Vec<_>) = report.entries.iter().partition(|entry| entry.reason.is_some());
+	let entry_json = |entry: &ReportEntry<'_>| entry.to_json(&manga_meta, &chapter_meta);
+	let mut categories: Vec<_> = report.categories.iter().collect();
+	categories.sort_unstable();
 	Ok(json!({
 		"dryRun": dry_run,
 		"imported": {
-			"library": imported.library,
-			"categories": imported.categories,
-			"progress": imported.progress,
-			"trackers": imported.trackers,
+			"library": report.imported.library,
+			"categories": categories.len(),
+			"progress": report.imported.progress,
+			"trackers": report.imported.trackers,
 		},
-		"skipped": skipped_json,
+		"included": included.into_iter().map(entry_json).collect::<Vec<_>>(),
+		"categoryNames": categories,
+		"skipped": skipped.into_iter().map(entry_json).collect::<Vec<_>>(),
 	}))
 }
 
@@ -318,14 +349,12 @@ async fn import_categories(
 	Ok(())
 }
 
-async fn import_library(
+async fn import_library<'a>(
 	tx: &mut Transaction<'_, Sqlite>,
 	user_id: i64,
-	doc: &AibBackup,
+	doc: &'a AibBackup,
 	manga_meta: &HashMap<(&str, &str), &AibManga>,
-	imported: &mut ImportCounts,
-	skipped: &mut Vec<Skipped>,
-	seen_categories: &mut HashSet<String>,
+	report: &mut ImportReport<'a>,
 ) -> ApiResult<()> {
 	for entry in &doc.library {
 		if entry.source_id.is_empty() || entry.manga_id.is_empty() {
@@ -333,14 +362,16 @@ async fn import_library(
 				"aidoku library entry must have non-empty sourceId and mangaId",
 			));
 		}
+		let row = ReportEntry {
+			section: "library",
+			source_key: &entry.source_id,
+			manga_key: &entry.manga_id,
+			chapter_key: None,
+			tracker_id: None,
+			reason: None,
+		};
 		let Some(source_id) = source_id_by_key(tx, &entry.source_id).await? else {
-			skipped.push(Skipped {
-				section: "library",
-				source_key: entry.source_id.clone(),
-				manga_key: entry.manga_id.clone(),
-				chapter_key: None,
-				reason: "source not installed",
-			});
+			report.entries.push(ReportEntry { reason: Some("source not installed"), ..row });
 			continue;
 		};
 		let meta = manga_meta
@@ -353,25 +384,30 @@ async fn import_library(
 		for name in &entry.categories {
 			let name = name.trim();
 			if name.is_empty() {
+				report.entries.push(ReportEntry {
+					section: "categories",
+					reason: Some("category assignment has a blank name"),
+					..row
+				});
 				continue;
 			}
 			let category_id = ensure_category(tx, user_id, name).await?;
-			seen_categories.insert(name.to_string());
+			report.categories.insert(name.to_string());
 			crate::store::category::add_manga(tx, category_id, manga_id, user_id).await?;
 		}
-		imported.library += 1;
+		report.imported.library += 1;
+		report.entries.push(row);
 	}
 	Ok(())
 }
 
-async fn import_progress(
+async fn import_progress<'a>(
 	tx: &mut Transaction<'_, Sqlite>,
 	user_id: i64,
-	doc: &AibBackup,
+	doc: &'a AibBackup,
 	manga_meta: &HashMap<(&str, &str), &AibManga>,
 	chapter_meta: &HashMap<(&str, &str, &str), &AibChapter>,
-	imported: &mut ImportCounts,
-	skipped: &mut Vec<Skipped>,
+	report: &mut ImportReport<'a>,
 ) -> ApiResult<()> {
 	for entry in &doc.history {
 		if entry.source_id.is_empty() || entry.manga_id.is_empty() || entry.chapter_id.is_empty() {
@@ -379,14 +415,16 @@ async fn import_progress(
 				"aidoku history entry must have non-empty sourceId, mangaId and chapterId",
 			));
 		}
+		let row = ReportEntry {
+			section: "progress",
+			source_key: &entry.source_id,
+			manga_key: &entry.manga_id,
+			chapter_key: Some(&entry.chapter_id),
+			tracker_id: None,
+			reason: None,
+		};
 		let Some(source_id) = source_id_by_key(tx, &entry.source_id).await? else {
-			skipped.push(Skipped {
-				section: "progress",
-				source_key: entry.source_id.clone(),
-				manga_key: entry.manga_id.clone(),
-				chapter_key: Some(entry.chapter_id.clone()),
-				reason: "source not installed",
-			});
+			report.entries.push(ReportEntry { reason: Some("source not installed"), ..row });
 			continue;
 		};
 		let meta = manga_meta
@@ -407,7 +445,8 @@ async fn import_progress(
 		let last_page_read = entry.progress.unwrap_or(0).max(0);
 		let last_read_at = entry.date_read.map(date_to_unix);
 		merge_chapter_progress(tx, user_id, chapter_id, last_page_read, entry.completed, last_read_at).await?;
-		imported.progress += 1;
+		report.imported.progress += 1;
+		report.entries.push(row);
 	}
 	Ok(())
 }
@@ -415,13 +454,12 @@ async fn import_progress(
 /// Restores tracker bindings: Aidoku's TrackObject rows carry the tracker's own entry id, so each one becomes a local
 /// binding; an existing binding for the same (manga, provider) is kept as is, and unsupported trackers are reported
 /// rather than dropped silently. The manga row is created from the backup's metadata when the entry is not in the library.
-async fn import_trackers(
+async fn import_trackers<'a>(
 	tx: &mut Transaction<'_, Sqlite>,
 	user_id: i64,
-	doc: &AibBackup,
+	doc: &'a AibBackup,
 	manga_meta: &HashMap<(&str, &str), &AibManga>,
-	imported: &mut ImportCounts,
-	skipped: &mut Vec<Skipped>,
+	report: &mut ImportReport<'a>,
 ) -> ApiResult<()> {
 	for entry in &doc.track_items {
 		if entry.source_id.is_empty() || entry.manga_id.is_empty() || entry.id.is_empty() {
@@ -429,24 +467,20 @@ async fn import_trackers(
 				"aidoku track entry must have non-empty sourceId, mangaId and id",
 			));
 		}
+		let row = ReportEntry {
+			section: "trackers",
+			source_key: &entry.source_id,
+			manga_key: &entry.manga_id,
+			chapter_key: None,
+			tracker_id: Some(&entry.tracker_id),
+			reason: None,
+		};
 		let Some(source_id) = source_id_by_key(tx, &entry.source_id).await? else {
-			skipped.push(Skipped {
-				section: "trackers",
-				source_key: entry.source_id.clone(),
-				manga_key: entry.manga_id.clone(),
-				chapter_key: None,
-				reason: "source not installed",
-			});
+			report.entries.push(ReportEntry { reason: Some("source not installed"), ..row });
 			continue;
 		};
 		let Some(provider) = aidoku_tracker_provider(&entry.tracker_id) else {
-			skipped.push(Skipped {
-				section: "trackers",
-				source_key: entry.source_id.clone(),
-				manga_key: entry.manga_id.clone(),
-				chapter_key: None,
-				reason: "tracker not supported",
-			});
+			report.entries.push(ReportEntry { reason: Some("tracker not supported"), ..row });
 			continue;
 		};
 		let meta = manga_meta
@@ -469,7 +503,8 @@ async fn import_trackers(
 			},
 		)
 		.await?;
-		imported.trackers += 1;
+		report.imported.trackers += 1;
+		report.entries.push(row);
 	}
 	Ok(())
 }
