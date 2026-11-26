@@ -507,3 +507,38 @@ async fn unsupported_aidoku_bindings_are_inactive_and_survive_portable_backup() 
 	let (_, restored) = request(&target.app, "GET", "/api/v1/backups/document", None).await;
 	assert_eq!(restored["settings"][archive_key], backup["settings"][archive_key]);
 }
+
+#[tokio::test]
+async fn portable_restore_preserves_offline_manga_progress_and_tracker_associations() {
+	let app = test_app().await;
+	scan(&app.app).await;
+	let (status, _) = post_aib(&app.app, "?preserveMissingSources=true").await;
+	assert_eq!(status, StatusCode::OK);
+	let (status, backup) = request(&app.app, "GET", "/api/v1/backups/document", None).await;
+	assert_eq!(status, StatusCode::OK);
+	assert_eq!(backup["trackerBindings"].as_array().unwrap().len(), 3);
+	assert!(backup["sources"].as_array().unwrap().iter().any(|source| source["key"] == "en.ghost-source" && source["retainOffline"] == true));
+	let target = test_app().await;
+	scan(&target.app).await;
+	for _ in 0..2 {
+		let (status, restored) = request(&target.app, "POST", "/api/v1/backups/document", Some(backup.clone())).await;
+		assert_eq!(status, StatusCode::OK, "{restored}");
+		assert_eq!(restored["restored"]["trackerBindings"], 3);
+	}
+	let (_, exported) = request(&target.app, "GET", "/api/v1/backups/document", None).await;
+	for field in ["trackerBindings", "progress", "categories"] {
+		assert_eq!(exported[field], backup[field], "{field} did not survive backup");
+	}
+	let pool = connect_db(&target.db_path).await;
+	let (enabled, path, in_library, progress, track_id): (bool, String, bool, i64, String) = sqlx::query_as(
+		"SELECT s.enabled, s.wasm_path, mu.in_library, cu.last_page_read, tl.track_id
+		 FROM source s JOIN manga m ON m.source_id=s.id
+		 JOIN manga_user mu ON mu.manga_id=m.id AND mu.user_id=1
+		 JOIN chapter c ON c.manga_id=m.id JOIN chapter_user cu ON cu.chapter_id=c.id AND cu.user_id=1
+		 JOIN tracker_link tl ON tl.manga_id=m.id AND tl.user_id=1
+		 WHERE s.key='en.ghost-source' AND m.key='ghost-1' AND c.key='9'",
+	).fetch_one(&pool).await.unwrap();
+	assert_eq!((enabled, path, in_library, progress, track_id), (false, String::new(), true, 1, "404".into()));
+	assert_eq!(exported["settings"]["aidoku.inactive_tracker_bindings.v1"], backup["settings"]["aidoku.inactive_tracker_bindings.v1"]);
+	assert_eq!(request(&target.app, "GET", "/api/v1/downloads", None).await.1, json!([]));
+}

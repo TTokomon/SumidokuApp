@@ -11150,6 +11150,11 @@
           "repoUrl": {
             "type": "string",
             "nullable": true
+          },
+          "retainOffline": {
+            "type": "boolean",
+            "default": false,
+            "description": "Allow disabled offline source identity to be recreated for library records."
           }
         }
       },
@@ -11465,6 +11470,13 @@
               "$ref": "#/components/schemas/SettingsValues"
             },
             "default": {}
+          },
+          "trackerBindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupTrackerBinding"
+            },
+            "default": []
           }
         }
       },
@@ -11502,6 +11514,10 @@
                 "format": "int64"
               },
               "sourceSettings": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "trackerBindings": {
                 "type": "integer",
                 "format": "int64"
               }
@@ -12559,6 +12575,43 @@
           "autoUpdatePackages": {
             "type": "boolean",
             "default": false
+          }
+        }
+      },
+      "BackupTrackerBinding": {
+        "type": "object",
+        "required": [
+          "sourceKey",
+          "mangaKey",
+          "provider",
+          "trackId",
+          "title",
+          "trackMode",
+          "chapterOffset"
+        ],
+        "properties": {
+          "sourceKey": {
+            "type": "string"
+          },
+          "mangaKey": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "trackId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "trackMode": {
+            "type": "string"
+          },
+          "chapterOffset": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       }

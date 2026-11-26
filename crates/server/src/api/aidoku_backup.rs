@@ -209,6 +209,11 @@ fn date_to_unix(date: plist::Date) -> i64 {
 
 /// Match exact source identities. Reuse the disabled, package-less source representation
 /// used by data-preserving uninstall. The installer reuses its row ID.
+pub(crate) fn retainable_aidoku_key(key: &str) -> bool {
+	crate::source::valid_source_key(key)
+		&& !["local.", "opds.", "komga.", "kavita.", "suwayomi."].iter().any(|prefix| key.starts_with(prefix))
+}
+
 async fn source_id_by_key(
 	tx: &mut Transaction<'_, Sqlite>,
 	key: &str,
@@ -229,11 +234,7 @@ async fn source_id_by_key(
 		}
 		return Ok(None);
 	}
-	if !report.preserve_missing_sources
-		|| !crate::source::valid_source_key(key)
-		|| ["local.", "opds.", "komga.", "kavita.", "suwayomi."]
-			.iter().any(|prefix| key.starts_with(prefix))
-	{
+	if !report.preserve_missing_sources || !retainable_aidoku_key(key) {
 		return Ok(None);
 	}
 	let id: i64 = sqlx::query_scalar(

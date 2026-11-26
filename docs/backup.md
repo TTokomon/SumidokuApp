@@ -16,7 +16,15 @@ Import
 upserts by natural key (source key + manga key, chapter key, category
 name) inside a single transaction, so a failed or invalid backup leaves
 the database untouched; entries whose source is not installed are skipped
-and reported in the response `warnings`. Category update and automatic-download
+and reported in the response `warnings`. New exports explicitly mark eligible
+external Aidoku source identities with `retainOffline`; their library records
+can restore to a disabled, package-less source on a fresh instance. No extension
+is installed implicitly. New exports also carry local `trackerBindings`,
+including history-only and tracker-only manga identities. Library restoration
+merges bindings without overwriting existing links or contacting trackers.
+Older backup documents without these optional fields retain their old behavior.
+Older application builds can ignore the new fields. Tracker credentials are not
+included. Inactive Aidoku tracker archives travel in the settings section. Category update and automatic-download
 exclusions use the backup-only `includeInUpdate` and `includeInDownload` fields
 (`2` for excluded categories, `0` for all others). Legacy `includeInDownload: 1`
 marks include-only categories, which an exclusion list cannot represent. A

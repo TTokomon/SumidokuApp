@@ -34,6 +34,8 @@ pub struct BackupDoc {
 	#[serde(default)]
 	pub progress: Vec<BackupProgress>,
 	#[serde(default)]
+	pub tracker_bindings: Vec<BackupTrackerBinding>,
+	#[serde(default)]
 	pub settings: BTreeMap<String, Value>,
 	#[serde(default)]
 	pub source_settings: BTreeMap<String, BTreeMap<String, Value>>,
@@ -47,6 +49,9 @@ pub struct BackupSource {
 	pub version: i64,
 	#[serde(default)]
 	pub repo_url: Option<String>,
+	/// Explicit opt-in in newer exports; absent in older documents.
+	#[serde(default)]
+	pub retain_offline: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +167,19 @@ pub struct BackupProgress {
 	pub last_read_at: Option<i64>,
 }
 
+/// Local associations only: no tokens, credentials, or remote progress writes.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupTrackerBinding {
+	pub source_key: String,
+	pub manga_key: String,
+	pub provider: String,
+	pub track_id: String,
+	pub title: Option<String>,
+	pub track_mode: String,
+	pub chapter_offset: i32,
+}
+
 #[derive(Debug, sqlx::FromRow)]
 struct ExportMangaRow {
 	source_key: String,
@@ -210,8 +228,8 @@ struct ExportProgressRow {
 /// Export-document construction shared by the GET handler and the scheduler, producing the admin's portable reader state
 pub async fn build_backup_doc(pool: &SqlitePool) -> ApiResult<BackupDoc> {
 	let user_id = crate::USER_ID;
-	let source_rows: Vec<(String, String, i64)> =
-		sqlx::query_as("SELECT key, name, version FROM source ORDER BY id")
+	let source_rows: Vec<(String, String, i64, String)> =
+		sqlx::query_as("SELECT key, name, version, kind FROM source ORDER BY id")
 			.fetch_all(pool)
 			.await?;
 	// There is no explicit FK for which repo a source belongs to, so use the first repo in the cached index containing the same key
@@ -224,7 +242,8 @@ pub async fn build_backup_doc(pool: &SqlitePool) -> ApiResult<BackupDoc> {
 	}
 	let sources = source_rows
 		.into_iter()
-		.map(|(key, name, version)| BackupSource {
+		.map(|(key, name, version, kind)| BackupSource {
+			retain_offline: kind == "aidoku" && super::aidoku_backup::retainable_aidoku_key(&key),
 			repo_url: repo_of.get(&key).cloned(),
 			key,
 			name,
@@ -236,12 +255,21 @@ pub async fn build_backup_doc(pool: &SqlitePool) -> ApiResult<BackupDoc> {
 		"SELECT s.key AS source_key, m.key, m.title, m.authors, m.artists, m.description, m.tags,
 		 m.status, m.content_rating, m.viewer, m.cover_url, m.url, m.initialized, m.update_strategy,
 		 m.metadata_locks,
-		 mu.in_library, mu.in_library_at, mu.viewer_flags, mu.incognito, mu.sort_key
+		 COALESCE(mu.in_library, 0) AS in_library, mu.in_library_at,
+		 COALESCE(mu.viewer_flags, 0) AS viewer_flags, COALESCE(mu.incognito, 0) AS incognito,
+		 COALESCE(mu.sort_key, '') AS sort_key
 		 FROM manga m
 		 JOIN source s ON s.id = m.source_id
-		 JOIN manga_user mu ON mu.manga_id = m.id AND mu.user_id = ?
+		 LEFT JOIN manga_user mu ON mu.manga_id = m.id AND mu.user_id = ?
+		 WHERE mu.manga_id IS NOT NULL
+		 OR EXISTS (SELECT 1 FROM tracker_link tl WHERE tl.manga_id = m.id AND tl.user_id = ?)
+		 OR EXISTS (SELECT 1 FROM chapter c JOIN chapter_user cu ON cu.chapter_id = c.id
+		 WHERE c.manga_id = m.id AND cu.user_id = ?
+		 AND (cu.last_page_read != 0 OR cu.is_read != 0 OR cu.is_bookmarked != 0 OR cu.last_read_at IS NOT NULL))
 		 ORDER BY m.id",
 	)
+	.bind(user_id)
+	.bind(user_id)
 	.bind(user_id)
 	.fetch_all(pool)
 	.await?;
@@ -363,6 +391,14 @@ pub async fn build_backup_doc(pool: &SqlitePool) -> ApiResult<BackupDoc> {
 		})
 		.collect();
 
+	let tracker_bindings: Vec<BackupTrackerBinding> = sqlx::query_as(
+		"SELECT s.key AS source_key, m.key AS manga_key, tl.provider, tl.track_id,
+		 tl.title, tl.track_mode, tl.chapter_offset
+		 FROM tracker_link tl JOIN manga m ON m.id = tl.manga_id
+		 JOIN source s ON s.id = m.source_id WHERE tl.user_id = ?
+		 ORDER BY s.key, m.key, tl.provider",
+	).bind(user_id).fetch_all(pool).await?;
+
 	let setting_rows = crate::settings::all(pool).await?;
 	let mut settings = BTreeMap::new();
 	for (key, raw) in setting_rows {
@@ -400,6 +436,7 @@ pub async fn build_backup_doc(pool: &SqlitePool) -> ApiResult<BackupDoc> {
 		library,
 		categories,
 		progress,
+		tracker_bindings,
 		settings,
 		source_settings,
 	};
@@ -505,6 +542,7 @@ struct Restored {
 	progress: i64,
 	settings: i64,
 	source_settings: i64,
+	tracker_bindings: i64,
 }
 
 pub async fn import_backup(
@@ -540,6 +578,7 @@ pub async fn import_backup_doc(state: &AppState, sections_query: Option<&str>, b
 		let mut tx = crate::db::begin_write(&state.pool).await?;
 		if sections.contains(&Section::Library) {
 			restore_library(&mut tx, user_id, &doc, &mut restored, &mut warnings).await?;
+			restore_tracker_bindings(&mut tx, user_id, &doc, &mut restored, &mut warnings).await?;
 		}
 		if sections.contains(&Section::Categories) {
 			restore_categories(&mut tx, user_id, &doc, &mut restored, &mut warnings).await?;
@@ -580,6 +619,7 @@ pub async fn import_backup_doc(state: &AppState, sections_query: Option<&str>, b
 			"progress": restored.progress,
 			"settings": restored.settings,
 			"sourceSettings": restored.source_settings,
+			"trackerBindings": restored.tracker_bindings,
 		},
 		"warnings": warnings,
 	}))
@@ -606,12 +646,21 @@ async fn restore_library(
 				"backup library entry must have non-empty sourceKey and key",
 			));
 		}
-		let Some(source_id) = source_id_by_key(tx, &entry.source_key).await? else {
-			warnings.push(format!(
-				"source not installed: {}; skipped manga {}",
-				entry.source_key, entry.key
-			));
-			continue;
+		let source_id = match source_id_by_key(tx, &entry.source_key).await? {
+			Some(id) => id,
+			None => {
+				let descriptor = doc.sources.iter().find(|source| source.key == entry.source_key && source.retain_offline);
+				if let Some(source) = descriptor.filter(|source| super::aidoku_backup::retainable_aidoku_key(&source.key)) {
+					let id = sqlx::query_scalar(
+						"INSERT INTO source (key, name, kind, wasm_path, enabled) VALUES (?, ?, 'aidoku', '', 0) RETURNING id",
+					).bind(&source.key).bind(&source.name).fetch_one(&mut **tx).await?;
+					warnings.push(format!("Source unavailable: {}; library and progress retained offline.", source.key));
+					id
+				} else {
+					warnings.push(format!("source not installed: {}; skipped manga {}", entry.source_key, entry.key));
+					continue;
+				}
+			}
 		};
 		let locks = entry.metadata_locks.as_ref().map(crate::metadata::serialize_locks);
 		crate::store::manga::upsert_from_backup(
@@ -655,6 +704,39 @@ async fn restore_library(
 		)
 		.await?;
 		restored.library += 1;
+	}
+	Ok(())
+}
+
+/// Library restoration also restores associated local tracker bindings; target
+/// bindings win and no tracker API calls are made.
+async fn restore_tracker_bindings(
+	tx: &mut Transaction<'_, Sqlite>,
+	user_id: i64,
+	doc: &BackupDoc,
+	restored: &mut Restored,
+	warnings: &mut Vec<String>,
+) -> ApiResult<()> {
+	for entry in &doc.tracker_bindings {
+		let provider = crate::tracker::Provider::parse(&entry.provider)
+			.ok_or_else(|| ApiError::bad_request("Unsupported provider in backup tracker binding"))?;
+		let track_mode = crate::tracker::core::TrackMode::parse(&entry.track_mode)
+			.ok_or_else(|| ApiError::bad_request("Invalid backup tracker mode"))?;
+		if entry.source_key.is_empty() || entry.manga_key.is_empty() || entry.track_id.is_empty() {
+			return Err(ApiError::bad_request("Backup tracker binding requires source, manga and remote IDs"));
+		}
+		let manga_id: Option<i64> = sqlx::query_scalar(
+			"SELECT m.id FROM manga m JOIN source s ON s.id = m.source_id WHERE s.key = ? AND m.key = ?",
+		).bind(&entry.source_key).bind(&entry.manga_key).fetch_optional(&mut **tx).await?;
+		let Some(manga_id) = manga_id else {
+			warnings.push(format!("Manga not found: {}/{}; skipped tracker binding", entry.source_key, entry.manga_key));
+			continue;
+		};
+		crate::tracker::dao::insert_link_if_absent(tx, &crate::tracker::dao::NewTrackerLink {
+			manga_id, user_id, provider: provider.as_str(), track_id: &entry.track_id,
+			title: entry.title.as_deref(), track_mode, chapter_offset: entry.chapter_offset.clamp(-10_000, 10_000),
+		}).await?;
+		restored.tracker_bindings += 1;
 	}
 	Ok(())
 }
