@@ -331,7 +331,10 @@ impl OAuthManager {
 		let app = self.app(provider);
 		let request = self.http.post(&app.token_url)
 			.header(reqwest::header::USER_AGENT, Self::user_agent());
-		let request = if provider == Provider::Anilist {
+		// AniList documents JSON for the authorization-code exchange. Preserve the
+		// original transport if an older account carries a refresh token.
+		let authorization_code = form.iter().any(|(name, value)| *name == "grant_type" && value == "authorization_code");
+		let request = if provider == Provider::Anilist && authorization_code {
 			let payload: HashMap<_, _> = form.iter().map(|(key, value)| (*key, value)).collect();
 			request.json(&payload)
 		} else {
