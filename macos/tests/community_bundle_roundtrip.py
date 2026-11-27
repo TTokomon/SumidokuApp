@@ -77,8 +77,17 @@ def main(root):
     def journals_verified(n):
         records=list(backups.glob('ApplicationUpdate-*/update-journal.json'))
         return len(records)==n and all(json.loads(p.read_text())['phase']=='verified' for p in records)
-    def reading():
-        doc=request('/api/v1/backups/document');return json.dumps({k:doc.get(k,[]) for k in ['library','progress','categories']},sort_keys=True)
+    def reading(*, requires_locked_metadata=False):
+        doc=request('/api/v1/backups/document')
+        snapshot={key:doc.get(key,[]) for key in ('library','progress','categories')}
+        assert snapshot['progress'], 'Expected existing chapter progress'
+        for row in snapshot['progress']:
+            chapter=row['chapter']
+            # Stable omits the field and the portable backup decoder defaults it to false.
+            if requires_locked_metadata:
+                assert chapter['locked'] is False, 'Beta must export the unlocked fixture chapter'
+            chapter.setdefault('locked', False)
+        return json.dumps(snapshot,sort_keys=True)
     class FixtureIndex(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path != '/index.json':
@@ -128,9 +137,13 @@ def main(root):
         first=wait(lambda:status(entries[0]['version']),'Stable native window/login/install readiness')
         (root/'session.json').rename(root/'test-fixture-account.private.json')
         (root/'command.txt').write_text('update');second=wait(lambda:status(entries[1]['version'],first['pid']),'Beta real helper relaunch', timeout=300)
-        wait(lambda:journals_verified(1),'Verified Beta handoff journal');assert second['canRestore'];assert reading()==original
+        wait(lambda:journals_verified(1),'Verified Beta handoff journal')
+        assert second['canRestore']
+        assert reading(requires_locked_metadata=True)==original
         assert digest(runtime)==entries[1]['serverSha256'];check_external_sources()
-        request(route,{'lastPageRead':2,'pageCount':3},'PATCH');advanced=reading();assert advanced!=original
+        request(route,{'lastPageRead':2,'pageCount':3},'PATCH')
+        advanced=reading(requires_locked_metadata=True)
+        assert advanced!=original
         (root/'command.txt').write_text('restore');third=wait(lambda:status(entries[0]['version'],second['pid']),'Stable real helper restore/relaunch', timeout=300)
         wait(lambda:journals_verified(2),'Verified Stable restore journal');assert reading()==advanced;assert digest(runtime)==entries[0]['serverSha256'];check_external_sources()
         with sqlite3.connect(config/'sumidoku.db') as database:

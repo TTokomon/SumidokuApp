@@ -1,9 +1,9 @@
 # Reviewed artifact qualification
 
-No desktop release is currently qualified. The protected publication workflow
-requires `desktop-vVERSION.json` and its `.json.sig` signed with the pinned
-publisher key. Missing or mismatched evidence blocks publication without needing
-any Apple certificate.
+The protected publication workflow requires `desktop-vVERSION.json` and its
+`.json.sig` signed with the pinned publisher key. Missing or mismatched evidence
+blocks publication. Community qualification uses the publisher key and can run
+without an Apple certificate.
 
 The exact-byte signed document must contain format `1`, status `passed`, the
 reviewed `sourceRevision`, exact `version` and numeric `build`, `archiveSha256`,
