@@ -263,3 +263,23 @@ Beta 3 includes the three-step Aidoku recovery, offline library preservation, sa
 The app and server were built from `5c0a2318fe6f45aa3e902991c59a0c47c3f9ebe1` with [reviewed CI](https://github.com/TTokomon/SumidokuApp/actions/runs/45773152396) passing. The [signed qualification](../macos/Distribution/qualifications/desktop-v1.3.1-beta.3.json) records the exact archive and validation evidence.
 
 A disposable native Stable 9 to Beta 12 upgrade and Restore Stable returned to build 9 with both exact release server binaries, preserving account access, reading progress, source settings, downloads, backups, and the backup schedule. Manual UI and actual Aidoku backup testing await in-app Beta 3 installation.
+
+## Beta 4 (build 13)
+
+Beta 4 improves Aidoku file import recovery, chapter counts and reconciliation,
+source migration, and the native views for Library, Preferences, History, Chapter
+Updates, and Sources. Schema 37 remains compatible with Stable. Live tracker
+sign-in and direct Aidoku backup sync are deferred.
+
+The app and server were built from `6fa7ea9282c020a40cfba78f511e4628f2c127ee`.
+Its Git tree exactly matches `da9036e7ffcfa2cfe4dc07d429350fff37e4ec61`, where
+[all nine reviewed CI jobs passed](https://github.com/TTokomon/SumidokuApp/actions/runs/45853597555).
+The [signed qualification](../macos/Distribution/qualifications/desktop-v1.3.1-beta.4.json)
+binds the archive, release notes, and candidate feeds. The candidate feeds
+preserve every published entry, including Stable build 9.
+
+A disposable native Stable 9 to Beta 13 upgrade and Restore Stable used the
+exact release server binaries. It preserved account access, reading progress
+advanced on Beta, source settings, downloads, backups, and the backup schedule.
+The qualification fixture compares all common backup fields and treats Stable's
+omitted chapter lock flag as equivalent to an explicitly unlocked chapter.
