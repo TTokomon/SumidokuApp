@@ -8,13 +8,13 @@ import { compareSourceName } from '../../lib/source';
 import { Button } from '../../components';
 
 function RowIcon({ source }: { source: Source }) {
-	const [failed, setFailed] = useState(false);
-	if (failed) {
+	const [failedRevision, setFailedRevision] = useState<number | null>(null);
+	if (failedRevision === source.updatedAt) {
 		return <span className="dest-picker__icon dest-picker__icon--fallback">{source.name.slice(0, 1)}</span>;
 	}
 	return (
 		<span className="dest-picker__icon">
-			<img src={sourceIconUrl(source.id)} alt="" loading="lazy" onError={() => setFailed(true)} />
+			<img src={sourceIconUrl(source.id, source.updatedAt)} alt="" loading="lazy" onError={() => setFailedRevision(source.updatedAt)} />
 		</span>
 	);
 }
@@ -23,13 +23,15 @@ export interface DestinationPickerProps {
 	/** Selected target source ids; the order is the priority */
 	selected: number[];
 	onChange: (ids: number[]) => void;
+	/** Keep same-source reassociation available manually, but omit it from automatic destination selection. */
+	originSourceId?: number | null;
 }
 
 /**
  * Migration destination-set picker: SELECTED is ordered (drag to reorder, removable), AVAILABLE appends
  * on click, and "select all pinned" batch-adds in pin order. Shared by the single-entry and batch entries.
  */
-export function DestinationPicker({ selected, onChange }: DestinationPickerProps) {
+export function DestinationPicker({ selected, onChange, originSourceId }: DestinationPickerProps) {
 	const { t } = useTranslation();
 	const sources = useSources();
 	const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -47,8 +49,13 @@ export function DestinationPicker({ selected, onChange }: DestinationPickerProps
 		.filter((s) => s.pinned && !chosenIds.has(s.id))
 		.sort((a, b) => (a.pinOrder ?? 0) - (b.pinOrder ?? 0));
 
+	const otherSources = available.filter((source) => source.id !== originSourceId);
+	function addOtherSources() {
+		onChange([...chosenIds, ...otherSources.map((source) => source.id)]);
+	}
+
 	function addAllPinned() {
-		onChange([...selected, ...pinnedRest.map((s) => s.id)]);
+		onChange([...chosenIds, ...pinnedRest.map((s) => s.id)]);
 	}
 
 	function onDrop(target: number) {
@@ -56,7 +63,7 @@ export function DestinationPicker({ selected, onChange }: DestinationPickerProps
 		setDragIndex(null);
 		setOverIndex(null);
 		if (from === null || from === target) return;
-		const next = [...selected];
+		const next = [...chosenIds];
 		const [moved] = next.splice(from, 1);
 		next.splice(target, 0, moved);
 		onChange(next);
@@ -126,7 +133,10 @@ export function DestinationPicker({ selected, onChange }: DestinationPickerProps
 				</div>
 			)}
 
-			<h4>{t('destinationPicker.availableHeading')}</h4>
+			<div className="dest-picker__head">
+				<h4>{t('destinationPicker.availableHeading')}</h4>
+				{otherSources.length > 0 && <Button size="sm" onClick={addOtherSources}>{t('aidokuWizard.selectOtherSources', { defaultValue: 'Select all other sources' })}</Button>}
+			</div>
 			{available.length === 0 ? (
 				<p className="muted">{t('destinationPicker.noMore')}</p>
 			) : (
@@ -137,7 +147,7 @@ export function DestinationPicker({ selected, onChange }: DestinationPickerProps
 							type="button"
 							className="dest-picker__row dest-picker__row--add"
 							title={t('destinationPicker.add', { name: s.name })}
-							onClick={() => onChange([...selected, s.id])}
+							onClick={() => onChange([...chosenIds, s.id])}
 						>
 							<RowIcon source={s} />
 							<span className="dest-picker__name">{s.name}</span>

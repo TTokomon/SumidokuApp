@@ -158,7 +158,8 @@ pub async fn publish(conn: &mut SqliteConnection, id: i64) -> ApiResult<()> {
 }
 
 /// A refresh rewrites everything the source owns and revives a trashed row; `page_count` and the
-/// fetch times stay with the local row.
+/// fetch times stay with a confirmed local row. Confirming a provisional backup chapter
+/// makes it readable while retaining the marker that excludes it from the new-release feed.
 pub async fn upsert_from_source(conn: &mut SqliteConnection, manga_id: i64, chapter: &ChapterFields<'_>, now: i64) -> ApiResult<()> {
 	let before = published_by_key(conn, manga_id, chapter.key).await?;
 	let id: i64 = sqlx::query_scalar(
@@ -170,7 +171,9 @@ pub async fn upsert_from_source(conn: &mut SqliteConnection, manga_id: i64, chap
 		 scanlators = excluded.scanlators, language = excluded.language,
 		 thumbnail = excluded.thumbnail, url = excluded.url,
 		 date_uploaded = excluded.date_uploaded, source_order = excluded.source_order,
-		 locked = excluded.locked, fetched_at = chapter.fetched_at, created_at = chapter.created_at,
+		 locked = excluded.locked,
+		 fetched_at = CASE WHEN chapter.fetched_at = 0 THEN excluded.fetched_at ELSE chapter.fetched_at END,
+		 created_at = CASE WHEN chapter.fetched_at = 0 THEN 0 ELSE chapter.created_at END,
 		 trashed_at = NULL
 		 RETURNING id",
 	)
@@ -208,8 +211,8 @@ pub(crate) async fn insert_from_backup(conn: &mut SqliteConnection, manga_id: i6
 	let existed = published_by_key(conn, manga_id, chapter.key).await?.is_some();
 	sqlx::query(
 		"INSERT OR IGNORE INTO chapter (manga_id, key, title, number, volume, scanlators,
-		 language, thumbnail, url, date_uploaded, source_order, page_count, fetched_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+		 language, thumbnail, url, date_uploaded, source_order, page_count, locked, fetched_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
 	)
 	.bind(manga_id)
 	.bind(chapter.key)
@@ -223,18 +226,19 @@ pub(crate) async fn insert_from_backup(conn: &mut SqliteConnection, manga_id: i6
 	.bind(chapter.date_uploaded)
 	.bind(chapter.source_order)
 	.bind(chapter.page_count)
+	.bind(chapter.locked)
 	.execute(&mut *conn)
 	.await?;
 	publish_inserted(conn, manga_id, chapter.key, existed).await
 }
 
-/// Like a backup row, but imports have no thumbnail or page count and record when they arrived
+/// Imports keep available chapter metadata, with a zero fetch timestamp until the source confirms it.
 pub(crate) async fn insert_from_import(conn: &mut SqliteConnection, manga_id: i64, chapter: &ChapterFields<'_>, now: i64) -> ApiResult<()> {
 	let existed = published_by_key(conn, manga_id, chapter.key).await?.is_some();
 	sqlx::query(
 		"INSERT OR IGNORE INTO chapter (manga_id, key, title, number, volume, scanlators, language,
-		 url, date_uploaded, source_order, page_count, fetched_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)",
+		 thumbnail, url, date_uploaded, source_order, page_count, locked, fetched_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
 	)
 	.bind(manga_id)
 	.bind(chapter.key)
@@ -243,9 +247,12 @@ pub(crate) async fn insert_from_import(conn: &mut SqliteConnection, manga_id: i6
 	.bind(chapter.volume)
 	.bind(chapter.scanlators)
 	.bind(chapter.language)
+	.bind(chapter.thumbnail)
 	.bind(chapter.url)
 	.bind(chapter.date_uploaded)
 	.bind(chapter.source_order)
+	.bind(chapter.page_count)
+	.bind(chapter.locked)
 	.bind(now)
 	.execute(&mut *conn)
 	.await?;

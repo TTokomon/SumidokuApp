@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 import SwiftUI
 import WebKit
 
@@ -23,6 +24,9 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     var address: URL { manager.api.base }
     @Published var available = false
     @Published var checking = true
+    @Published private(set) var reconnecting = false
+    private var failedHealthChecks = 0
+    private let probeLog = Logger(subsystem: "app.sumidoku.desktop", category: "server-probe")
     @Published var operation: String?
     @Published var message = ""
     @Published var controlError: String?
@@ -137,6 +141,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         self.library = library
         username = (login.json["user"] as? [String: Any])?["username"] as? String ?? ""
         signedIn = true; available = true; loaded = true; controlError = nil
+        failedHealthChecks = 0; reconnecting = false
         webView.load(URLRequest(url: address))
         bootstrapCommunitySourceList()
     }
@@ -220,23 +225,61 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
         defer { probing = false; checking = false }
         let cookie = await cookieHeader()
         let api = manager.api
+        let probeID = UUID()
+        let started = ProcessInfo.processInfo.systemUptime
+        let healthy = await Task.detached {
+            guard let reply = try? api.request("health") else { return false }
+            return reply.json["status"] as? String == "ok"
+        }.value
+        guard generation == sessionGeneration, operation == nil else { return }
+        probeLog.debug("Health probe \(probeID.uuidString, privacy: .public) healthy=\(healthy) elapsed=\(ProcessInfo.processInfo.systemUptime - started)s")
+        guard healthy else {
+            failedHealthChecks += 1
+            if !available || failedHealthChecks >= 3 {
+                available = false; reconnecting = false
+                message = "The local server is unavailable. Start it to open your library."
+            } else {
+                reconnecting = true
+            }
+            return
+        }
+
+        failedHealthChecks = 0
+        let authStarted = ProcessInfo.processInfo.systemUptime
         do {
             let status = try await Task.detached { try api.request("api/v1/auth/status", cookie: cookie) }.value
             guard generation == sessionGeneration, operation == nil else { return }
-            available = true; message = ""
-            let identity = status.json["username"] as? String
-            signedIn = identity != nil
-            username = identity ?? ""
-            if signedIn { bootstrapCommunitySourceList(cookie: cookie) }
-            if signedIn && (!loaded || reload) {
+            probeLog.debug("Session probe \(probeID.uuidString, privacy: .public) HTTP \(status.response.statusCode) elapsed=\(ProcessInfo.processInfo.systemUptime - authStarted)s")
+            guard status.json["enabled"] is Bool, status.json.keys.contains("user") else {
+                throw LibraryFailure(text: "The local server returned an invalid session status.")
+            }
+            applySessionStatus(status.json["username"] as? String, cookie: cookie, reload: reload)
+        } catch let error as LocalHTTPFailure where error.status == 401 {
+            guard generation == sessionGeneration, operation == nil else { return }
+            probeLog.debug("Session probe \(probeID.uuidString, privacy: .public) HTTP 401")
+            applySessionStatus(nil, cookie: cookie, reload: false)
+        } catch {
+            guard generation == sessionGeneration, operation == nil else { return }
+            let status = (error as? LocalHTTPFailure)?.status ?? 0
+            probeLog.debug("Session probe \(probeID.uuidString, privacy: .public) failed status=\(status) elapsed=\(ProcessInfo.processInfo.systemUptime - authStarted)s")
+            available = true; reconnecting = true
+            message = "The local server is responding. Waiting to verify your session."
+        }
+    }
+
+    private func applySessionStatus(_ identity: String?, cookie: String, reload: Bool) {
+        available = true; reconnecting = false; message = ""
+        signedIn = identity != nil
+        username = identity ?? ""
+        if signedIn {
+            bootstrapCommunitySourceList(cookie: cookie)
+            if !loaded || reload {
                 loaded = true
                 webView.load(URLRequest(url: address))
             }
-            if !signedIn { loaded = false; onboarding = "signin" }
-        } catch {
-            guard generation == sessionGeneration, operation == nil else { return }
-            available = false
-            message = "The local server is unavailable. Start it to open your library."
+        } else {
+            loaded = false
+            onboarding = "signin"
         }
     }
 
@@ -260,7 +303,7 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
     func showSourceLists() {
         nativePanel = nil
         guard signedIn else { controlError = "Sign in to manage Source Lists."; return }
-        navigate("/browse?view=lists")
+        navigate("/settings?section=source-lists")
     }
 
     func showBackupRestore() {
@@ -315,13 +358,13 @@ final class ServerController: NSObject, ObservableObject, WKNavigationDelegate, 
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
-        available = false
+        loaded = false; reconnecting = true
         message = "The interface could not be loaded. Check the local server and try again."
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
-        available = false
+        loaded = false; reconnecting = true
         message = "The interface connection was interrupted. Check the local server and try again."
     }
 
@@ -441,16 +484,16 @@ struct MainWindow: View {
 
     var body: some View {
         ZStack {
-            if controller.library == nil || (controller.available && !controller.signedIn) {
+            if controller.library == nil || (controller.available && !controller.reconnecting && !controller.signedIn) {
                 ScrollView {
                     WelcomeView(controller: controller).frame(maxWidth: .infinity, minHeight: 540)
                 }
-            } else if controller.available && controller.signedIn { DesktopShell(controller: controller, updates: updates) }
+            } else if controller.signedIn { DesktopShell(controller: controller, updates: updates) }
             else {
                 VStack(spacing: 16) {
                     Image(nsImage: NSImage(named: NSImage.applicationIconName)!)
                         .resizable().frame(width: 72, height: 72)
-                    Text(controller.checking ? "Connecting to Sumidoku…" : "Sumidoku server is unavailable")
+                    Text(controller.checking || controller.reconnecting ? "Connecting to Sumidoku…" : "Sumidoku server is unavailable")
                         .font(.title2).fontWeight(.semibold)
                     Text(controller.controlError ?? (controller.message.isEmpty ? "Checking the local background server." : controller.message))
                         .foregroundStyle(.secondary).multilineTextAlignment(.center)
@@ -459,8 +502,10 @@ struct MainWindow: View {
                         if let operation = controller.operation { Text(operation).foregroundStyle(.secondary) }
                     } else {
                         HStack {
-                            Button("Start Server") { Task { await controller.control("start") } }
-                                .keyboardShortcut(.defaultAction)
+                            if !controller.available {
+                                Button("Start Server") { Task { await controller.control("start") } }
+                                    .keyboardShortcut(.defaultAction)
+                            }
                             Button("Check Again") { Task { await controller.check() } }
                         }
                     }

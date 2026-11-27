@@ -47,7 +47,8 @@
 		"transferSource": "Transfer source",
 		"selectedTitles": "Selected titles",
 		"retryFailed": "Retry failed transfers",
-		"safeTransferHelp": "Unverified page positions stay with the original manga. Partial transfers keep the original in your library.",
-		"noConfidentMatch": "No confident match — choose manually"
+		"safeTransferHelp": "Move replaces the library entry. Unmatched history stays with the original manga outside the library.",
+		"noConfidentMatch": "No confident match — choose manually",
+		"selectOtherSources": "Select all other sources"
 	}
 }

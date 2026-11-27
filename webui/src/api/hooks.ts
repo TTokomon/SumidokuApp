@@ -921,12 +921,18 @@ export function useRefreshChapters() {
 
 // ---- history / updates pagination ----
 
-export function useHistory() {
+export function useHistory(search = '') {
 	return useInfiniteQuery({
-		queryKey: ['history'],
-		queryFn: ({ pageParam }) => api<HistoryPage>(`/history?page=${pageParam}`),
-		initialPageParam: 1,
-		getNextPageParam: nextPage
+		queryKey: ['history', search],
+		queryFn: ({ pageParam, signal }) => {
+			const params = new URLSearchParams();
+			if (search) params.set('search', search);
+			if (typeof pageParam === 'number') params.set('page', String(pageParam));
+			else params.set('before', pageParam);
+			return api<HistoryPage>(`/history?${params}`, { signal });
+		},
+		initialPageParam: 1 as number | string,
+		getNextPageParam: (last, pages) => last.nextCursor ?? nextPage(last, pages)
 	});
 }
 
@@ -1127,14 +1133,20 @@ export function useRestoreNamedBackup() {
 	});
 }
 
-/** Import an Aidoku .aib: dryRun only previews without writing; a real import invalidates everything */
+/** Preview and commit use the same file. A successful commit invalidates affected data. */
 export function useImportAidoku() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: ({ file, dryRun }: { file: File; dryRun: boolean }) =>
-			api<AidokuImportResponse>(`/backups/import/aidoku?dryRun=${dryRun}&preserveMissingSources=true`, { method: 'POST', body: file }),
+		mutationFn: ({ file, dryRun, previewFingerprint }: { file: File; dryRun: boolean; previewFingerprint?: string }) => {
+			const query = new URLSearchParams({ dryRun: String(dryRun), preserveMissingSources: 'true' });
+			if (previewFingerprint) query.set('previewFingerprint', previewFingerprint);
+			return api<AidokuImportResponse>(`/backups/import/aidoku?${query}`, { method: 'POST', body: file });
+		},
 		onSuccess: (_result, vars) => {
-			if (!vars.dryRun) qc.invalidateQueries();
+			if (vars.dryRun) return;
+			for (const key of [qk.library, qk.categories, qk.sources, qk.repoSources, ['manga'], ['history'], ['tracker-links']]) {
+				void qc.invalidateQueries({ queryKey: key });
+			}
 		}
 	});
 }
@@ -1397,10 +1409,10 @@ export function useMigrateSources() {
 }
 
 /** Title search of a single entry against one target source: imperative call; batch-match concurrency is owned by the page */
-export function migrateLookup(mangaId: number, targetSourceId: number, query?: string) {
+export function migrateLookup(mangaId: number, targetSourceId: number, query?: string, signal?: AbortSignal) {
 	const qs = new URLSearchParams({ mangaId: String(mangaId), targetSourceId: String(targetSourceId) });
 	if (query) qs.set('query', query);
-	return api<MigrationLookupResponse>(`/migrate/lookup?${qs}`, { silent: true });
+	return api<MigrationLookupResponse>(`/migrate/lookup?${qs}`, { silent: true, signal });
 }
 
 export function useMigrate() {

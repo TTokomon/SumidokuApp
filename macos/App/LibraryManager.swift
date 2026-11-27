@@ -29,6 +29,17 @@ struct APIReply {
     }
 }
 
+struct LocalHTTPFailure: LocalizedError {
+    let status: Int
+    var errorDescription: String? {
+        switch status {
+        case 401: return "Incorrect username or password, or your session has expired."
+        case 429: return "Too many sign-in attempts. Wait a moment and try again."
+        default: return "The server could not complete this action (HTTP \(status))."
+        }
+    }
+}
+
 // Synchronous networking is confined to background tasks, never the AppKit thread.
 final class LocalAPI: @unchecked Sendable {
     let base: URL
@@ -66,9 +77,7 @@ final class LocalAPI: @unchecked Sendable {
         do { reply = try result.get() }
         catch { throw LibraryFailure(text: "The local server is unavailable. Start it or check its logs.") }
         guard (200..<300).contains(reply.response.statusCode) else {
-            if reply.response.statusCode == 401 { throw LibraryFailure(text: "Incorrect username or password, or your session has expired.") }
-            if reply.response.statusCode == 429 { throw LibraryFailure(text: "Too many sign-in attempts. Wait a moment and try again.") }
-            throw LibraryFailure(text: "The server could not complete this action (HTTP \(reply.response.statusCode)).")
+            throw LocalHTTPFailure(status: reply.response.statusCode)
         }
         return reply
     }

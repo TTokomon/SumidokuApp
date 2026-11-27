@@ -859,38 +859,19 @@ no alias is derived from migration text.
   `delete_source` prunes the key. The Browse page shows the pinned sources
   in an ordered section above the full list, with drag-to-reorder
   (`webui/src/pages/BrowsePage.tsx`).
-- Cross-source migration (`api/migrate.rs`): moves the requesting user's
-  library entries between
-  sources, Aidoku-style. `GET /api/v1/migrate/sources` lists installed
-  sources with their in-library `mangaCount` (plus pin data from
-  `source_json`); `GET /api/v1/migrate/lookup?mangaId=&targetSourceId=[&query=]`
-  runs a title search on one destination source through the source's normal
-  search path (rate limits intact) and returns the candidates with internal
-  ids attached — the batch flow's auto-match calls it per destination in
-  priority order and takes the first source with any hit (its first
-  result), the single flow calls it across all destinations 3 at a time.
-  `POST /api/v1/migrate` `{mode, entries: [{fromMangaId, toSourceId,
-  toMangaKey, toManga?}]}` executes serially: each entry is one SQLite
-  transaction (the `get_manga_update` fetch that initializes a new target's
-  metadata and chapters happens before the transaction), so a failed entry
-  never rolls back the ones already committed and reports
-  `{ok: false, reason}` (`not_found`, `not_in_library`, `source_not_found`,
-  `same_source`, `fetch_failed`) next to the successful
-  `{ok: true, toMangaId, warnings}`. An existing target row is reused and
-  merged into. Carried state: library membership (target keeps its own
-  `in_library_at` when already in library, else inherits the origin's),
-  category membership (union), and reading progress matched by chapter
-  `number` (duplicates resolve to the lowest `source_order`; numberless
-  origin chapters fall back to `volume` but only match numberless target
-  chapters), merged with max(`last_page_read`), OR-ed `is_read`/
-  `is_bookmarked` and the newest `last_read_at`; unmatched chapters land in
-  the entry's `warnings`. Modes: `copy` keeps the origin untouched,
-  `migrate` removes it from the library and resets its progress fields (the
-  row stays for the download flag), `migrateWithHistory` removes it from
-  the library but keeps its progress rows. The web UI has the batch
-  source-first wizard at `/migrate` (`webui/src/pages/migrate/`) and the
-  single-manga flow in the detail page's more-menu
-  (`webui/src/pages/manga/MigrateModal.tsx`).
+- Cross-source migration (`api/migrate.rs`): `GET /api/v1/migrate/sources`
+  returns per-user library counts, including unavailable sources. Candidates
+  come from the normal source search, with at most three titles in flight in
+  the batch wizard. Search covers all selected destinations. An exact
+  normalized title without conflicting authors can be suggested when it is
+  unique and the search completed. Source failures are visible for review.
+  The transfer rechecks the source revision, original membership and readable
+  destination inside a per-title write transaction. A successful move shelves
+  the destination and unshelves the original. Unmatched progress and conflicting
+  tracker associations stay on the original. Chapter matching uses unambiguous
+  number, volume and language context. The same chapter key is evidence only
+  within a source. Many-to-one matches retain history on the original. The
+  desktop keeps partial page offsets only for verified same-source layouts.
 - Authentication (`auth.rs`): only the built-in admin (`USER_ID = 1`) can
   authenticate; its login identity lives in the `user` table. Login is
   username + password (`POST /api/v1/auth/login`), answered with an admin
@@ -1163,6 +1144,11 @@ no alias is derived from migration text.
   folds to NULL, matching the Aidoku host's `""` → nil normalization. A non-zero
   `manga_user.viewer_flags` is the admin's viewer override: API responses
   report it as the manga `viewer` while the source value stays stored.
+- Library unread totals, sorting, and the unread filter count only current
+  readable chapters or readable downloads. Unavailable, trashed, and
+  provisional chapters retain their progress and stay out of the count.
+  History supports title/chapter search before pagination and a stable
+  timestamp/ID cursor. The legacy numbered page API remains available.
 - Incognito reading (`api/reader.rs`): "history" is `chapter_user.last_read_at`,
   stamped whenever `lastPageRead` is written; the history page selects rows
   where it is non-null. The admin's
@@ -1263,7 +1249,12 @@ no alias is derived from migration text.
   transaction and rolls it back, so the report is identical to a real
   run's and the database is untouched; an unparseable or wrongly shaped
   file answers 400 with no writes. The web UI settings page has the
-  upload → dry-run preview → confirm flow under the backup section.
+  upload → dry-run preview → confirm flow under the backup section. Parsing
+  runs off the async worker with bounded concurrency. The newer UI sends the
+  preview fingerprint, binding the file to the exact source state observed
+  in the write transaction. Chapter records from the backup are provisional
+  until a source refresh and retain saved lock state, thumbnails and known
+  page totals where those fields are present.
 - Suwayomi/Mihon backup import (`api/suwayomi_backup.rs`):
   `POST /api/v1/backups/import/suwayomi` accepts a Suwayomi-Server or
   Mihon/Tachiyomi backup as a binary body. Both apps write the same
@@ -2021,6 +2012,11 @@ source directories alike; both register the same way, with `wasm_path`
 pointing at the `.aix` or the directory's `main.wasm`. An `.aix` icon is
 written next to the package as `<name>.png` so installed sources serve
 `/sources/{id}/icon` the same way the directory scan's `icon.png` does.
+The icon endpoint validates embedded images first. When they are absent or
+invalid, it tries the installed package's exact version and repository.
+It bounds the response and uses the same redirect and network rules as
+repository package downloads. The per-source cache stores validated artwork
+and briefly caches misses.
 Uninstall (`DELETE /api/v1/sources/{id}`) removes the on-disk package
 with the database row — the source directory, or the `.aix` plus its
 `<name>.png` sidecar, only ever paths inside `sources/` — so a later
@@ -2217,9 +2213,9 @@ When authentication is on, the
 login page takes the admin username + password with an initially empty username
 field, browser API requests use the login cookie, CLI clients may send a
 bearer header, and any `401` lands on `/login`. Desktop navigation exposes library,
-sources, history, downloads, chapter updates and six grouped Preferences destinations. The native
+sources, history, downloads, chapter updates and seven grouped Preferences destinations. The native
 WKWebView hides the browser sidebar to avoid duplicated navigation. The browse page keeps cross-source search above its
-Installed, Discover, Source Lists and Trash views, with `/search` redirecting to its search view.
+Installed, Discover and Trash views, with `/search` redirecting to its search view.
 Remote source and cross-source searches run on explicit submission; local-source
 filtering uses a 500ms debounce. Clearing a source's search box resubmits an
 empty query so the unsearched results return without waiting for submission.
@@ -2236,21 +2232,19 @@ and shows each field's source as follow-the-source, written by a provider, or
 manual, with per-field unlock and a restore-to-source action. Both live in
 `webui/src/pages/manga/`, share `metadata.css`, and are only offered while the
 entry is in the library or its source is local.
-Settings exposes General, Reader, Automation, Storage & Backups, Accounts &
-Integrations and Server & Diagnostics. Storage and Accounts have two subsections;
-other categories have a single page. A small keyword search links directly to
-these groups and contextual management. Desktop uses the sidebar without a second
-category bar; compact browser layouts retain their own category controls.
-`pages/settings/navigation.ts` owns category and legacy-route mapping.
+Settings exposes General, Reader, Library, Sources, Storage & Backups, Accounts
+& Integrations and Server & Diagnostics. The active subsection alone mounts its
+controls. Desktop uses the sidebar without a second category bar, while compact
+browser layouts retain their own category controls. The shared Settings
+navigation maps sections to their categories.
 
-Library owns the reused category/filter editors in Organize and display settings
-in View Options (`LibraryManagement.tsx`). Legacy `section=library` redirects to
-`/library?panel=organize`. Legacy `section=source-lists` redirects to
-`/browse?view=lists`; subscriptions and manual package actions live there, while
-source refresh/update policies live in Automation. Accounts owns password/API-key
-security and all trackers (`section=trackers` remains valid). Downloads and backups
-retain their original section URLs within Storage. General, Reader and System URLs
-also remain valid, with the new `automation` and `accounts` sections added.
+Library contains display preferences, category and filter management, and update
+scheduling. The old `/library?panel=organize` and `/library?panel=view` URLs redirect
+to `/settings?section=library`. The `automation` subsection remains a direct link
+to Library update scheduling. `/browse?view=lists` redirects to
+`/settings?section=source-lists`, which owns subscriptions and source refresh and
+update policies. Accounts owns password and API-key security and all trackers.
+Downloads and Backups retain their section URLs within Storage.
 
 `AidokuImportSessionProvider`, keyed to the authenticated user around AppLayout,
 retains the original File, preview, skip confirmation and exact source-package
@@ -2688,9 +2682,8 @@ The same-run verified artifact is retained for 90 days for idempotent completion
   two linux targets, build both darwin targets on `macos-latest`, and
   build the Windows desktop app on `windows-latest` — there a headless
   smoke run of the exe (health endpoint plus the log file a GUI-subsystem
-  process must write) gates packaging into the portable zip. The build job
-  supplies tracker OAuth credentials through its environment, and `Cross.toml`
-  forwards them into the Linux build containers. The pipeline then pushes the
+  process must write) gates packaging into the portable zip. Tracker
+  credentials are configured at runtime. The pipeline pushes the
   same multi-arch image to Docker Hub
   (`sumidoku/sumidoku`) and GitHub Container Registry
   (`ghcr.io/sumidoku/sumidoku`), each tagged

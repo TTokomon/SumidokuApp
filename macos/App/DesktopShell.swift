@@ -15,12 +15,12 @@ struct DesktopDestination: Identifiable, Hashable {
         Self(id: "/downloads", title: "Downloads", symbol: "arrow.down.circle.fill"),
         Self(id: "/updates", title: "Chapter Updates", symbol: "clock.arrow.2.circlepath")
     ]
-    // Six concise Preferences destinations. The existing eight Settings
-    // sections and every historical deep link remain available.
+    // Preference destinations match the actual settings categories.
     static let settings = [
         Self(id: "/settings?section=general", title: "General", symbol: "gear"),
         Self(id: "/settings?section=reader", title: "Reader", symbol: "book.fill"),
-        Self(id: "/settings?section=automation", title: "Automation", symbol: "calendar.badge.clock"),
+        Self(id: "/settings?section=library", title: "Library", symbol: "books.vertical.circle"),
+        Self(id: "/settings?section=source-lists", title: "Sources", symbol: "list.bullet.rectangle"),
         Self(id: "/settings?section=downloads", title: "Storage & Backups", symbol: "externaldrive.fill"),
         Self(id: "/settings?section=accounts", title: "Accounts & Integrations", symbol: "person.crop.circle.fill"),
         Self(id: "/settings?section=system", title: "Server & Diagnostics", symbol: "gearshape.2.fill")
@@ -33,7 +33,8 @@ struct DesktopDestination: Identifiable, Hashable {
         case "/downloads": return .blue
         case "/updates": return .purple
         case "/settings?section=reader": return .indigo
-        case "/settings?section=automation": return .purple
+        case "/settings?section=library": return DesktopBrand.accent
+        case "/settings?section=source-lists": return .green
         case "/settings?section=accounts": return .teal
         case "/settings?section=downloads": return .orange
         case "/settings?section=general": return .secondary
@@ -60,6 +61,12 @@ struct DesktopShell: View {
         }
     }
 
+    private var serverStatus: String {
+        if controller.checking { return "Checking" }
+        if controller.reconnecting { return "Reconnecting" }
+        return controller.available ? "Running" : "Offline"
+    }
+
     var selection: Binding<String?> {
         Binding(
             get: {
@@ -69,10 +76,9 @@ struct DesktopShell: View {
                     let section = URLComponents(string: controller.route)?.queryItems?.first(where: { $0.name == "section" })?.value
                     switch section {
                     case "reader": return "/settings?section=reader"
-                    case "library": return "/library"
-                    case "source-lists": return "/browse"
+                    case "library", "automation": return "/settings?section=library"
+                    case "source-lists": return "/settings?section=source-lists"
                     case "accounts", "trackers": return "/settings?section=accounts"
-                    case "automation": return "/settings?section=automation"
                     case "downloads", "backups": return "/settings?section=downloads"
                     case "system": return "/settings?section=system"
                     default: return "/settings?section=general"
@@ -101,16 +107,20 @@ struct DesktopShell: View {
                 .accessibilityHidden(true)
         }
         .frame(minHeight: 44, alignment: .leading)
+        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
         .contentShape(Rectangle())
         .tag(item.id)
         .contextMenu { Button("Open \(item.title)") { select(item.id) } }
     }
     var body: some View {
+        GeometryReader { window in
+            splitView(sidebarHeight: window.size.height)
+        }
+    }
+
+    private func splitView(sidebarHeight: CGFloat) -> some View {
         NavigationSplitView(columnVisibility: $visibility) {
-            List(selection: selection) {
-                Section("Collection") { ForEach(DesktopDestination.collection) { item in destinationRow(item) } }
-                Section("Preferences") { ForEach(DesktopDestination.settings) { item in destinationRow(item) } }
-            }.safeAreaInset(edge: .top, alignment: .leading) {
+            VStack(spacing: 0) {
                 HStack(spacing: 14) {
                     Image(nsImage: NSImage(named: NSImage.applicationIconName)!)
                         .resizable().interpolation(.high)
@@ -120,9 +130,19 @@ struct DesktopShell: View {
                         Text("Desktop").font(.caption).foregroundStyle(.secondary)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16).padding(.top, 18).padding(.bottom, 20)
-            }.listStyle(.sidebar).navigationSplitViewColumnWidth(min: 235, ideal: 270, max: 320)
-                .safeAreaInset(edge: .bottom) {
+                    .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 12)
+                    .fixedSize(horizontal: false, vertical: true)
+                GeometryReader { available in
+                    List(selection: selection) {
+                        Section("Collection") { ForEach(DesktopDestination.collection) { item in destinationRow(item) } }
+                        Section("Preferences") { ForEach(DesktopDestination.settings) { item in destinationRow(item) } }
+                    }
+                    .listStyle(.sidebar)
+                    .frame(width: available.size.width, height: available.size.height)
+                }
+                .clipped()
+                Divider()
+                Group {
                     VStack(alignment: .leading, spacing: 8) {
                         Button { controller.nativePanel = "updates" } label: {
                             HStack(spacing: 9) {
@@ -141,21 +161,25 @@ struct DesktopShell: View {
                                     .frame(width: 20)
                                 Text("Local Server").font(.callout)
                                 Spacer(minLength: 4)
-                                Circle().fill(controller.checking ? Color.gray : controller.available ? Color.green : Color.orange)
+                                Circle().fill(controller.checking ? Color.gray : serverStatus == "Running" ? Color.green : Color.orange)
                                     .frame(width: 8, height: 8)
-                                Text(controller.checking ? "Checking" : controller.available ? "Running" : "Offline")
+                                Text(serverStatus)
                                     .font(.caption).foregroundStyle(.secondary)
                             }.contentShape(Rectangle())
                         }.buttonStyle(.plain)
-                            .accessibilityLabel(controller.available ? "Local server running. Open server controls." : "Local server unavailable. Open server controls.")
+                            .accessibilityLabel("Local server: \(serverStatus). Open server controls.")
                     }
                     .padding(13)
                     .modifier(NativeControlSurface())
                     .padding(.horizontal, 12)
                     .padding(.bottom, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-                .navigationTitle("Sumidoku")
+            }
+            .frame(height: sidebarHeight, alignment: .top)
+            .navigationSplitViewColumnWidth(min: 235, ideal: 270, max: 320)
+            .navigationTitle("Sumidoku")
         } detail: {
             ZStack {
                 // Keep the document alive while a native settings pane is selected.

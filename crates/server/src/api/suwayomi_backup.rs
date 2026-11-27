@@ -592,6 +592,9 @@ async fn import_group(
 			realigned.chapter += changed as i64;
 			seen_chapters.insert(chapter_key.clone());
 			let meta = ChapterMeta {
+				thumbnail: None,
+				page_count: 0,
+				locked: false,
 				title: (!chapter.name.is_empty()).then_some(chapter.name.as_str()),
 				number: (chapter.chapter_number != 0.0).then_some(chapter.chapter_number as f64),
 				volume: None,

@@ -19,9 +19,10 @@ implementation, or compiled icon file has been copied or embedded.
 
 Our native sidebar uses those original symbol *names* instead of inventing
 new pictograms. Chapter Updates uses the circular update symbol as a visual analogy; App Updates
-uses the distinct `arrow.clockwise`. Automation uses `calendar.badge.clock`,
-Accounts uses `person.crop.circle.fill`, and Server & Diagnostics uses
-`gearshape.2.fill`. These are native desktop choices, not copied mobile tabs.
+uses the distinct `arrow.clockwise`. Library and Sources in Preferences use
+`books.vertical.circle` and `list.bullet.rectangle` to distinguish them from
+the Collection destinations. Accounts uses `person.crop.circle.fill` and
+Server & Diagnostics uses `gearshape.2.fill`. These are native desktop choices.
 
 The native shell continues to use genuine system Liquid Glass where
 supported. Its bundled **Sumidoku logo and red accent remain unchanged**.
@@ -46,9 +47,9 @@ supported. Its bundled **Sumidoku logo and red accent remain unchanged**.
 A lightweight regression suite:
 `python3 -m unittest macos/tests/test_aidoku_symbols.py`
 
-`./macos/test-symbols.sh` resolves all eleven destinations through AppKit and
-checks all thirteen sidebar/footer identifiers for collisions. A forced
-preferred-symbol-unavailable case resolves thirteen distinct available fallback
+`./macos/test-symbols.sh` resolves all twelve destinations through AppKit and
+checks all fourteen sidebar/footer identifiers for collisions. A forced
+preferred-symbol-unavailable case resolves fourteen distinct available fallback
 glyphs. Each registered destination has its own fallback chain rather than sharing
 a generic circle. The current Mac passes both checks; actual older macOS hardware
 remains a separate certification step. Symbols remain 18pt with consistent colors.

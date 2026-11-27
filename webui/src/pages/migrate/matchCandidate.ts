@@ -1,7 +1,7 @@
 type Candidate = { sourceId: number; key: string; title: string; authors: string[] | null };
 
 function normalize(value: string): string {
-	return value.normalize('NFKC').toLowerCase().trim().replace(/\s+/g, ' ');
+	return value.normalize('NFKC').toLowerCase().replace(/[\p{P}\s]+/gu, ' ').trim();
 }
 
 /** A search result is a suggestion, never proof. Refuse unrelated/ambiguous titles. */

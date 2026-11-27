@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Switch } from '../../components';
 import { api } from '../../api/client';
@@ -52,9 +51,10 @@ export function SourceLists() {
 		{bootstrap === 'deferred' && <p role="status">Aidoku Community setup is deferred while its list is unavailable. The desktop will retry; your existing library remains usable.</p>}
 		<section className="card settings-section" aria-label="Manual source updates">
 			<h3>Manual source updates</h3>
-			<p>Automatic policies are managed in <Link to="/settings?section=automation">Preferences → Automation</Link>. These actions never download manga chapters.</p>
-			<Button disabled={repos.isPending || !repos.data?.length || checking} onClick={() => void checkUpdates()}>Check for Source Updates</Button>
-			<Button disabled={updateAll.isPending} onClick={() => void updateInstalledSources()}>Update All Sources</Button>
+			<div className="settings-actions">
+				<Button disabled={repos.isPending || !repos.data?.length || checking} onClick={() => void checkUpdates()}>Check for Source Updates</Button>
+				<Button disabled={updateAll.isPending} onClick={() => void updateInstalledSources()}>Update All Sources</Button>
+			</div>
 			{message && <p role="status">{message}</p>}
 		</section>
 		<Button variant="primary" onClick={() => setAdding(true)}>Add Source List</Button>

@@ -28,8 +28,8 @@ class AidokuSymbolTests(unittest.TestCase):
 
     def test_general_first_preferences_uses_aidoku_gear(self):
         settings = self.code.split("static let settings = [", 1)[1].split("\n    ]", 1)[0]
-        self.assertEqual(settings.count("Self(id:"), 6)
-        self.assertIn('id: "/settings?section=general", title: "General", symbol: "gear"', settings)
+        self.assertEqual(settings.count("Self(id:"), 7)
+        self.assertTrue(settings.lstrip().startswith('Self(id: "/settings?section=general", title: "General", symbol: "gear")'))
 
     def test_original_sumidoku_app_logo_is_retained(self):
         self.assertIn("NSImage.applicationIconName", self.code)

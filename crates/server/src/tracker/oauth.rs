@@ -9,7 +9,7 @@
 //! and serialized; every conditional write guards on the access token it saw,
 //! so a racing logout/login or a second refresh never clobbers the other.
 
-use super::{Provider, TrackerError, dao, request_failure, response_detail};
+use super::{Provider, TrackerError, dao, request_failure};
 use base64::Engine as _;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,7 @@ use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[cfg(test)]
 pub const OAUTH_RELAY_ROOT: &str = "https://sumidoku.github.io/oauth";
 pub const NATIVE_OAUTH_CALLBACK_ROOT: &str = "/api/v1/trackers/oauth";
 
@@ -51,8 +52,8 @@ pub(crate) struct OAuthApp {
 	client_secret_env: &'static str,
 }
 
-fn env_value(value: Option<&'static str>) -> Option<String> {
-	value.map(str::trim).filter(|value| !value.is_empty()).map(str::to_string)
+fn env_value(name: &str) -> Option<String> {
+	std::env::var(name).ok().map(|value| value.trim().to_owned()).filter(|value| !value.is_empty())
 }
 
 impl OAuthApp {
@@ -60,12 +61,12 @@ impl OAuthApp {
 		match provider {
 			Provider::Anilist => Self {
 				provider,
-				client_id: env_value(option_env!("SUMIDOKU_OAUTH_ANILIST_CLIENT_ID")),
-				client_secret: env_value(option_env!("SUMIDOKU_OAUTH_ANILIST_CLIENT_SECRET")),
+				client_id: env_value("SUMIDOKU_OAUTH_ANILIST_CLIENT_ID"),
+				client_secret: env_value("SUMIDOKU_OAUTH_ANILIST_CLIENT_SECRET"),
 				authorize_url: "https://anilist.co/api/v2/oauth/authorize".into(),
 				token_url: "https://anilist.co/api/v2/oauth/token".into(),
 				userinfo_url: "https://graphql.anilist.co/".into(),
-				pkce: PkceMethod::S256,
+				pkce: PkceMethod::None,
 				scope: None,
 				refresh_with_redirect: false,
 				client_id_env: "SUMIDOKU_OAUTH_ANILIST_CLIENT_ID",
@@ -73,8 +74,8 @@ impl OAuthApp {
 			},
 			Provider::Mal => Self {
 				provider,
-				client_id: env_value(option_env!("SUMIDOKU_OAUTH_MAL_CLIENT_ID")),
-				client_secret: env_value(option_env!("SUMIDOKU_OAUTH_MAL_CLIENT_SECRET")),
+				client_id: env_value("SUMIDOKU_OAUTH_MAL_CLIENT_ID"),
+				client_secret: env_value("SUMIDOKU_OAUTH_MAL_CLIENT_SECRET"),
 				authorize_url: "https://myanimelist.net/v1/oauth2/authorize".into(),
 				token_url: "https://myanimelist.net/v1/oauth2/token".into(),
 				userinfo_url: "https://api.myanimelist.net/v2/users/@me".into(),
@@ -86,8 +87,8 @@ impl OAuthApp {
 			},
 			Provider::Bangumi => Self {
 				provider,
-				client_id: env_value(option_env!("SUMIDOKU_OAUTH_BANGUMI_CLIENT_ID")),
-				client_secret: env_value(option_env!("SUMIDOKU_OAUTH_BANGUMI_CLIENT_SECRET")),
+				client_id: env_value("SUMIDOKU_OAUTH_BANGUMI_CLIENT_ID"),
+				client_secret: env_value("SUMIDOKU_OAUTH_BANGUMI_CLIENT_SECRET"),
 				authorize_url: "https://bgm.tv/oauth/authorize".into(),
 				token_url: "https://bgm.tv/oauth/access_token".into(),
 				userinfo_url: "https://next.bgm.tv/p1/me".into(),
@@ -99,8 +100,8 @@ impl OAuthApp {
 			},
 			Provider::Mangabaka => Self {
 				provider,
-				client_id: env_value(option_env!("SUMIDOKU_OAUTH_MANGABAKA_CLIENT_ID")),
-				client_secret: env_value(option_env!("SUMIDOKU_OAUTH_MANGABAKA_CLIENT_SECRET")),
+				client_id: env_value("SUMIDOKU_OAUTH_MANGABAKA_CLIENT_ID"),
+				client_secret: env_value("SUMIDOKU_OAUTH_MANGABAKA_CLIENT_SECRET"),
 				authorize_url: "https://mangabaka.org/auth/oauth2/authorize".into(),
 				token_url: "https://mangabaka.org/auth/oauth2/token".into(),
 				userinfo_url: "https://api.mangabaka.org/v1/my/profile".into(),
@@ -129,6 +130,7 @@ impl OAuthApp {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OAuthStatus {
 	pub logged_in: bool,
+	pub configured: bool,
 	pub username: Option<String>,
 }
 
@@ -175,7 +177,12 @@ pub struct OAuthManager {
 
 impl OAuthManager {
 	pub fn new(pool: SqlitePool, http: reqwest::Client) -> Arc<Self> {
-		Self::with_relay_root(pool, http, OAUTH_RELAY_ROOT.to_string())
+		let relay = env_value("SUMIDOKU_OAUTH_RELAY_ROOT").and_then(|raw| {
+			let url = reqwest::Url::parse(&raw).ok()?;
+			(url.scheme() == "https" && url.host_str().is_some() && url.username().is_empty()
+				&& url.password().is_none() && url.query().is_none() && url.fragment().is_none()).then_some(raw)
+		}).unwrap_or_default();
+		Self::with_relay_root(pool, http, relay)
 	}
 
 	pub fn with_relay_root(pool: SqlitePool, http: reqwest::Client, relay_root: String) -> Arc<Self> {
@@ -195,6 +202,13 @@ impl OAuthManager {
 
 	fn app(&self, provider: Provider) -> &OAuthApp {
 		self.apps.get(&provider).expect("every provider has an OAuth application")
+	}
+
+	fn relay(&self, provider: Provider) -> Result<&str, TrackerError> {
+		if self.relay_root.is_empty() {
+			return Err(TrackerError::Provider { provider, message: "No tracker OAuth relay is configured.".into() });
+		}
+		Ok(&self.relay_root)
 	}
 
 	fn user_agent() -> String {
@@ -227,7 +241,7 @@ impl OAuthManager {
 		url.query_pairs_mut()
 			.append_pair("client_id", client_id)
 			.append_pair("response_type", "code")
-			.append_pair("redirect_uri", &relay_callback_url(&self.relay_root, provider))
+			.append_pair("redirect_uri", &relay_callback_url(self.relay(provider)?, provider))
 			.append_pair("state", &state);
 		if let Some(scope) = app.scope {
 			url.query_pairs_mut().append_pair("scope", scope);
@@ -248,7 +262,11 @@ impl OAuthManager {
 
 	pub async fn status(&self, provider: Provider, user_id: i64) -> Result<OAuthStatus, TrackerError> {
 		let token = dao::get_token(&self.pool, provider, user_id).await?;
-		Ok(OAuthStatus { logged_in: token.is_some(), username: token.and_then(|token| token.username) })
+		Ok(OAuthStatus {
+			logged_in: token.is_some(),
+			configured: !self.relay_root.is_empty() && self.apps.get(&provider).is_some_and(|app| app.credentials().is_ok()),
+			username: token.and_then(|token| token.username),
+		})
 	}
 
 	/// Reports the login state, backfilling a missing display name from the
@@ -288,15 +306,15 @@ impl OAuthManager {
 		Ok(())
 	}
 
-	pub async fn handle_callback(&self, provider: Provider, code: &str, state_raw: &str) -> Result<(), TrackerError> {
+	pub async fn handle_callback(&self, provider: Provider, user_id: i64, code: &str, state_raw: &str) -> Result<(), TrackerError> {
 		let state: CallbackState = serde_json::from_str(state_raw).map_err(|_| TrackerError::InvalidState)?;
-		let (user_id, verifier) = dao::consume_pending(&self.pool, provider, &state.nonce).await?.ok_or(TrackerError::PendingExpired)?;
+		let verifier = dao::consume_pending(&self.pool, provider, user_id, &state.nonce).await?.ok_or(TrackerError::PendingExpired)?;
 		let app = self.app(provider);
 		let (client_id, client_secret) = app.credentials()?;
 		let mut form = vec![
 			("grant_type", "authorization_code".to_string()),
 			("code", code.to_string()),
-			("redirect_uri", relay_callback_url(&self.relay_root, provider)),
+			("redirect_uri", relay_callback_url(self.relay(provider)?, provider)),
 			("client_id", client_id.to_string()),
 			("client_secret", client_secret.to_string()),
 		];
@@ -311,12 +329,18 @@ impl OAuthManager {
 
 	async fn exchange(&self, provider: Provider, form: &[(&str, String)]) -> Result<dao::TrackerOAuthToken, TrackerError> {
 		let app = self.app(provider);
-		let response = self
-			.http
-			.post(&app.token_url)
-			.header(reqwest::header::USER_AGENT, Self::user_agent())
-			.form(form)
-			.send()
+		let request = self.http.post(&app.token_url)
+			.header(reqwest::header::USER_AGENT, Self::user_agent());
+		// AniList documents JSON for the authorization-code exchange. Preserve the
+		// original transport if an older account carries a refresh token.
+		let authorization_code = form.iter().any(|(name, value)| *name == "grant_type" && value == "authorization_code");
+		let request = if provider == Provider::Anilist && authorization_code {
+			let payload: HashMap<_, _> = form.iter().map(|(key, value)| (*key, value)).collect();
+			request.json(&payload)
+		} else {
+			request.form(form)
+		};
+		let response = request.send()
 			.await
 			.map_err(|error| TrackerError::Provider { provider, message: format!("OAuth token request failed: {}", request_failure(error)) })?;
 		let status = response.status();
@@ -328,7 +352,7 @@ impl OAuthManager {
 			return Err(TrackerError::RateLimited { provider });
 		}
 		if !status.is_success() {
-			return Err(TrackerError::Upstream { provider, status, message: response_detail(&body).unwrap_or_default() });
+			return Err(TrackerError::Upstream { provider, status, message: "OAuth token exchange was rejected.".into() });
 		}
 		let parsed: TokenResponse = serde_json::from_str(&body)
 			.map_err(|error| TrackerError::Provider { provider, message: format!("OAuth token response is invalid: {error}") })?;
@@ -445,7 +469,7 @@ impl OAuthManager {
 			("client_secret", client_secret.to_string()),
 		];
 		if app.refresh_with_redirect {
-			form.push(("redirect_uri", relay_callback_url(&self.relay_root, provider)));
+			form.push(("redirect_uri", relay_callback_url(self.relay(provider)?, provider)));
 		}
 		let expected_access_token = token.access_token.clone();
 		let mut fresh = match self.exchange(provider, &form).await {
@@ -554,6 +578,24 @@ mod tests {
 			HashMap::from([(Provider::Bangumi, app)]),
 		);
 		Fixture { oauth, pool, endpoint, _tmp: tmp }
+	}
+
+	#[tokio::test]
+	async fn mangabaka_keeps_s256_and_never_places_the_secret_in_the_authorize_url() {
+		let fixture = fixture(TokenMode::Rejected).await;
+		let mut app = OAuthApp::for_provider(Provider::Mangabaka);
+		app.client_id = Some("fixture-client".into());
+		app.client_secret = Some("fixture-secret".into());
+		let manager = OAuthManager::with_apps(
+			fixture.pool.clone(), reqwest::Client::new(), OAUTH_RELAY_ROOT.into(),
+			HashMap::from([(Provider::Mangabaka, app)]),
+		);
+		let address = manager.start(Provider::Mangabaka, 1, "http://127.0.0.1:3001").await.unwrap();
+		let url = reqwest::Url::parse(&address).unwrap();
+		let params: HashMap<_, _> = url.query_pairs().into_owned().collect();
+		assert_eq!(params["code_challenge_method"], "S256");
+		assert_eq!(params["code_challenge"].len(), 43);
+		assert!(!address.contains("fixture-secret"));
 	}
 
 	async fn seed(pool: &SqlitePool, expires_at: Option<i64>, refresh: bool) {

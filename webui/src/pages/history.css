@@ -62,3 +62,10 @@
 .history-item__progress {
 	color: var(--accent);
 }
+
+.history-sections { display: grid; gap: 16px; }
+.activity-date { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+.history-list { gap: 0; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.history-list .history-item { padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; }
+.history-list .history-item:last-child { border-bottom: 0; }
+.history-item__thumb { width: 40px; }

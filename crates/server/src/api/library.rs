@@ -62,24 +62,30 @@ fn escape_like(raw: &str) -> String {
 	out
 }
 
+// Keep the badge, unread sorting and both filter directions on the same predicate.
+const READABLE_UNREAD: &str = "COALESCE(cu.is_read, 0) = 0 AND c.trashed_at IS NULL
+	AND (cu.is_downloaded = 1 OR (c.fetched_at > 0 AND c.locked = 0
+		AND EXISTS (SELECT 1 FROM source s WHERE s.id = m.source_id AND s.enabled = 1)))";
+
 /// Returns the ORDER BY clause and whether it carries a user_id bind (the lastRead/unread subqueries read per user)
-fn library_order_by(sort: Option<&str>) -> ApiResult<(&'static str, bool)> {
+fn library_order_by(sort: Option<&str>) -> ApiResult<(String, bool)> {
 	const LAST_READ: &str = " ORDER BY (SELECT MAX(cu.last_read_at) FROM chapter c
 		 JOIN chapter_user cu ON cu.chapter_id = c.id AND cu.user_id = ?
 		 WHERE c.manga_id = m.id) DESC, m.id ASC";
 	const LATEST_CHAPTER: &str = " ORDER BY (SELECT MAX(c.fetched_at) FROM chapter c
 		 WHERE c.manga_id = m.id) DESC, m.id ASC";
 	// Default-unread: a chapter with no chapter_user row counts as unread, same as the unreadCount badge
-	const UNREAD: &str = " ORDER BY (SELECT COUNT(*) FROM chapter c
-		 LEFT JOIN chapter_user cu ON cu.chapter_id = c.id AND cu.user_id = ? AND cu.is_read = 1
-		 WHERE c.manga_id = m.id AND cu.chapter_id IS NULL) DESC, m.id ASC";
 	match sort {
-		None | Some("added") => Ok((" ORDER BY mu.in_library_at DESC, m.id ASC", false)),
-		Some("title") => Ok((" ORDER BY m.title COLLATE NOCASE ASC, m.id ASC", false)),
+		None | Some("added") => Ok((" ORDER BY mu.in_library_at DESC, m.id ASC".into(), false)),
+		Some("title") => Ok((" ORDER BY m.title COLLATE NOCASE ASC, m.id ASC".into(), false)),
 		// In SQLite NULL sorts below any value, so DESC naturally sinks it to the end
-		Some("lastRead") => Ok((LAST_READ, true)),
-		Some("latestChapter") => Ok((LATEST_CHAPTER, false)),
-		Some("unread") => Ok((UNREAD, true)),
+		Some("lastRead") => Ok((LAST_READ.into(), true)),
+		Some("latestChapter") => Ok((LATEST_CHAPTER.into(), false)),
+		Some("unread") => Ok((format!(
+			" ORDER BY (SELECT COUNT(*) FROM chapter c
+			 LEFT JOIN chapter_user cu ON cu.chapter_id = c.id AND cu.user_id = ?
+			 WHERE c.manga_id = m.id AND {READABLE_UNREAD}) DESC, m.id ASC"
+		), true)),
 		Some(other) => Err(ApiError::bad_request(format!("invalid sort: {other}"))),
 	}
 }
@@ -95,8 +101,8 @@ fn library_filter_clause(filter: &str, exclude: bool) -> ApiResult<(String, bool
 		return Ok((
 			format!(
 				"{head} (SELECT 1 FROM chapter c
-				 LEFT JOIN chapter_user cu ON cu.chapter_id = c.id AND cu.user_id = ? AND cu.is_read = 1
-				 WHERE c.manga_id = m.id AND cu.chapter_id IS NULL)"
+				 LEFT JOIN chapter_user cu ON cu.chapter_id = c.id AND cu.user_id = ?
+				 WHERE c.manga_id = m.id AND {READABLE_UNREAD})"
 			),
 			true,
 		));
@@ -117,7 +123,6 @@ fn library_filter_clause(filter: &str, exclude: bool) -> ApiResult<(String, bool
 		 JOIN chapter_user cu ON cu.chapter_id = c.id AND cu.user_id = ?
 		 WHERE c.manga_id = m.id AND ";
 	let column = match filter {
-		"unread" => "cu.is_read = 0",
 		"downloaded" => "cu.is_downloaded = 1",
 		"bookmarked" => "cu.is_bookmarked = 1",
 		other => return Err(ApiError::bad_request(format!("invalid filter: {other}"))),
@@ -322,7 +327,7 @@ pub async fn list_library(
 		}
 	}
 	sql.push_str(&group_sql);
-	sql.push_str(order_by);
+	sql.push_str(&order_by);
 	sql.push_str(" LIMIT ? OFFSET ?");
 	let mut q = sqlx::query_as::<_, LibraryEntryRow>(&sql).bind(user.id);
 	if let Some(search) = &search {
@@ -403,9 +408,9 @@ pub async fn list_library(
 		let placeholders = page_rows.iter().map(|_| "?").collect::<Vec<_>>().join(",");
 		// Default-unread, same as the manga detail page: a chapter with no chapter_user row counts as unread
 		let unread_sql = format!(
-			"SELECT c.manga_id, COUNT(*) FROM chapter c
-			 LEFT JOIN chapter_user cu ON cu.chapter_id = c.id AND cu.user_id = ? AND cu.is_read = 1
-			 WHERE c.manga_id IN ({placeholders}) AND cu.chapter_id IS NULL GROUP BY c.manga_id"
+			"SELECT c.manga_id, COUNT(*) FROM chapter c JOIN manga m ON m.id = c.manga_id
+			 LEFT JOIN chapter_user cu ON cu.chapter_id = c.id AND cu.user_id = ?
+			 WHERE c.manga_id IN ({placeholders}) AND {READABLE_UNREAD} GROUP BY c.manga_id"
 		);
 		let mut q = sqlx::query_as::<_, (i64, i64)>(&unread_sql).bind(user.id);
 		for row in &page_rows {

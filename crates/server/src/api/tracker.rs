@@ -455,17 +455,16 @@ pub struct CallbackQuery {
 
 pub async fn tracker_oauth_callback(
 	State(state): State<Arc<AppState>>,
-	Extension(_user): Extension<crate::auth::AuthUser>,
+	Extension(user): Extension<crate::auth::AuthUser>,
 	Path(provider): Path<String>,
 	Query(query): Query<CallbackQuery>,
 ) -> ApiResult<Redirect> {
 	let provider = parse_provider(&provider)?;
-	let target = match oauth_manager(&state)?.handle_callback(provider, &query.code, &query.state).await {
+	let target = match oauth_manager(&state)?.handle_callback(provider, user.id, &query.code, &query.state).await {
 		Ok(()) => "/settings?section=trackers&oauth=success".to_string(),
-		Err(error) => {
-			tracing::warn!("tracker OAuth callback failed for {provider}: {error}");
-			let message = url::form_urlencoded::byte_serialize(error.to_string().as_bytes()).collect::<String>();
-			format!("/settings?section=trackers&oauth=error&message={message}")
+		Err(_) => {
+			tracing::warn!(%provider, "Tracker OAuth callback failed");
+			"/settings?section=trackers&oauth=error".to_string()
 		}
 	};
 	Ok(Redirect::to(&target))
@@ -518,7 +517,12 @@ mod tests {
 		let app = Router::new()
 			.route(
 				"/token/anilist",
-				axum::routing::post(|| async {
+				axum::routing::post(|Json(body): Json<serde_json::Value>| async move {
+					assert_eq!(body["grant_type"], "authorization_code");
+					assert_eq!(body["code"], "ok");
+					assert_eq!(body["client_id"], "id-anilist");
+					assert_eq!(body["redirect_uri"], "https://sumidoku.github.io/oauth/anilist/callback/");
+					assert!(body.get("code_verifier").is_none());
 					Json(serde_json::json!({
 						"access_token": "access-token",
 						"refresh_token": "refresh-token",
@@ -795,7 +799,7 @@ mod tests {
 
 		let (status, _, body) = get(&app, "/api/v1/trackers/oauth/anilist/status", None).await;
 		assert_eq!(status, StatusCode::OK);
-		assert_eq!(body, serde_json::json!({"logged_in": false, "username": null}));
+		assert_eq!(body, serde_json::json!({"logged_in": false, "configured": true, "username": null}));
 
 		let (status, headers, _) = get(&app, "/api/v1/trackers/oauth/anilist/start", Some("sumidoku.test")).await;
 		assert_eq!(status, StatusCode::SEE_OTHER);
@@ -805,8 +809,9 @@ mod tests {
 		let query: HashMap<_, _> = authorize.query_pairs().into_owned().collect();
 		assert_eq!(query["client_id"], "id-anilist");
 		assert_eq!(query["redirect_uri"], "https://sumidoku.github.io/oauth/anilist/callback/");
-		assert!(query.contains_key("code_challenge"));
-		assert_eq!(query["code_challenge_method"], "S256");
+		assert_eq!(query["response_type"], "code");
+		assert!(!query.contains_key("code_challenge"));
+		assert!(!query.contains_key("code_challenge_method"));
 		let state: serde_json::Value = serde_json::from_str(&query["state"]).unwrap();
 		assert_eq!(state["redirectUrl"], "http://sumidoku.test/api/v1/trackers/oauth/anilist/callback");
 
@@ -817,7 +822,7 @@ mod tests {
 		assert_eq!(headers.get(axum::http::header::LOCATION).unwrap(), "/settings?section=trackers&oauth=success");
 
 		let (_, _, body) = get(&app, "/api/v1/trackers/oauth/anilist/status", None).await;
-		assert_eq!(body, serde_json::json!({"logged_in": true, "username": "alice"}));
+		assert_eq!(body, serde_json::json!({"logged_in": true, "configured": true, "username": "alice"}));
 
 		// a replayed callback finds the nonce consumed and bounces to the error page
 		let (status, headers, _) = get(&app, &callback, None).await;
@@ -833,7 +838,7 @@ mod tests {
 		let response = app.clone().oneshot(request).await.unwrap();
 		assert_eq!(response.status(), StatusCode::NO_CONTENT);
 		let (_, _, body) = get(&app, "/api/v1/trackers/oauth/anilist/status", None).await;
-		assert_eq!(body, serde_json::json!({"logged_in": false, "username": null}));
+		assert_eq!(body, serde_json::json!({"logged_in": false, "configured": true, "username": null}));
 	}
 
 	#[tokio::test]
@@ -857,6 +862,10 @@ mod tests {
 		let query: HashMap<_, _> = authorize.query_pairs().into_owned().collect();
 		let encoded_state = url::form_urlencoded::byte_serialize(query["state"].as_bytes()).collect::<String>();
 		let callback = format!("/api/v1/trackers/oauth/anilist/callback?code=ok&state={encoded_state}");
+
+		let state: serde_json::Value = serde_json::from_str(&query["state"]).unwrap();
+		let nonce = state["nonce"].as_str().unwrap();
+		assert!(dao::consume_pending(&pool, Provider::Anilist, 2, nonce).await.unwrap().is_none());
 
 		let (status, _, _) = get(&app, &callback, None).await;
 		assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -905,7 +914,7 @@ mod tests {
 
 		let (status, _, body) = get(&app, "/api/v1/trackers/oauth/anilist/status", None).await;
 		assert_eq!(status, StatusCode::OK);
-		assert_eq!(body, serde_json::json!({"logged_in": true, "username": "alice"}));
+		assert_eq!(body, serde_json::json!({"logged_in": true, "configured": true, "username": "alice"}));
 		let token = dao::get_token(&pool, Provider::Anilist, 1).await.unwrap().unwrap();
 		assert_eq!(token.username.as_deref(), Some("alice"));
 	}

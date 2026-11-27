@@ -9,11 +9,14 @@ use crate::tracker::{Provider, dao};
 use axum::Extension;
 use axum::extract::{Query, State};
 use axum::response::Json;
+use base64::Engine as _;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use serde_json::{Value, json};
 use sqlx::{Sqlite, Transaction};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::import_merge::{
 	ChapterMeta, ImportCounts, MangaMeta, ensure_category, ensure_chapter_row, ensure_manga_row,
@@ -28,6 +31,7 @@ pub struct AidokuImportQuery {
 	/// Older clients retain skip semantics unless they explicitly opt into offline preservation.
 	#[serde(default)]
 	pub preserve_missing_sources: bool,
+	pub preview_fingerprint: Option<String>,
 }
 
 // The structs below declare only the consumed fields, unknown fields tolerated; field names follow Aidoku's Codable keys
@@ -87,6 +91,8 @@ struct AibHistory {
 	#[serde(default)]
 	progress: Option<i64>,
 	#[serde(default)]
+	total: Option<i64>,
+	#[serde(default)]
 	completed: bool,
 	#[serde(default)]
 	date_read: Option<plist::Date>,
@@ -120,6 +126,10 @@ struct AibManga {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AibChapter {
+	#[serde(default)]
+	thumbnail: Option<String>,
+	#[serde(default)]
+	locked: Option<bool>,
 	id: String,
 	source_id: String,
 	manga_id: String,
@@ -188,6 +198,16 @@ impl ReportEntry<'_> {
 	}
 }
 
+#[derive(serde::Serialize)]
+struct SourceIdentity {
+	id: i64,
+	kind: String,
+	version: i64,
+	enabled: bool,
+	updated_at: i64,
+	has_package: bool,
+}
+
 #[derive(Default)]
 struct ImportReport<'a> {
 	imported: ImportCounts,
@@ -197,6 +217,8 @@ struct ImportReport<'a> {
 	missing_sources: HashSet<String>,
 	archived_trackers: Vec<crate::settings::ArchivedAidokuTracker>,
 	archived_count: usize,
+	source_identities: BTreeMap<String, Option<SourceIdentity>>,
+	resolved_sources: HashMap<String, Option<i64>>,
 }
 
 /// A Swift Date in a plist is CFAbsoluteTime; the plist crate has already normalized it to SystemTime
@@ -219,33 +241,33 @@ async fn source_id_by_key(
 	key: &str,
 	report: &mut ImportReport<'_>,
 ) -> ApiResult<Option<i64>> {
-	let existing: Option<(i64, String, String)> =
-		sqlx::query_as("SELECT id, kind, wasm_path FROM source WHERE key = ?")
-			.bind(key)
-			.fetch_optional(&mut **tx)
-			.await?;
-	if let Some((id, kind, wasm_path)) = existing {
-		if kind != "aidoku" || !wasm_path.is_empty() {
-			return Ok(Some(id));
-		}
-		if report.preserve_missing_sources {
+	if let Some(id) = report.resolved_sources.get(key) {
+		return Ok(*id);
+	}
+	let existing: Option<(i64, String, String, i64, bool, i64)> = sqlx::query_as(
+		"SELECT id, kind, wasm_path, version, enabled, updated_at FROM source WHERE key = ?",
+	).bind(key).fetch_optional(&mut **tx).await?;
+	let identity = existing.map(|(id, kind, path, version, enabled, updated_at)| SourceIdentity {
+		id, kind, version, enabled, updated_at, has_package: !path.is_empty(),
+	});
+	let resolved = match &identity {
+		Some(source) if source.kind != "aidoku" || source.has_package => Some(source.id),
+		Some(source) if report.preserve_missing_sources => {
 			report.missing_sources.insert(key.to_string());
-			return Ok(Some(id));
+			Some(source.id)
 		}
-		return Ok(None);
-	}
-	if !report.preserve_missing_sources || !retainable_aidoku_key(key) {
-		return Ok(None);
-	}
-	let id: i64 = sqlx::query_scalar(
-		"INSERT INTO source (key, name, kind, wasm_path, enabled) VALUES (?, ?, 'aidoku', '', 0) RETURNING id",
-	)
-	.bind(key)
-	.bind(key)
-	.fetch_one(&mut **tx)
-	.await?;
-	report.missing_sources.insert(key.to_string());
-	Ok(Some(id))
+		None if report.preserve_missing_sources && retainable_aidoku_key(key) => {
+			let id = sqlx::query_scalar(
+				"INSERT INTO source (key, name, kind, wasm_path, enabled) VALUES (?, ?, 'aidoku', '', 0) RETURNING id",
+			).bind(key).bind(key).fetch_one(&mut **tx).await?;
+			report.missing_sources.insert(key.to_string());
+			Some(id)
+		}
+		_ => None,
+	};
+	report.source_identities.insert(key.to_string(), identity);
+	report.resolved_sources.insert(key.to_string(), resolved);
+	Ok(resolved)
 }
 
 /// Aidoku stores contentRating.rawValue - 1 (when >0); 0 conflates unknown/safe, treated as unknown
@@ -284,6 +306,9 @@ fn aib_manga_meta(m: &AibManga) -> ApiResult<MangaMeta<'_>> {
 
 fn aib_chapter_meta(c: &AibChapter) -> ApiResult<ChapterMeta<'_>> {
 	Ok(ChapterMeta {
+		thumbnail: c.thumbnail.as_deref(),
+		page_count: 0,
+		locked: c.locked.unwrap_or(false),
 		title: c.title.as_deref(),
 		number: c.chapter,
 		volume: c.volume,
@@ -325,15 +350,33 @@ pub async fn import_aidoku_backup(
 	Query(query): Query<AidokuImportQuery>,
 	body: axum::body::Bytes,
 ) -> ApiResult<Json<Value>> {
-	let result = import_aidoku_doc(&state, user.id, &body, query.dry_run, query.preserve_missing_sources).await?;
-	Ok(Json(result))
+	static ACTIVE_IMPORTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+	let permit = ACTIVE_IMPORTS.try_acquire()
+		.map_err(|_| ApiError::too_many_requests("another Aidoku backup is in progress; try again shortly"))?;
+	static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
+	let request_id = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
+	let started = std::time::Instant::now();
+	let result = tokio::task::spawn_blocking(move || {
+		let doc = plist::from_bytes::<AibBackup>(&body)
+			.map_err(|_| ApiError::bad_request("invalid Aidoku backup plist"))?;
+		let digest = Sha256::digest(&body);
+		// Keep the concurrency permit until parsing ends even if the client disconnects.
+		Ok::<_, ApiError>((doc, digest, permit))
+	}).await.map_err(|_| ApiError::internal("Aidoku backup parsing failed"))?;
+	let (doc, digest, _permit) = result?;
+	let parsed = started.elapsed();
+	let result = import_aidoku_doc(&state, user.id, &doc, &digest, &query, request_id).await;
+	tracing::info!(%request_id, dry_run = query.dry_run, parsed_ms = parsed.as_millis(),
+		elapsed_ms = started.elapsed().as_millis(), success = result.is_ok(), "Aidoku backup request completed");
+	Ok(Json(result?))
 }
 
-/// Validation + single-transaction import; dry-run takes the same execution path and rolls back instead of committing at the end, so the report matches a real run
-pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_run: bool, preserve_missing_sources: bool) -> ApiResult<Value> {
-	let doc: AibBackup = plist::from_bytes(body)
-		.map_err(|e| ApiError::bad_request(format!("invalid aidoku backup: {e}")))?;
-
+/// Validation and a single write transaction for preview and commit.
+async fn import_aidoku_doc(
+	state: &AppState, user_id: i64, doc: &AibBackup, digest: &[u8], query: &AidokuImportQuery, request_id: u64,
+) -> ApiResult<Value> {
+	let AidokuImportQuery { dry_run, preserve_missing_sources, preview_fingerprint } = query;
+	let (dry_run, preserve_missing_sources) = (*dry_run, *preserve_missing_sources);
 	let manga_meta: HashMap<(&str, &str), &AibManga> = doc
 		.manga
 		.iter()
@@ -346,16 +389,30 @@ pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_
 		.collect();
 
 	let mut report = ImportReport { preserve_missing_sources, ..Default::default() };
+	let fingerprint;
 	{
+		let wait = std::time::Instant::now();
 		let mut tx = crate::db::begin_write(&state.pool).await?;
-		import_categories(&mut tx, user_id, &doc, &mut report.categories).await?;
-		import_library(&mut tx, user_id, &doc, &manga_meta, &mut report).await?;
-		import_progress(&mut tx, user_id, &doc, &manga_meta, &chapter_meta, &mut report).await?;
-		import_trackers(&mut tx, user_id, &doc, &manga_meta, &mut report).await?;
+		tracing::debug!(%request_id, wait_ms = wait.elapsed().as_millis(), "Aidoku backup write transaction acquired");
+		import_categories(&mut tx, user_id, doc, &mut report.categories).await?;
+		import_library(&mut tx, user_id, doc, &manga_meta, &mut report).await?;
+		import_progress(&mut tx, user_id, doc, &manga_meta, &chapter_meta, &mut report).await?;
+		import_library_chapters(&mut tx, doc, &manga_meta, &mut report).await?;
+		import_trackers(&mut tx, user_id, doc, &manga_meta, &mut report).await?;
 		let archived_count = report.archived_trackers.len();
 		crate::settings::merge_aidoku_tracker_archive(&mut tx, std::mem::take(&mut report.archived_trackers)).await?;
 		// Retain the reported count (including existing matches) for preview/commit parity.
 		report.archived_count = archived_count;
+		let mut hash = Sha256::new();
+		hash.update(b"sumidoku-aidoku-preview-v1");
+		hash.update(digest);
+		hash.update([u8::from(preserve_missing_sources)]);
+		hash.update(serde_json::to_vec(&report.source_identities)?);
+		fingerprint = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash.finalize());
+		if !dry_run && preview_fingerprint.as_ref().is_some_and(|expected| *expected != fingerprint) {
+			tx.rollback().await?;
+			return Err(ApiError::conflict("aidoku_preview_changed", "The backup or its sources changed. Recheck the backup before importing."));
+		}
 		if dry_run {
 			tx.rollback().await?;
 		} else {
@@ -370,6 +427,7 @@ pub async fn import_aidoku_doc(state: &AppState, user_id: i64, body: &[u8], dry_
 	missing_sources.sort_unstable();
 	Ok(json!({
 		"dryRun": dry_run,
+		"previewFingerprint": fingerprint,
 		"imported": {
 			"library": report.imported.library,
 			"categories": categories.len(),
@@ -453,6 +511,37 @@ async fn import_library<'a>(
 	Ok(())
 }
 
+/// History rows take precedence because they may carry a page count. Keep the
+/// other chapter metadata for shelved titles as provisional source records.
+async fn import_library_chapters(
+	tx: &mut Transaction<'_, Sqlite>,
+	doc: &AibBackup,
+	manga_meta: &HashMap<(&str, &str), &AibManga>,
+	report: &mut ImportReport<'_>,
+) -> ApiResult<()> {
+	let shelved: HashSet<_> = doc.library.iter()
+		.map(|entry| (entry.source_id.as_str(), entry.manga_id.as_str())).collect();
+	let mut manga_ids = HashMap::new();
+	for chapter in &doc.chapters {
+		let key = (chapter.source_id.as_str(), chapter.manga_id.as_str());
+		if chapter.id.is_empty() || !shelved.contains(&key) {
+			continue;
+		}
+		let manga_id = if let Some(&id) = manga_ids.get(&key) {
+			id
+		} else {
+			let Some(source_id) = source_id_by_key(tx, key.0, report).await? else { continue };
+			let meta = manga_meta.get(&key).map(|manga| aib_manga_meta(manga)).transpose()?;
+			let id = ensure_manga_row(tx, source_id, key.1, meta.as_ref()).await?;
+			manga_ids.insert(key, id);
+			id
+		};
+		let meta = aib_chapter_meta(chapter)?;
+		ensure_chapter_row(tx, manga_id, &chapter.id, Some(&meta)).await?;
+	}
+	Ok(())
+}
+
 async fn import_progress<'a>(
 	tx: &mut Transaction<'_, Sqlite>,
 	user_id: i64,
@@ -484,7 +573,7 @@ async fn import_progress<'a>(
 			.map(|m| aib_manga_meta(m))
 			.transpose()?;
 		let manga_id = ensure_manga_row(tx, source_id, &entry.manga_id, meta.as_ref()).await?;
-		let meta = chapter_meta
+		let mut meta = chapter_meta
 			.get(&(
 				entry.source_id.as_str(),
 				entry.manga_id.as_str(),
@@ -492,8 +581,11 @@ async fn import_progress<'a>(
 			))
 			.map(|c| aib_chapter_meta(c))
 			.transpose()?;
+		if let Some(meta) = &mut meta {
+			meta.page_count = entry.total.filter(|total| (1..=i16::MAX as i64).contains(total)).unwrap_or(0);
+		}
 		let chapter_id = ensure_chapter_row(tx, manga_id, &entry.chapter_id, meta.as_ref()).await?;
-		// In Aidoku, -1 is a "finished" marker, not a page number; negatives all count as 0
+		// Aidoku also uses -1 for absent progress. Only completed establishes read status.
 		let last_page_read = entry.progress.unwrap_or(0).max(0);
 		let last_read_at = entry.date_read.map(date_to_unix);
 		merge_chapter_progress(tx, user_id, chapter_id, last_page_read, entry.completed, last_read_at).await?;

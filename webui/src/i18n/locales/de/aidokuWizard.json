@@ -47,7 +47,8 @@
 		"transferSource": "Quelle wechseln",
 		"selectedTitles": "Ausgewählte Titel",
 		"retryFailed": "Fehlgeschlagene Übertragungen erneut versuchen",
-		"safeTransferHelp": "Nicht überprüfte Seitenpositionen bleiben beim ursprünglichen Manga. Bei teilweiser Übertragung bleibt das Original in der Bibliothek.",
-		"noConfidentMatch": "Keine eindeutige Übereinstimmung – manuell auswählen"
+		"safeTransferHelp": "Beim Verschieben wird der Bibliothekseintrag ersetzt. Nicht zugeordneter Leseverlauf bleibt beim ursprünglichen Manga außerhalb der Bibliothek.",
+		"noConfidentMatch": "Keine eindeutige Übereinstimmung – manuell auswählen",
+		"selectOtherSources": "Alle anderen Quellen auswählen"
 	}
 }

@@ -42,7 +42,7 @@ struct SourceUIRenderTests {
                     try await waitFor("document.querySelector('[role=dialog]') === null")
                 }
                 web.load(URLRequest(url: URL(string: address + "/settings?section=source-lists")!))
-                try await waitFor("document.querySelector('section[aria-label=\"Source Lists\"]') !== null && location.pathname === '/browse' && location.search === '?view=lists'")
+                try await waitFor("document.querySelector('section[aria-label=\"Source Lists\"]') !== null && location.pathname === '/settings' && location.search === '?section=source-lists'")
                 try await capture("source-lists")
                 _ = try await js("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='Add Source List').click()")
                 try await waitFor("document.querySelector('[aria-label=\"GitHub repository or published Aidoku index URL\"]') !== null")

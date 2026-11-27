@@ -3196,6 +3196,18 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/Page"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Filter manga and chapter titles across the complete history.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Continue after the previous response's nextCursor. Omit page when using a cursor.",
+            "schema": { "type": "string" }
           }
         ],
         "responses": {
@@ -5269,6 +5281,14 @@
               "default": false
             },
             "description": "Preserve records for unavailable external sources as disabled package-less source rows."
+          },
+          {
+            "name": "previewFingerprint",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Reject commit if the previewed backup or its exact source identities have changed."
           }
         ],
         "requestBody": {
@@ -6071,7 +6091,9 @@
               "gone",
               "root_unavailable",
               "tracker_auth",
-              "tracker_rate_limited"
+              "tracker_rate_limited",
+              "aidoku_preview_changed",
+              "too_many_requests"
             ]
           },
           "message": {
@@ -6480,6 +6502,9 @@
           "logged_in"
         ],
         "properties": {
+          "configured": {
+            "type": "boolean"
+          },
           "logged_in": {
             "type": "boolean"
           },
@@ -8587,6 +8612,12 @@
               "isDownloaded": {
                 "type": "boolean"
               },
+              "readable": {
+                "type": "boolean"
+              },
+              "provisional": {
+                "type": "boolean"
+              },
               "hasFinishedDownload": {
                 "type": "boolean",
                 "description": "A finished download row exists, including when its list entry is dismissed."
@@ -10192,6 +10223,9 @@
             "type": "integer",
             "format": "int64"
           },
+          "readable": {
+            "type": "boolean"
+          },
           "isRead": {
             "type": "boolean"
           }
@@ -10209,6 +10243,10 @@
             "items": {
               "$ref": "#/components/schemas/HistoryEntry"
             }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
           },
           "hasNextPage": {
             "type": "boolean"
@@ -11366,6 +11404,9 @@
             "format": "int64",
             "default": 0
           },
+          "locked": {
+            "type": "boolean"
+          },
           "pageCount": {
             "type": "integer",
             "format": "int64",
@@ -11684,6 +11725,9 @@
         "properties": {
           "dryRun": {
             "type": "boolean"
+          },
+          "previewFingerprint": {
+            "type": "string"
           },
           "imported": {
             "$ref": "#/components/schemas/ImportCounts"

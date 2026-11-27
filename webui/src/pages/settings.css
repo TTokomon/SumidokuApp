@@ -698,3 +698,16 @@
 .aidoku-wizard__counts dd { margin: 4px 0 0; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .aidoku-wizard__ack { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; }
 .aidoku-wizard__confirmation { margin-top: 12px; }
+
+.settings-backup__aidoku,
+.settings-backup__advanced {
+	margin-top: 16px;
+}
+
+.settings-backup__aidoku h3 {
+	margin: 0 0 6px;
+}
+
+.settings-backup__advanced > summary {
+	margin-bottom: 10px;
+}

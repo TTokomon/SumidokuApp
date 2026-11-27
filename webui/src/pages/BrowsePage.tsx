@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import {
 	ArrowLeftRight,
 	CircleArrowUp,
@@ -26,7 +26,6 @@ import {
 	useScanSources,
 	useSetSourceEnabled,
 	useSources,
-	useSourceRepos,
 	useUpdateSource
 } from '../api/hooks';
 import type { Source } from '../api/types';
@@ -47,15 +46,14 @@ import {
 import ReposPanel from './browse/ReposPanel';
 import { SearchPanel } from './browse/SearchPanel';
 import { TrashPanel } from './browse/TrashPanel';
-import { SourceLists } from './settings/SourceLists';
 import { BuiltInSources } from './browse/BuiltInSources';
 
 import { SourceSettingsButton, SourceSettingsDialog } from './browse/SourceSettingsModal';
 import { iconColor } from './browse/iconColor';
 
 function SourceIcon({ source }: { source: Source }) {
-	const [failed, setFailed] = useState(false);
-	if (failed) {
+	const [failedRevision, setFailedRevision] = useState<number | null>(null);
+	if (failedRevision === source.updatedAt) {
 		return (
 			<span className="source-card__icon-fallback" style={{ background: iconColor(source.key) }}>
 				{source.name.slice(0, 1)}
@@ -65,11 +63,11 @@ function SourceIcon({ source }: { source: Source }) {
 	return (
 		<span className="source-card__icon">
 			<img
-				src={sourceIconUrl(source.id)}
+				src={sourceIconUrl(source.id, source.updatedAt)}
 				alt=""
 				loading="lazy"
 				referrerPolicy="no-referrer"
-				onError={() => setFailed(true)}
+				onError={() => setFailedRevision(source.updatedAt)}
 			/>
 		</span>
 	);
@@ -219,7 +217,7 @@ export function SourceCard({
 					)}
 				</div>
 				<div className="source-card__meta">
-					{s.key} · v{s.version}
+					{s.languages.map(languageLabel).join(', ') || s.key} · v{s.version}
 					{!s.enabled ? t('browse.disabled') : ''}
 					{s.missingFromRepos && (
 						<span
@@ -230,14 +228,6 @@ export function SourceCard({
 						</span>
 					)}
 				</div>
-				{s.languages.length > 0 && (
-					<div className="source-card__badges">
-						{s.languages.slice(0, 3).map((lang) => (
-							<Chip key={lang}>{languageLabel(lang)}</Chip>
-						))}
-						{s.languages.length > 3 && <Chip>+{s.languages.length - 3}</Chip>}
-					</div>
-				)}
 			</div>
 			<div className="source-card__actions">
 				<IconButton label={t('aidokuWizard.transferSource', { defaultValue: 'Transfer source' })} onClick={(e) => { e.stopPropagation(); navigate(`/migrate?source=${s.id}`); }}><ArrowLeftRight size={17} /></IconButton>
@@ -334,24 +324,30 @@ export function SourceCard({
 }
 
 export default function BrowsePage() {
+	const [params] = useSearchParams();
+	if (params.get('view') === 'lists') return <Navigate to="/settings?section=source-lists" replace />;
+	return <BrowseSources />;
+}
+
+function BrowseSources() {
 	const { t } = useTranslation();
-	const sources = useSources(); const repos = useSourceRepos();
+	const sources = useSources();
 	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const searching = searchParams.get('view') === 'search';
 	const rawView = searchParams.get('view');
-	const tab = rawView === 'available' || rawView === 'discover' ? 'discover' : rawView === 'trash' ? 'trash' : rawView === 'lists' ? 'lists' : 'installed';
+	const tab = rawView === 'available' || rawView === 'discover' ? 'discover' : rawView === 'trash' ? 'trash' : 'installed';
 	const [query, setQuery] = useState(''); const [language, setLanguage] = useState('');
 	const [pendingDelete, setPendingDelete] = useState<Source | null>(null);
 	const del = useDeleteSource(); const pin = usePinSource(); const setEnabled = useSetSourceEnabled();
 	const scan = useScanSources();
-	const all = useMemo(() => [...(sources.data ?? [])].filter((source) => source.kind === 'aidoku').sort((a, b) => Number(b.pinned) - Number(a.pinned) || compareSourceName(a, b)), [sources.data]);
+	const all = useMemo(() => [...(sources.data ?? [])].filter((source) => source.kind === 'aidoku').sort((a, b) => Number(b.pinned) - Number(a.pinned) || (a.pinned && b.pinned ? (a.pinOrder ?? 0) - (b.pinOrder ?? 0) : 0) || compareSourceName(a, b)), [sources.data]);
 	const visible = all.filter((source) => (!query || `${source.name} ${source.key}`.toLowerCase().includes(query.toLowerCase())) && (!language || source.languages.includes(language)));
 	async function confirmDelete() {
 		if (!pendingDelete) return;
 		try { await del.mutateAsync(pendingDelete.id); setPendingDelete(null); } catch { /* error toast */ }
 	}
-	return <div className="page container">
+	return <div className="page container sources-page">
 		<PageHeader title="Sources" actions={<>
 			<Button onClick={() => setSearchParams({ view: 'search' })}><Search size={15} />Search Sources</Button>
 			<Button onClick={() => navigate('/migrate')}><ArrowLeftRight size={15} />{t('browse.migrate')}</Button>
@@ -359,25 +355,26 @@ export default function BrowsePage() {
 			<Button loading={scan.isPending} onClick={() => scan.mutate()}><ScanSearch size={15} />{t('browse.scan')}</Button>
 		</>} />
 		{!searching && <div className="browse__tabs"><SegmentedControl options={[
-					{ value: 'installed', label: 'Installed' }, { value: 'discover', label: 'Discover' }, { value: 'lists', label: 'Source Lists' }, { value: 'trash', label: t('browse.tabTrash') }
+					{ value: 'installed', label: 'Installed' }, { value: 'discover', label: 'Discover' }, { value: 'trash', label: t('browse.tabTrash') }
 				]} value={tab} onChange={(view) => setSearchParams(view === 'installed' ? {} : { view })} /></div>}
 		{!searching && tab === 'installed' && <BuiltInSources />}
 		<section aria-label="External Sources">
 			<h2 className="browse__section">External Sources</h2>
-			<p className="muted">Aidoku-compatible packages from your subscribed source lists.</p>
+			{!searching && <Link to="/settings?section=source-lists">Source Lists</Link>}
+			
 			<SearchPanel active={searching} initialQuery={searchParams.get('q') ?? ''} onActiveChange={(active, q) => setSearchParams(active ? { view: 'search', ...(q ? { q } : {}) } : {}, { replace: true })} />
 			{!searching && <>
 
-				{tab === 'lists' ? <SourceLists /> : tab === 'discover' ? <ReposPanel manage={false} /> : tab === 'trash' ? <TrashPanel /> : <>
+				{tab === 'discover' ? <ReposPanel manage={false} /> : tab === 'trash' ? <TrashPanel /> : <>
 					<div className="repos__filters">
 						<Input type="search" aria-label="Search installed external sources" placeholder="Search installed sources by name or ID" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
 						<select aria-label="Filter installed source language" value={language} onChange={(e) => setLanguage(e.currentTarget.value)}><option value="">All languages</option>{[...new Set(all.flatMap((s) => s.languages))].sort().map((lang) => <option key={lang} value={lang}>{languageLabel(lang)}</option>)}</select>
 					</div>
 					{sources.isError && <p role="alert">Installed sources could not be loaded. Try again when the server is available.</p>}
-					{sources.isPending ? <Skeleton height={82} /> : !visible.length ? <EmptyState icon={PackageOpen} title="No matching installed external sources" hint="Discover available sources or subscribe in Source Lists." /> : <div className="source-list">{visible.map((source) => <div key={source.id}>
-						<SourceCard source={source} onTogglePin={(s) => pin.mutate({ id: s.id, pinned: !s.pinned })} onToggleEnabled={(s) => setEnabled.mutate({ id: s.id, enabled: !s.enabled })} onDelete={setPendingDelete} />
-						<p className="muted source-origin">Origin: {repos.data?.find((repo) => repo.id === source.repoId)?.name ?? (source.repoId != null ? 'Subscribed Source List' : 'Sideloaded or unsubscribed list')} · {repos.data?.find((repo) => repo.id === source.repoId)?.url ?? source.key}</p>
-					</div>)}</div>}
+					{sources.isPending ? <Skeleton height={82} /> : !visible.length ? <EmptyState icon={PackageOpen} title="No matching installed external sources" hint="Discover available sources or subscribe in Source Lists." /> : <div className="source-groups">{([{ label: 'Pinned', items: visible.filter(s => s.pinned) }, { label: 'Installed', items: visible.filter(s => !s.pinned) }]).filter(group => group.items.length > 0).map(group => <section key={group.label}>
+						<h3 className="source-group-heading">{group.label} <span className="muted">{group.items.length}</span></h3>
+						<div className="source-list">{group.items.map(source => <SourceCard key={source.id} source={source} onTogglePin={(s) => pin.mutate({ id: s.id, pinned: !s.pinned })} onToggleEnabled={(s) => setEnabled.mutate({ id: s.id, enabled: !s.enabled })} onDelete={setPendingDelete} />)}</div>
+					</section>)}</div>}
 				</>}
 			</>}
 		</section>

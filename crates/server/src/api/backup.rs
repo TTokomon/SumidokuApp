@@ -149,6 +149,8 @@ pub struct BackupChapter {
 	pub source_order: i64,
 	#[serde(default)]
 	pub page_count: i64,
+	#[serde(default)]
+	pub locked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -219,6 +221,7 @@ struct ExportProgressRow {
 	date_uploaded: Option<i64>,
 	source_order: i64,
 	page_count: i64,
+	locked: bool,
 	last_page_read: i64,
 	is_read: bool,
 	is_bookmarked: bool,
@@ -353,7 +356,7 @@ pub async fn build_backup_doc(pool: &SqlitePool) -> ApiResult<BackupDoc> {
 	// All-default rows carry no user state and are deduped out of the export (is_downloaded is out of backup scope)
 	let progress_rows: Vec<ExportProgressRow> = sqlx::query_as(
 		"SELECT s.key AS source_key, m.key AS manga_key, c.key, c.title, c.number, c.volume,
-		 c.scanlators, c.language, c.thumbnail, c.url, c.date_uploaded, c.source_order, c.page_count,
+		 c.scanlators, c.language, c.thumbnail, c.url, c.date_uploaded, c.source_order, c.page_count, c.locked,
 		 cu.last_page_read, cu.is_read, cu.is_bookmarked, cu.last_read_at
 		 FROM chapter_user cu
 		 JOIN chapter c ON c.id = cu.chapter_id
@@ -383,6 +386,7 @@ pub async fn build_backup_doc(pool: &SqlitePool) -> ApiResult<BackupDoc> {
 				date_uploaded: row.date_uploaded,
 				source_order: row.source_order,
 				page_count: row.page_count,
+				locked: row.locked,
 			},
 			last_page_read: row.last_page_read,
 			is_read: row.is_read,
@@ -892,7 +896,7 @@ async fn restore_progress(
 				date_uploaded: entry.chapter.date_uploaded,
 				source_order: entry.chapter.source_order,
 				page_count: entry.chapter.page_count,
-				locked: false,
+				locked: entry.chapter.locked,
 			},
 		)
 		.await?;

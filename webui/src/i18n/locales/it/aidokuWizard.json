@@ -47,7 +47,8 @@
 		"transferSource": "Cambia fonte",
 		"selectedTitles": "Titoli selezionati",
 		"retryFailed": "Riprova trasferimenti falliti",
-		"safeTransferHelp": "Le posizioni di pagina non verificate rimangono nel manga originale. I trasferimenti parziali conservano l’originale in libreria.",
-		"noConfidentMatch": "Nessuna corrispondenza affidabile: scegli manualmente"
+		"safeTransferHelp": "Lo spostamento sostituisce la voce in libreria. La cronologia senza corrispondenza resta nel manga originale fuori dalla libreria.",
+		"noConfidentMatch": "Nessuna corrispondenza affidabile: scegli manualmente",
+		"selectOtherSources": "Seleziona tutte le altre fonti"
 	}
 }

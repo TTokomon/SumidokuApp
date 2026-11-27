@@ -1,4 +1,4 @@
-use crate::api::{PageQuery, chapter_json, manga_json_by_ids, progress_of};
+use crate::api::{chapter_json, manga_json_by_ids, progress_of};
 use crate::error::{ApiError, ApiResult};
 use crate::model::{ChapterProgress, ChapterUserRow, unix_now};
 use crate::source::chapter_row;
@@ -300,45 +300,86 @@ pub async fn batch_update_chapters(
 	Ok(Json(json!({ "updated": updated })))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct HistoryQuery {
+	page: Option<i32>,
+	search: Option<String>,
+	before: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct HistoryRow {
+	#[sqlx(flatten)]
+	chapter: ChapterUserRow,
+	readable: bool,
+}
+
 pub async fn get_history(
 	State(state): State<Arc<AppState>>,
 	Extension(user): Extension<crate::auth::AuthUser>,
-	Query(query): Query<PageQuery>,
+	Query(query): Query<HistoryQuery>,
 ) -> ApiResult<Json<Value>> {
 	let page = query.page.unwrap_or(1);
-	if page < 1 {
-		return Err(ApiError::bad_request("page must be >= 1"));
+	if page < 1 || (query.before.is_some() && query.page.is_some()) {
+		return Err(ApiError::bad_request("provide a valid page or history cursor"));
 	}
-	let rows: Vec<ChapterUserRow> = sqlx::query_as(
-		"SELECT c.*, cu.last_page_read, cu.is_read, cu.is_bookmarked, cu.last_read_at
+	let before = query.before.as_deref().map(|value| {
+		let (time, id) = value.split_once(':')?;
+		Some((time.parse::<i64>().ok()?, id.parse::<i64>().ok()?))
+	});
+	let (time, id) = match before {
+		Some(Some((time, id))) if time >= 0 && id > 0 => (Some(time), Some(id)),
+		Some(_) => return Err(ApiError::bad_request("invalid history cursor")),
+		None => (None, None),
+	};
+	let search = query.search.as_deref().unwrap_or_default().trim();
+	let search = if search.is_empty() {
+		None
+	} else {
+		Some(format!("%{}%", search.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")))
+	};
+	let rows: Vec<HistoryRow> = sqlx::query_as(
+		"SELECT c.*, cu.last_page_read, cu.is_read, cu.is_bookmarked, cu.last_read_at,
+		  (c.trashed_at IS NULL AND (cu.is_downloaded = 1 OR
+		   (s.enabled = 1 AND c.locked = 0 AND c.fetched_at > 0))) AS readable
 		 FROM chapter_user cu JOIN chapter c ON c.id = cu.chapter_id
-		 WHERE cu.user_id = ? AND cu.last_read_at IS NOT NULL
+		 JOIN manga m ON m.id = c.manga_id JOIN source s ON s.id = m.source_id
+		 WHERE cu.user_id = ?1 AND cu.last_read_at IS NOT NULL
+		 AND (?2 IS NULL OR m.title LIKE ?2 ESCAPE '\\' OR c.title LIKE ?2 ESCAPE '\\')
+		 AND (?3 IS NULL OR (cu.last_read_at, cu.chapter_id) < (?3, ?4))
 		 ORDER BY cu.last_read_at DESC, cu.chapter_id DESC
-		 LIMIT ? OFFSET ?",
+		 LIMIT ?5 OFFSET ?6",
 	)
 	.bind(user.id)
+	.bind(search)
+	.bind(time)
+	.bind(id)
 	.bind(PAGE_SIZE + 1)
 	.bind((page as i64 - 1) * PAGE_SIZE)
 	.fetch_all(&state.pool)
 	.await?;
 	let has_next_page = rows.len() as i64 > PAGE_SIZE;
-	let page_rows: Vec<&ChapterUserRow> = rows.iter().take(PAGE_SIZE as usize).collect();
-	let manga_ids: Vec<i64> = page_rows.iter().map(|row| row.chapter.manga_id).collect();
+	let page_rows = &rows[..rows.len().min(PAGE_SIZE as usize)];
+	let next_cursor = has_next_page.then(|| page_rows.last()).flatten()
+		.and_then(|row| row.chapter.last_read_at.map(|time| format!("{time}:{}", row.chapter.chapter.id)));
+	let manga_ids: Vec<i64> = page_rows.iter().map(|row| row.chapter.chapter.manga_id).collect();
 	let manga_values = manga_json_by_ids(&state, user.id, &manga_ids).await?;
 	let mut entries = Vec::with_capacity(page_rows.len());
-	for (row, manga_value) in page_rows.into_iter().zip(manga_values) {
-		let progress = progress_of(row).unwrap_or_default();
+	for (row, manga_value) in page_rows.iter().zip(manga_values) {
+		let progress = progress_of(&row.chapter).unwrap_or_default();
 		entries.push(json!({
-			"chapter": chapter_json(&row.chapter, Some(&progress))?,
+			"chapter": chapter_json(&row.chapter.chapter, Some(&progress))?,
 			"manga": manga_value,
-			"lastReadAt": row.last_read_at,
+			"lastReadAt": row.chapter.last_read_at,
 			"lastPageRead": progress.last_page_read,
 			"isRead": progress.is_read,
+			"readable": row.readable,
 		}));
 	}
 	Ok(Json(json!({
 		"entries": entries,
 		"hasNextPage": has_next_page,
+		"nextCursor": next_cursor,
 	})))
 }
 

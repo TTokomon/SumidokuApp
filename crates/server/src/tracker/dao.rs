@@ -194,14 +194,16 @@ pub async fn delete_pending(pool: &SqlitePool, provider: Provider, nonce: &str) 
 pub async fn consume_pending(
 	pool: &SqlitePool,
 	provider: Provider,
+	user_id: i64,
 	nonce: &str,
-) -> Result<Option<(i64, String)>, sqlx::Error> {
-	sqlx::query_as::<_, (i64, String)>(
-		"DELETE FROM tracker_oauth_pending WHERE provider = ? AND nonce = ? AND created_at > ?
-		 RETURNING user_id, verifier",
+) -> Result<Option<String>, sqlx::Error> {
+	sqlx::query_scalar(
+		"DELETE FROM tracker_oauth_pending WHERE provider = ? AND nonce = ? AND user_id = ? AND created_at > ?
+		 RETURNING verifier",
 	)
 	.bind(provider.as_str())
 	.bind(nonce)
+	.bind(user_id)
 	.bind(now() - PENDING_TTL_SECS)
 	.fetch_optional(pool)
 	.await

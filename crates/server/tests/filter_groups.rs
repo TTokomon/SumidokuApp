@@ -579,3 +579,41 @@ async fn library_display_settings() {
 			.expect("count stored");
 	assert_eq!(stored, 1);
 }
+
+#[tokio::test]
+async fn readable_unread_counts_exclude_trash_locked_and_provisional_chapters() {
+	let TestApp { app, db_path, .. } = test_app().await;
+	let pool = connect_db(&db_path).await;
+	let ids = register_three_shelved(&app).await;
+	let manga = ids[0];
+	let chapters = chapter_ids(&app, manga).await;
+	assert!(chapters.len() >= 3);
+
+	sqlx::query("UPDATE chapter SET locked = 1 WHERE manga_id = ?")
+		.bind(manga).execute(&pool).await.unwrap();
+	sqlx::query("UPDATE chapter SET trashed_at = 123 WHERE id = ?")
+		.bind(chapters[1]).execute(&pool).await.unwrap();
+	sqlx::query("UPDATE chapter SET fetched_at = 0, locked = 0 WHERE id = ?")
+		.bind(chapters[2]).execute(&pool).await.unwrap();
+	put_chapter_user(&pool, chapters[0], false, true, None).await;
+	put_chapter_user(&pool, chapters[1], false, true, None).await;
+
+	let (_, card) = request(&app, "GET", "/api/v1/library?sort=unread", None).await;
+	let entry = card["entries"].as_array().unwrap().iter().find(|entry| entry["id"] == manga).unwrap();
+	assert_eq!(entry["unreadCount"], 1);
+
+	let (_, detail) = request(&app, "GET", &format!("/api/v1/manga/{manga}/chapters"), None).await;
+	let unread: Vec<_> = detail.as_array().unwrap().iter()
+		.filter(|chapter| chapter["readable"] == true && chapter["isRead"] == false)
+		.map(|chapter| chapter["id"].as_i64().unwrap()).collect();
+	assert_eq!(unread, [chapters[0]]);
+	assert!(detail.as_array().unwrap().iter().any(|chapter| chapter["id"] == chapters[2] && chapter["provisional"] == true));
+
+	sqlx::query("UPDATE chapter_user SET is_read = 1 WHERE chapter_id = ? AND user_id = 1")
+		.bind(chapters[0]).execute(&pool).await.unwrap();
+	let (_, filtered) = request(&app, "GET", "/api/v1/library?filter=unread", None).await;
+	assert!(filtered["entries"].as_array().unwrap().iter().all(|entry| entry["id"] != manga));
+	let (_, unfiltered) = request(&app, "GET", "/api/v1/library", None).await;
+	let entry = unfiltered["entries"].as_array().unwrap().iter().find(|entry| entry["id"] == manga).unwrap();
+	assert_eq!(entry["unreadCount"], 0);
+}
