@@ -512,6 +512,23 @@
 	}
 }
 
+.tracker-comparison section + section {
+	border-top: 1px solid var(--border);
+	margin-top: 12px;
+	padding-top: 12px;
+}
+
+.tracker-comparison dl {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 4px 12px;
+}
+
+.tracker-comparison dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
 @media (max-width: 420px) {
 	.tracker-edit__progress {
 		gap: 8px;
