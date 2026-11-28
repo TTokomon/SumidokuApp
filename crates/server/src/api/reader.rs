@@ -39,27 +39,38 @@ impl ProgressPatch {
 	) -> ApiResult<ChapterProgress> {
 		let current = read_progress(&mut **tx, user_id, chapter_id).await?;
 		let stamp = self.last_page_read.is_some() && !incognito_on(tx, user_id, chapter_id).await?;
+		let merged = self.with_read_time(current, if stamp { Some(unix_now()) } else { current.last_read_at });
+		crate::store::progress::set(tx, chapter_id, user_id, &merged).await?;
+		if self.marking_unread() {
+			let (source, manga, chapter): (String, String, String) = sqlx::query_as(
+				"SELECT s.key, m.key, c.key FROM chapter c JOIN manga m ON m.id = c.manga_id JOIN source s ON s.id = m.source_id WHERE c.id = ?",
+			)
+			.bind(chapter_id)
+			.fetch_one(&mut **tx)
+			.await?;
+			let key = crate::server_state::aidoku_progress_key(user_id, &source, &manga, &chapter);
+			crate::server_state::set_time(&mut **tx, &key, unix_now()).await?;
+		}
+		Ok(merged)
+	}
+
+	fn marking_unread(&self) -> bool {
 		// A patch that also carries lastPageRead is a progress write (the reader reports pages with
 		// isRead:false mid-chapter), not a mark-unread; only a bare isRead:false means "mark unread".
-		let marking_unread = self.is_read == Some(false) && self.last_page_read.is_none();
-		let merged = ChapterProgress {
-			last_page_read: if marking_unread {
+		self.is_read == Some(false) && self.last_page_read.is_none()
+	}
+
+	pub(crate) fn with_read_time(&self, current: ChapterProgress, last_read_at: Option<i64>) -> ChapterProgress {
+		ChapterProgress {
+			last_page_read: if self.marking_unread() {
 				0
 			} else {
 				self.last_page_read.unwrap_or(current.last_page_read)
 			},
 			is_read: self.is_read.unwrap_or(current.is_read),
 			is_bookmarked: self.is_bookmarked.unwrap_or(current.is_bookmarked),
-			last_read_at: if marking_unread {
-				None
-			} else if stamp {
-				Some(unix_now())
-			} else {
-				current.last_read_at
-			},
-		};
-		crate::store::progress::set(tx, chapter_id, user_id, &merged).await?;
-		Ok(merged)
+			last_read_at: if self.marking_unread() { None } else { last_read_at },
+		}
 	}
 }
 
@@ -81,7 +92,7 @@ async fn incognito_on(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, user_id: i64
 	Ok(per_manga.map(|(on,)| on).unwrap_or(false))
 }
 
-async fn read_progress<'e, E>(executor: E, user_id: i64, chapter_id: i64) -> ApiResult<ChapterProgress>
+pub(crate) async fn read_progress<'e, E>(executor: E, user_id: i64, chapter_id: i64) -> ApiResult<ChapterProgress>
 where
 	E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {

@@ -68,7 +68,7 @@ import { SkippedItems } from './SkippedItems';
 import '../settings.css';
 import { Section } from './SettingsSection';
 import { AidokuImportReport } from './AidokuImportReport';
-import { AidokuWizardSummary, AidokuWizardSteps } from './AidokuImportWizard';
+import { AidokuProgressReview, AidokuWizardSummary, AidokuWizardSteps } from './AidokuImportWizard';
 import { AidokuSourceRecovery, missingAidokuIds } from './AidokuSourceRecovery';
 import { useAidokuImportSession } from './AidokuImportSession';
 
@@ -1178,7 +1178,8 @@ export function BackupSection() {
 	const [picked, setPicked] = useState<string[]>([]);
 	const [result, setResult] = useState<BackupRestoreResponse | null>(null);
 	const importAidoku = useImportAidoku();
-	const canConfirmAib = !!aib?.current && (Object.values(aib.preview.imported).some((count) => count > 0) || (aib.preview.archivedTrackers ?? 0) > 0) && (aib.preview.skipped.length === 0 || acceptSkips);
+	const [progressCorrections, setProgressCorrections] = useState<number[]>([]);
+	const canConfirmAib = !!aib?.current && (Object.values(aib.preview.imported).some((count) => count > 0) || (aib.preview.archivedTrackers ?? 0) > 0 || progressCorrections.length > 0) && (aib.preview.skipped.length === 0 || acceptSkips);
 	const aibFileRef = useRef<HTMLInputElement>(null);
 	const importSuwayomi = useImportSuwayomi();
 	const swFileRef = useRef<HTMLInputElement>(null);
@@ -1235,6 +1236,7 @@ export function BackupSection() {
 			setAib({ file, preview: dryPreview, current: true });
 			seenDefaults.current.clear();
 			setSelected([]);
+			setProgressCorrections([]);
 			setAibPaused(false); setAcceptSkips(false); setAibStep(1);
 			setAibResult(null);
 		} catch {
@@ -1245,7 +1247,7 @@ export function BackupSection() {
 	async function confirmAibImport() {
 		if (!aib || !canConfirmAib || aibStep !== 3 || recoveryBusy || importAidoku.isPending) return;
 		try {
-			const res = await importAidoku.mutateAsync({ file: aib.file, dryRun: false, previewFingerprint: aib.preview.previewFingerprint });
+			const res = await importAidoku.mutateAsync({ file: aib.file, dryRun: false, previewFingerprint: aib.preview.previewFingerprint, progressCorrections });
 			setAibResult(res);
 		} catch {
 			invalidateAibPreview();
@@ -1256,6 +1258,7 @@ export function BackupSection() {
 	function invalidateAibPreview() {
 		setAib((draft) => draft ? { ...draft, current: false } : draft);
 		setAcceptSkips(false);
+		setProgressCorrections([]);
 	}
 
 	async function recheckAib(file: File) {
@@ -1483,6 +1486,7 @@ export function BackupSection() {
 						)}
 						{aibStep === 3 && <>
 							<AidokuWizardSummary result={aib.preview} />
+							<AidokuProgressReview result={aib.preview} selected={progressCorrections} onChange={setProgressCorrections} disabled={importAidoku.isPending} />
 							<details className="settings-backup__skipped"><summary>{t('aidokuWizard.details')}</summary><AidokuImportReport result={aib.preview} /></details>
 							{aib.preview.skipped.length > 0 && <label className="aidoku-wizard__ack"><input type="checkbox" checked={acceptSkips} onChange={(event) => setAcceptSkips(event.currentTarget.checked)} /> {t('settings.aidokuReport.confirmSkips')}</label>}
 						</>}

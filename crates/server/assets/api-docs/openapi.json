@@ -5289,6 +5289,23 @@
               "type": "string"
             },
             "description": "Reject commit if the previewed backup or its exact source identities have changed."
+          },
+          {
+            "name": "reviewProgress",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Compare existing reading progress, keep it unless selected for correction, and require a matching preview for commit."
+          },
+          {
+            "name": "progressCorrections",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated chapter IDs selected from the matching reviewed preview, up to 100."
           }
         ],
         "requestBody": {
@@ -11760,6 +11777,63 @@
           "archivedTrackers": {
             "type": "integer",
             "description": "Inactive unsupported tracker associations preserved by the import."
+          },
+          "progressDifferences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AidokuProgressDifference"
+            }
+          },
+          "keptProgress": {
+            "type": "integer"
+          },
+          "correctedProgress": {
+            "type": "integer"
+          }
+        }
+      },
+      "AidokuProgressDifference": {
+        "type": "object",
+        "required": [
+          "chapterId",
+          "mangaTitle",
+          "chapterTitle",
+          "currentPage",
+          "currentRead",
+          "backupPage",
+          "backupRead",
+          "canCorrect",
+          "protected"
+        ],
+        "properties": {
+          "chapterId": {
+            "type": "integer"
+          },
+          "mangaTitle": {
+            "type": "string"
+          },
+          "chapterTitle": {
+            "type": "string"
+          },
+          "currentPage": {
+            "type": "integer"
+          },
+          "currentRead": {
+            "type": "boolean"
+          },
+          "backupPage": {
+            "type": "integer",
+            "nullable": true
+          },
+          "backupRead": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "canCorrect": {
+            "type": "boolean"
+          },
+          "protected": {
+            "type": "boolean"
           }
         }
       },

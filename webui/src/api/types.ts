@@ -19,6 +19,9 @@ export type AidokuImportResponse = {
 	skipped: Array<AidokuSkipped>;
 	missingSources?: Array<string>;
 	archivedTrackers?: number;
+	progressDifferences?: Array<AidokuProgressDifference>;
+	keptProgress?: number;
+	correctedProgress?: number;
 };
 
 export type AidokuIncluded = {
@@ -35,6 +38,18 @@ export type AidokuListing = {
 	id: string;
 	name: string;
 	kind: "Default" | "List";
+};
+
+export type AidokuProgressDifference = {
+	chapterId: number;
+	mangaTitle: string;
+	chapterTitle: string;
+	currentPage: number;
+	currentRead: boolean;
+	backupPage: number | null;
+	backupRead: boolean | null;
+	canCorrect: boolean;
+	protected: boolean;
 };
 
 export type AidokuSkipped = {

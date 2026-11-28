@@ -22,6 +22,7 @@ use super::import_merge::{
 	ChapterMeta, ImportCounts, MangaMeta, ensure_category, ensure_chapter_row, ensure_manga_row,
 	mark_in_library, merge_chapter_progress,
 };
+use super::reader::{ProgressPatch, read_progress};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +33,9 @@ pub struct AidokuImportQuery {
 	#[serde(default)]
 	pub preserve_missing_sources: bool,
 	pub preview_fingerprint: Option<String>,
+	#[serde(default)]
+	pub review_progress: bool,
+	pub progress_corrections: Option<String>,
 }
 
 // The structs below declare only the consumed fields, unknown fields tolerated; field names follow Aidoku's Codable keys
@@ -93,7 +97,7 @@ struct AibHistory {
 	#[serde(default)]
 	total: Option<i64>,
 	#[serde(default)]
-	completed: bool,
+	completed: Option<bool>,
 	#[serde(default)]
 	date_read: Option<plist::Date>,
 }
@@ -219,6 +223,11 @@ struct ImportReport<'a> {
 	archived_count: usize,
 	source_identities: BTreeMap<String, Option<SourceIdentity>>,
 	resolved_sources: HashMap<String, Option<i64>>,
+	review_progress: bool,
+	progress_corrections: HashSet<i64>,
+	progress_differences: Vec<Value>,
+	kept_progress: usize,
+	corrected_progress: usize,
 }
 
 /// A Swift Date in a plist is CFAbsoluteTime; the plist crate has already normalized it to SystemTime
@@ -375,8 +384,27 @@ pub async fn import_aidoku_backup(
 async fn import_aidoku_doc(
 	state: &AppState, user_id: i64, doc: &AibBackup, digest: &[u8], query: &AidokuImportQuery, request_id: u64,
 ) -> ApiResult<Value> {
-	let AidokuImportQuery { dry_run, preserve_missing_sources, preview_fingerprint } = query;
-	let (dry_run, preserve_missing_sources) = (*dry_run, *preserve_missing_sources);
+	let AidokuImportQuery { dry_run, preserve_missing_sources, preview_fingerprint, review_progress, progress_corrections } = query;
+	let (dry_run, preserve_missing_sources, review_progress) = (*dry_run, *preserve_missing_sources, *review_progress);
+	if review_progress && !dry_run && preview_fingerprint.is_none() {
+		return Err(ApiError::bad_request("reviewed Aidoku import requires a preview"));
+	}
+	let mut corrections = HashSet::new();
+	if let Some(selected) = progress_corrections {
+		if !review_progress || dry_run || selected.len() > 2100 {
+			return Err(ApiError::bad_request("invalid Aidoku progress correction selection"));
+		}
+		for id in selected.split(',') {
+			let id = id.parse::<i64>().ok().filter(|id| *id > 0)
+				.ok_or_else(|| ApiError::bad_request("invalid Aidoku correction chapter ID"))?;
+			if corrections.len() >= 100 || !corrections.insert(id) {
+				return Err(ApiError::bad_request("select up to 100 distinct Aidoku progress corrections"));
+			}
+		}
+	}
+	if review_progress && doc.library.is_empty() && doc.history.is_empty() && doc.categories.is_empty() && doc.track_items.is_empty() {
+		return Err(ApiError::bad_request("the Aidoku backup contains no supported library, progress, category or tracker records"));
+	}
 	let manga_meta: HashMap<(&str, &str), &AibManga> = doc
 		.manga
 		.iter()
@@ -388,7 +416,7 @@ async fn import_aidoku_doc(
 		.map(|c| ((c.source_id.as_str(), c.manga_id.as_str(), c.id.as_str()), c))
 		.collect();
 
-	let mut report = ImportReport { preserve_missing_sources, ..Default::default() };
+	let mut report = ImportReport { preserve_missing_sources, review_progress, progress_corrections: corrections, ..Default::default() };
 	let fingerprint;
 	{
 		let wait = std::time::Instant::now();
@@ -408,10 +436,17 @@ async fn import_aidoku_doc(
 		hash.update(digest);
 		hash.update([u8::from(preserve_missing_sources)]);
 		hash.update(serde_json::to_vec(&report.source_identities)?);
+		if review_progress {
+			hash.update(b"review-progress");
+			hash.update(serde_json::to_vec(&report.progress_differences)?);
+		}
 		fingerprint = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash.finalize());
 		if !dry_run && preview_fingerprint.as_ref().is_some_and(|expected| *expected != fingerprint) {
 			tx.rollback().await?;
-			return Err(ApiError::conflict("aidoku_preview_changed", "The backup or its sources changed. Recheck the backup before importing."));
+			return Err(ApiError::conflict("aidoku_preview_changed", "The backup, sources or reading progress changed. Recheck the backup before importing."));
+		}
+		if !report.progress_corrections.is_empty() {
+			return Err(ApiError::bad_request("a selected chapter has no eligible correction in this backup"));
 		}
 		if dry_run {
 			tx.rollback().await?;
@@ -438,6 +473,9 @@ async fn import_aidoku_doc(
 		"categoryNames": categories,
 		"missingSources": missing_sources,
 		"archivedTrackers": report.archived_count,
+		"progressDifferences": report.progress_differences,
+		"keptProgress": report.kept_progress,
+		"correctedProgress": report.corrected_progress,
 		"skipped": skipped.into_iter().map(entry_json).collect::<Vec<_>>(),
 	}))
 }
@@ -550,11 +588,15 @@ async fn import_progress<'a>(
 	chapter_meta: &HashMap<(&str, &str, &str), &AibChapter>,
 	report: &mut ImportReport<'a>,
 ) -> ApiResult<()> {
+	let mut seen = HashSet::new();
 	for entry in &doc.history {
 		if entry.source_id.is_empty() || entry.manga_id.is_empty() || entry.chapter_id.is_empty() {
 			return Err(ApiError::bad_request(
 				"aidoku history entry must have non-empty sourceId, mangaId and chapterId",
 			));
+		}
+		if report.review_progress && !seen.insert((&entry.source_id, &entry.manga_id, &entry.chapter_id)) {
+			return Err(ApiError::bad_request("the Aidoku backup contains duplicate progress for a chapter"));
 		}
 		let row = ReportEntry {
 			section: "progress",
@@ -586,9 +628,47 @@ async fn import_progress<'a>(
 		}
 		let chapter_id = ensure_chapter_row(tx, manga_id, &entry.chapter_id, meta.as_ref()).await?;
 		// Aidoku also uses -1 for absent progress. Only completed establishes read status.
-		let last_page_read = entry.progress.unwrap_or(0).max(0);
+		let backup_page = entry.progress.filter(|page| *page >= 0);
+		let last_page_read = backup_page.unwrap_or(0);
 		let last_read_at = entry.date_read.map(date_to_unix);
-		merge_chapter_progress(tx, user_id, chapter_id, last_page_read, entry.completed, last_read_at).await?;
+		let key = crate::server_state::aidoku_progress_key(user_id, &entry.source_id, &entry.manga_id, &entry.chapter_id);
+		let protected = crate::server_state::get(&mut **tx, &key).await?.is_some();
+		if report.review_progress {
+			let current = read_progress(&mut **tx, user_id, chapter_id).await?;
+			let has_progress = current.last_page_read != 0 || current.is_read || current.last_read_at.is_some();
+			let differs = backup_page.is_some_and(|page| page != current.last_page_read)
+				|| entry.completed.is_some_and(|read| read != current.is_read);
+			if (has_progress || protected) && differs {
+				let trashed = sqlx::query_scalar::<_, bool>("SELECT trashed_at IS NOT NULL FROM chapter WHERE id = ?")
+					.bind(chapter_id).fetch_one(&mut **tx).await?;
+				let can_correct = entry.completed.is_some() && (backup_page.is_some() || entry.completed == Some(true)) && !trashed;
+				report.progress_differences.push(json!({
+					"chapterId": chapter_id,
+					"mangaTitle": manga_meta.get(&(entry.source_id.as_str(), entry.manga_id.as_str())).map_or(entry.manga_id.as_str(), |manga| &manga.title),
+					"chapterTitle": chapter_meta.get(&(entry.source_id.as_str(), entry.manga_id.as_str(), entry.chapter_id.as_str())).and_then(|chapter| chapter.title.as_deref()).unwrap_or(&entry.chapter_id),
+					"currentPage": current.last_page_read, "currentRead": current.is_read, "currentLastReadAt": current.last_read_at,
+					"backupPage": backup_page, "backupRead": entry.completed, "canCorrect": can_correct, "protected": protected,
+				}));
+				if can_correct && report.progress_corrections.remove(&chapter_id) {
+					let patch = ProgressPatch { last_page_read: backup_page, is_read: entry.completed, is_bookmarked: None };
+					let correction = patch.with_read_time(current, last_read_at.or(current.last_read_at));
+					crate::store::progress::set(tx, chapter_id, user_id, &correction).await?;
+					crate::server_state::set_time(&mut **tx, &key, unix_now()).await?;
+					report.corrected_progress += 1;
+				} else {
+					report.kept_progress += 1;
+					continue;
+				}
+				report.imported.progress += 1;
+				report.entries.push(row);
+				continue;
+			}
+		}
+		if protected {
+			report.kept_progress += 1;
+			continue;
+		}
+		merge_chapter_progress(tx, user_id, chapter_id, last_page_read, entry.completed.unwrap_or(false), last_read_at).await?;
 		report.imported.progress += 1;
 		report.entries.push(row);
 	}

@@ -25,9 +25,14 @@ pub(crate) const KEYS: [&str; 6] = [
 	LOCAL_LAST_SCAN_AT,
 ];
 const PRIVATE_KEYS: [&str; 1] = [OPDS_LOCATOR_KEY];
+const AIDOKU_PROGRESS_PREFIX: &str = "aidoku.progress_correction.";
 
 pub(crate) fn is_internal_key(key: &str) -> bool {
-	KEYS.contains(&key) || PRIVATE_KEYS.contains(&key)
+	KEYS.contains(&key) || PRIVATE_KEYS.contains(&key) || key.starts_with(AIDOKU_PROGRESS_PREFIX)
+}
+
+pub(crate) fn aidoku_progress_key(user: i64, source: &str, manga: &str, chapter: &str) -> String {
+	format!("{AIDOKU_PROGRESS_PREFIX}{}", serde_json::json!([user, source, manga, chapter]))
 }
 
 /// Get or atomically create the per-install secret used to authenticate server-generated OPDS locators.
@@ -85,14 +90,14 @@ pub(crate) async fn time(pool: &SqlitePool, key: &str) -> ApiResult<Option<i64>>
 	Ok(get(pool, key).await?.and_then(|raw| raw.parse().ok()))
 }
 
-pub(crate) async fn set_time(pool: &SqlitePool, key: &str, at: i64) -> ApiResult<()> {
+pub(crate) async fn set_time<'e, E: Executor<'e, Database = Sqlite>>(db: E, key: &str, at: i64) -> ApiResult<()> {
 	sqlx::query(
 		"INSERT INTO server_state (key, value) VALUES (?, ?)
 		 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
 	)
 	.bind(key)
 	.bind(at.to_string())
-	.execute(pool)
+	.execute(db)
 	.await?;
 	Ok(())
 }
