@@ -186,11 +186,3 @@ Any export or import that could replace Aidoku content must pass disposable full
 
 This PR changes the specification only. No app code, upstream Aidoku code, mobile networking, OAuth credentials, data, installation, release or deployment is changed.
 
-
-
-1. Pursue the small upstream Aidoku contribution first. Approve a maintained fork only if official adoption is unavailable and its distribution, license and support obligations are acceptable.
-2. Keep build 14 on schema 37 and defer durable mutation features if compatibility cannot be proven, or approve a separate Stable/updater compatibility milestone before shipping a canonical-store migration.
-3. Approve the paired network path and whether an owner-run confidential OAuth exchange is acceptable. Select provider registrations and test accounts individually.
-4. Confirm opt-in automatic forward progress, explicit approval for outbound corrections and remote deletions disabled by default. Approve a narrower Beta 5 release if the live-client gate remains blocked.
-
-This PR changes the specification only. Source claims are pinned above. Real device, provider, upgrade and release acceptance remain implementation gates.
