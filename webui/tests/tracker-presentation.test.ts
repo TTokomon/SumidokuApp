@@ -70,6 +70,7 @@ test('tracker pill renders remote status instead of the binding title', async ()
 	const markup = renderWithClient(client, createElement(TrackerSection, { mangaId: 7, mangaTitle: 'Local title' }));
 	assert.match(markup, /Reading/);
 	assert.doesNotMatch(markup, /Remote title/);
+	assert.match(markup, /Compare reading progress/);
 });
 
 test('cover card renders compact tracker provider markers', async () => {
@@ -78,6 +79,25 @@ test('cover card renders compact tracker provider markers', async () => {
 		createElement(CoverCard, { title: 'Series', trackerProviders: ['bangumi', 'anilist', 'mal', 'mangabaka'] })
 	);
 	assert.doesNotMatch(markup, /cover-card__trackers/);
+});
+
+test('tracker comparison keeps local page history and provider observations separate and read-only', async () => {
+	const client = new QueryClient();
+	client.setQueryData(trackers.trackerKeys.state('anilist', '123'), remoteState());
+	client.setQueryData(trackers.trackerKeys.state('mal', '456'), { score: 0, lastReadChapter: 0 });
+	const { TrackerProgressComparison } = await vite.ssrLoadModule('/src/components/trackers/TrackerSection.tsx');
+	const markup = renderWithClient(client, createElement(TrackerProgressComparison, {
+		links: [link(), link({ provider: 'mal', trackId: '456', title: 'MAL title' })],
+		chapters: [
+			{ title: 'Older chapter', chapter_number: 30, volume_number: 3, lastPageRead: 5, lastReadAt: 10, isRead: true },
+			{ title: 'Latest chapter', chapter_number: 7, volume_number: null, lastPageRead: 0, lastReadAt: 20, isRead: false }
+		]
+	}));
+	assert.match(markup, /Sumidoku.*Latest chapter.*Saved page position<\/dt><dd>0/);
+	assert.doesNotMatch(markup, /Older chapter/);
+	assert.match(markup, /AniList.*Remote title.*<dd>12<\/dd>.*<dd>8<\/dd>/);
+	assert.match(markup, /MyAnimeList.*MAL title.*<dd>0<\/dd>.*<dd>Unavailable<\/dd>/);
+	assert.doesNotMatch(markup, /<(button|form|input)\b/);
 });
 
 test('tracker edit uses segmented controls instead of native pickers', async () => {

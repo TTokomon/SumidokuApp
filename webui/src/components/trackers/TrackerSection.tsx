@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Plus, RefreshCw, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -30,6 +30,7 @@ import {
 } from '../../api/trackers';
 import { qk } from '../../api/hooks';
 import type {
+	Chapter,
 	RemoteState,
 	TrackSearchItem,
 	TrackStatus,
@@ -506,10 +507,64 @@ function EditTrackerDialog({ link, onClose }: { link: TrackerLink; onClose: () =
 	);
 }
 
-export function TrackerSection({ mangaId, mangaTitle }: { mangaId: number; mangaTitle: string }) {
+type LocalReading = Pick<Chapter, 'title' | 'chapter_number' | 'volume_number' | 'lastPageRead' | 'lastReadAt' | 'isRead'>;
+
+export function TrackerProgressComparison({ links, chapters }: { links: TrackerLink[]; chapters?: LocalReading[] }) {
+	const { t, i18n } = useTranslation();
+	const snapshots = useQueries({ queries: links.map(link => ({
+		queryKey: trackerKeys.state(link.provider, link.trackId),
+		queryFn: () => trackerState(link.provider, link.trackId),
+		retry: false,
+		refetchOnWindowFocus: false
+	})) });
+	const latest = chapters?.reduce<LocalReading | undefined>((current, chapter) =>
+		(chapter.lastReadAt ?? 0) > (current?.lastReadAt ?? 0) ? chapter : current, undefined);
+	const locale = i18n.resolvedLanguage || 'en';
+	const format = new Intl.NumberFormat(locale);
+	const dateTime = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' });
+	const unknown = t('trackers.observationUnavailable', { defaultValue: 'Unavailable' });
+	const display = (value: number | null | undefined) => value == null ? unknown : format.format(value);
+	const observedAt = (millis: number) => Number.isNaN(new Date(millis).getTime()) ? unknown : dateTime.format(millis);
+	const chapterLabel = t('trackers.chapterProgress');
+	const volumeLabel = t('trackers.volumeProgress');
+	return <div className="tracker-comparison">
+		<p>{t('trackers.comparisonHelp', { defaultValue: 'Sumidoku shows the last saved chapter and page. Each provider shows its series-level reading progress. Verify account and title associations before making corrections.' })}</p>
+		<section>
+			<h3>Sumidoku</h3>
+			{latest ? <dl>
+				<dt>{chapterLabel}</dt><dd>{latest.title ?? display(latest.chapter_number)}{latest.title && latest.chapter_number !== null ? ` (${display(latest.chapter_number)})` : ''}</dd>
+				<dt>{volumeLabel}</dt><dd>{display(latest.volume_number)}</dd>
+				<dt>{t('trackers.localPagePosition', { defaultValue: 'Saved page position' })}</dt><dd>{display(latest.lastPageRead)}</dd>
+				<dt>{t('trackers.observedStatus', { defaultValue: 'Status' })}</dt><dd>{latest.isRead ? t('trackers.localChapterRead', { defaultValue: 'Chapter read' }) : t('trackers.localChapterUnread', { defaultValue: 'Chapter unfinished' })}</dd>
+				<dt>{t('trackers.observedAt', { defaultValue: 'Recorded at' })}</dt><dd>{observedAt((latest.lastReadAt ?? 0) * 1000)}</dd>
+			</dl> : <p>{chapters ? t('trackers.noLocalHistory', { defaultValue: 'No saved reading history' }) : unknown}</p>}
+		</section>
+		{links.map((link, index) => {
+			const snapshot = snapshots[index];
+			const remote = !snapshot.isError ? snapshot.data : undefined;
+			const provider = TRACKER_PROVIDER_NAMES[link.provider];
+			return <section key={link.provider}>
+				<h3>{provider}</h3>
+				<p>{link.title ?? link.trackId}</p>
+				{remote ? <dl>
+					<dt>{chapterLabel}</dt><dd>{display(remote.lastReadChapter)}</dd>
+					<dt>{volumeLabel}</dt><dd>{display(remote.lastReadVolume)}</dd>
+					<dt>{t('trackers.score')}</dt><dd>{display(remote.score)}</dd>
+					<dt>{t('trackers.observedStatus', { defaultValue: 'Status' })}</dt><dd>{remote.status ? t(`trackers.statusValues.${remote.status}`) : unknown}</dd>
+					<dt>{t('trackers.observedStart', { defaultValue: 'Started' })}</dt><dd>{remote.startReadDate ?? unknown}</dd>
+					<dt>{t('trackers.observedFinish', { defaultValue: 'Finished' })}</dt><dd>{remote.finishReadDate ?? unknown}</dd>
+					<dt>{t('trackers.observedAt', { defaultValue: 'Recorded at' })}</dt><dd>{observedAt(snapshot.dataUpdatedAt)}</dd>
+				</dl> : <p>{snapshot.isPending ? t('common.loading') : isTrackerAuthError(snapshot.error) ? t('trackers.authRequired', { provider }) : unknown}</p>}
+			</section>;
+		})}
+	</div>;
+}
+
+export function TrackerSection({ mangaId, mangaTitle, chapters }: { mangaId: number; mangaTitle: string; chapters?: LocalReading[] }) {
 	const { t } = useTranslation();
 	const [adding, setAdding] = useState(false);
 	const [editing, setEditing] = useState<TrackerLink | null>(null);
+	const [comparing, setComparing] = useState(false);
 	const linksQuery = useQuery({
 		queryKey: trackerKeys.mangaLinks(mangaId),
 		queryFn: () => listTrackerLinks(mangaId)
@@ -542,6 +597,7 @@ export function TrackerSection({ mangaId, mangaTitle }: { mangaId: number; manga
 					{links.map((link) => (
 						<TrackerPill key={link.provider} link={link} onClick={() => setEditing(link)} />
 					))}
+					<Button size="sm" onClick={() => setComparing(true)}>{t('trackers.compareProgress', { defaultValue: 'Compare reading progress' })}</Button>
 				</div>
 			)}
 			{adding && canAdd && (
@@ -557,6 +613,9 @@ export function TrackerSection({ mangaId, mangaTitle }: { mangaId: number; manga
 				/>
 			)}
 			{editing && <EditTrackerDialog key={`${editing.provider}:${editing.trackId}`} link={editing} onClose={() => setEditing(null)} />}
+			{comparing && <Modal open title={t('trackers.compareProgress', { defaultValue: 'Compare reading progress' })} onClose={() => setComparing(false)}>
+				<TrackerProgressComparison links={links} chapters={chapters} />
+			</Modal>}
 		</section>
 	);
 }

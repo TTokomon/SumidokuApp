@@ -904,7 +904,7 @@ export default function MangaDetailPage() {
 				</div>
 			</div>
 
-			<TrackerSection mangaId={mangaId} mangaTitle={manga.title} />
+			<TrackerSection mangaId={mangaId} mangaTitle={manga.title} chapters={chaptersQuery.data} />
 
 			<div className="manga-chaps">
 				<div className="manga-chaps__head">
