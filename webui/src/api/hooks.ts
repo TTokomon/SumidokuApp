@@ -1137,9 +1137,10 @@ export function useRestoreNamedBackup() {
 export function useImportAidoku() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: ({ file, dryRun, previewFingerprint }: { file: File; dryRun: boolean; previewFingerprint?: string }) => {
-			const query = new URLSearchParams({ dryRun: String(dryRun), preserveMissingSources: 'true' });
+		mutationFn: ({ file, dryRun, previewFingerprint, progressCorrections }: { file: File; dryRun: boolean; previewFingerprint?: string; progressCorrections?: number[] }) => {
+			const query = new URLSearchParams({ dryRun: String(dryRun), preserveMissingSources: 'true', reviewProgress: 'true' });
 			if (previewFingerprint) query.set('previewFingerprint', previewFingerprint);
+			if (progressCorrections?.length) query.set('progressCorrections', progressCorrections.join(','));
 			return api<AidokuImportResponse>(`/backups/import/aidoku?${query}`, { method: 'POST', body: file });
 		},
 		onSuccess: (_result, vars) => {

@@ -1252,7 +1252,14 @@ no alias is derived from migration text.
   upload → dry-run preview → confirm flow under the backup section. Parsing
   runs off the async worker with bounded concurrency. The newer UI sends the
   preview fingerprint, binding the file to the exact source state observed
-  in the write transaction. Chapter records from the backup are provisional
+  in the write transaction. Its `reviewProgress` mode also includes the
+  current reading state for differences, so any changed comparison requires
+  a fresh preview. The owner selects explicit chapter corrections on that
+  preview. Omitted choices leave existing progress intact. Corrections use
+  the reader's `ProgressPatch` semantics without running tracker or download
+  callbacks. Explicit corrections and mark-unread protect the chapter from
+  later additive Aidoku imports using an exact-identity marker in the
+  existing private `server_state` table. Chapter records from the backup are provisional
   until a source refresh and retain saved lock state, thumbnails and known
   page totals where those fields are present.
 - Suwayomi/Mihon backup import (`api/suwayomi_backup.rs`):

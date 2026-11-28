@@ -18,11 +18,15 @@ const DATE_READ_CH7: i64 = 1706868000; // 2024-02-02 10:00:00 UTC
 const DATE_READ_MANGA2: i64 = 1706954400; // 2024-02-03 10:00:00 UTC
 
 async fn post_aib(app: &Router, query: &str) -> (StatusCode, Value) {
+	post_aib_bytes(app, query, AIB.to_vec()).await
+}
+
+async fn post_aib_bytes(app: &Router, query: &str, body: Vec<u8>) -> (StatusCode, Value) {
 	let (status, _, bytes) = request_bytes(
 		app,
 		"POST",
 		&format!("/api/v1/backups/import/aidoku{query}"),
-		AIB.to_vec(),
+		body,
 		"application/octet-stream",
 	)
 	.await;
@@ -569,4 +573,83 @@ async fn aidoku_commit_refuses_a_stale_source_preview_without_writing() {
 	assert_ne!(new_fingerprint, fingerprint);
 	let (status, result) = post_aib(&app.app, &format!("?previewFingerprint={new_fingerprint}")).await;
 	assert_eq!(status, StatusCode::OK, "{result}");
+}
+
+#[tokio::test]
+async fn aidoku_review_protects_unread_and_applies_only_selected_rewinds() {
+	let app = test_app().await;
+	scan(&app.app).await;
+	let manga_id = register_example_manga(&app.app).await;
+	assert_eq!(post_aib(&app.app, "").await.0, StatusCode::OK);
+	let ch3 = chapter_by_key(&app.app, manga_id, "3").await["id"].as_i64().unwrap();
+	let ch7 = chapter_by_key(&app.app, manga_id, "7").await["id"].as_i64().unwrap();
+	let edit = |id, body| {
+		let router = app.app.clone();
+		async move { request(&router, "PATCH", &format!("/api/v1/chapter/{id}"), Some(body)).await }
+	};
+
+	assert_eq!(edit(ch7, json!({"isRead":false})).await.0, StatusCode::OK);
+	assert_eq!(edit(ch3, json!({"lastPageRead":9,"isBookmarked":true})).await.0, StatusCode::OK);
+	let (status, preview) = post_aib(&app.app, "?dryRun=true&reviewProgress=true").await;
+	assert_eq!(status, StatusCode::OK);
+	let differences = preview["progressDifferences"].as_array().expect("progress comparison");
+	assert!(differences.iter().any(|d| d["chapterId"] == ch3 && d["currentPage"] == 9 && d["backupPage"] == 5));
+	assert!(differences.iter().any(|d| d["chapterId"] == ch7 && d["currentRead"] == false && d["protected"] == true));
+
+	let fingerprint = preview["previewFingerprint"].as_str().unwrap();
+	assert_eq!(edit(ch3, json!({"lastPageRead":10})).await.0, StatusCode::OK);
+	let stale = format!("?reviewProgress=true&previewFingerprint={fingerprint}&progressCorrections={ch3}");
+	assert_eq!(post_aib(&app.app, &stale).await.0, StatusCode::CONFLICT);
+	assert_eq!(chapter_by_key(&app.app, manga_id, "3").await["lastPageRead"], 10);
+
+	let (_, fresh) = post_aib(&app.app, "?dryRun=true&reviewProgress=true").await;
+	let fingerprint = fresh["previewFingerprint"].as_str().unwrap();
+	let confirm = format!("?reviewProgress=true&previewFingerprint={fingerprint}&progressCorrections={ch3}");
+	let (status, result) = post_aib(&app.app, &confirm).await;
+	assert_eq!(status, StatusCode::OK, "{result}");
+	assert_eq!(result["correctedProgress"], 1);
+	let corrected = chapter_by_key(&app.app, manga_id, "3").await;
+	assert_eq!(corrected["lastPageRead"], 5);
+	assert_eq!(corrected["isBookmarked"], true);
+	assert_eq!(chapter_by_key(&app.app, manga_id, "7").await["isRead"], false);
+	assert_eq!(post_aib(&app.app, "").await.0, StatusCode::OK);
+	assert_eq!(chapter_by_key(&app.app, manga_id, "7").await["isRead"], false);
+	let mut old: plist::Value = plist::from_bytes(AIB).unwrap();
+	let history = old.as_dictionary_mut().unwrap().get_mut("history").unwrap().as_array_mut().unwrap();
+	history[0].as_dictionary_mut().unwrap().insert("progress".into(), plist::Value::from(9));
+	let mut bytes = Vec::new();
+	old.to_writer_binary(&mut bytes).unwrap();
+	assert_eq!(post_aib_bytes(&app.app, "", bytes).await.0, StatusCode::OK);
+	assert_eq!(chapter_by_key(&app.app, manga_id, "3").await["lastPageRead"], 5);
+}
+
+#[tokio::test]
+async fn aidoku_review_rejects_unreviewed_or_incomplete_corrections_without_writes() {
+	let app = test_app().await;
+	scan(&app.app).await;
+	let manga_id = register_example_manga(&app.app).await;
+	assert_eq!(post_aib(&app.app, "").await.0, StatusCode::OK);
+	let chapter = chapter_by_key(&app.app, manga_id, "3").await["id"].as_i64().unwrap();
+	let mut backup: plist::Value = plist::from_bytes(AIB).unwrap();
+	let row = backup.as_dictionary_mut().unwrap().get_mut("history").unwrap().as_array_mut().unwrap()[0].as_dictionary_mut().unwrap();
+	row.insert("progress".into(), plist::Value::from(1));
+	row.remove("completed");
+	let mut bytes = Vec::new();
+	backup.to_writer_binary(&mut bytes).unwrap();
+	let before = db_dump(&app.db_path).await;
+	let (status, preview) = post_aib_bytes(&app.app, "?dryRun=true&reviewProgress=true", bytes.clone()).await;
+	assert_eq!(status, StatusCode::OK, "{preview}");
+	let difference = &preview["progressDifferences"][0];
+	assert_eq!(difference["chapterId"], chapter);
+	assert_eq!(difference["canCorrect"], false);
+	assert_eq!(difference["backupRead"], Value::Null);
+	let fingerprint = preview["previewFingerprint"].as_str().unwrap();
+	for query in [
+		format!("?reviewProgress=true&previewFingerprint={fingerprint}&progressCorrections={chapter}"),
+		format!("?reviewProgress=true&previewFingerprint={fingerprint}&progressCorrections=99999"),
+		format!("?reviewProgress=true&progressCorrections={chapter}"),
+	] {
+		assert_eq!(post_aib_bytes(&app.app, &query, bytes.clone()).await.0, StatusCode::BAD_REQUEST);
+	}
+	assert_eq!(db_dump(&app.db_path).await, before);
 }
