@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
@@ -32,4 +33,23 @@ test('Aidoku wizard presents a plain-language summary and current step', async (
 		assert.equal((comparison.match(/type="checkbox"/g) ?? []).length, 1);
 		assert.doesNotMatch(comparison, /checked=/);
 	} finally { await vite.close(); }
+});
+
+test('Aidoku export starts with explicit backup confirmation and no restore download', async () => {
+	const vite = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), configFile: false, logLevel: 'silent', appType: 'custom', server: { middlewareMode: true } });
+	try {
+		const i18n = (await vite.ssrLoadModule('/src/i18n')).default;
+		await i18n.changeLanguage('en');
+		const { AidokuExportPreview } = await vite.ssrLoadModule('/src/pages/settings/AidokuExportPreview.tsx');
+		const markup = renderToStaticMarkup(createElement(
+			QueryClientProvider, { client: new QueryClient() }, createElement(AidokuExportPreview)
+		));
+		assert.match(markup, /accept="\.aib"/);
+		assert.match(markup, /keep the original as a recovery copy/i);
+		assert.match(markup, /type="checkbox"[^>]*disabled/);
+		assert.match(markup, /<button[^>]*disabled[^>]*>Review progress export/);
+		assert.doesNotMatch(markup, /Download restore test file/);
+	} finally {
+		await vite.close();
+	}
 });

@@ -68,6 +68,7 @@ import { SkippedItems } from './SkippedItems';
 import '../settings.css';
 import { Section } from './SettingsSection';
 import { AidokuImportReport } from './AidokuImportReport';
+import { AidokuExportPreview } from './AidokuExportPreview';
 import { AidokuProgressReview, AidokuWizardSummary, AidokuWizardSteps } from './AidokuImportWizard';
 import { AidokuSourceRecovery, missingAidokuIds } from './AidokuSourceRecovery';
 import { useAidokuImportSession } from './AidokuImportSession';
@@ -1364,6 +1365,7 @@ export function BackupSection() {
 						onChange={(e) => void onAibFile(e)}
 					/>
 				</div>
+				<AidokuExportPreview />
 			</section>
 			<details className="settings-backup__advanced">
 				<summary>{t('aidokuWizard.otherImports', { defaultValue: 'Other backup formats' })}</summary>

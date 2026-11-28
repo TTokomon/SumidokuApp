@@ -653,3 +653,113 @@ async fn aidoku_review_rejects_unreviewed_or_incomplete_corrections_without_writ
 	}
 	assert_eq!(db_dump(&app.db_path).await, before);
 }
+
+#[tokio::test]
+async fn aidoku_export_preview_requires_a_fresh_complete_target_backup() {
+	let app = test_app().await;
+	let mut payload = plist::Dictionary::new();
+	payload.insert("date".into(), plist::Value::Date(std::time::SystemTime::now().into()));
+	payload.insert("history".into(), plist::Value::Array(Vec::new()));
+	payload.insert("chapters".into(), plist::Value::Array(Vec::new()));
+	payload.insert("readingSessions".into(), plist::Value::Array(Vec::new()));
+	// A missing updates section cannot preserve chapter-linked updates during restore.
+	let mut bytes = Vec::new();
+	plist::Value::Dictionary(payload).to_writer_binary(&mut bytes).unwrap();
+	let before = db_dump(&app.db_path).await;
+	let (status, _, _) = request_bytes(
+		&app.app,
+		"POST",
+		"/api/v1/backups/export/aidoku?completeBackup=true",
+		bytes,
+		"application/octet-stream",
+	).await;
+	assert_eq!(status, StatusCode::BAD_REQUEST);
+	assert_eq!(db_dump(&app.db_path).await, before);
+}
+
+fn aidoku_export_target() -> Vec<u8> {
+	let mut target: plist::Value = plist::from_bytes(AIB).unwrap();
+	let target = target.as_dictionary_mut().unwrap();
+	let now: plist::Date = std::time::SystemTime::now().into();
+	target.insert("date".into(), plist::Value::Date(now));
+	for section in ["chapters", "history"] {
+		target.get_mut(section).unwrap().as_array_mut().unwrap().retain(|row| {
+			row.as_dictionary().unwrap()["sourceId"].as_string() == Some("en.example-source")
+		});
+	}
+	// Aidoku emits zero when the chapter's page count is unknown.
+	target.get_mut("history").unwrap().as_array_mut().unwrap()[0]
+		.as_dictionary_mut().unwrap().insert("total".into(), plist::Value::from(0));
+	let mut session = plist::Dictionary::new();
+	for (name, value) in [("sourceId", "en.example-source"), ("mangaId", "1"), ("chapterId", "3")] {
+		session.insert(name.into(), plist::Value::from(value));
+	}
+	let mut update = session.clone();
+	update.insert("date".into(), plist::Value::Date(now));
+	update.insert("viewed".into(), plist::Value::Boolean(true));
+	target.insert("updates".into(), plist::Value::Array(vec![plist::Value::Dictionary(update)]));
+	session.insert("startDate".into(), plist::Value::Date((std::time::SystemTime::now() - std::time::Duration::from_secs(60)).into()));
+	session.insert("endDate".into(), plist::Value::Date(now));
+	session.insert("pagesRead".into(), plist::Value::from(4));
+	target.insert("readingSessions".into(), plist::Value::Array(vec![plist::Value::Dictionary(session)]));
+	let mut bytes = Vec::new();
+	plist::Value::Dictionary(target.clone()).to_writer_binary(&mut bytes).unwrap();
+	bytes
+}
+
+#[tokio::test]
+async fn aidoku_export_keeps_sessions_and_updates_and_blocks_stale_or_orphaned_restore() {
+	const PATH: &str = "/api/v1/backups/export/aidoku?completeBackup=true";
+	let app = test_app().await;
+	scan(&app.app).await;
+	let manga_id = register_example_manga(&app.app).await;
+	assert_eq!(post_aib(&app.app, "").await.0, StatusCode::OK);
+	let ch3 = chapter_by_key(&app.app, manga_id, "3").await["id"].as_i64().unwrap();
+	let bytes = aidoku_export_target();
+	let before = db_dump(&app.db_path).await;
+	let (status, headers, preview) = request_bytes(&app.app, "POST", PATH, bytes.clone(), "application/octet-stream").await;
+	assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&preview));
+	assert_eq!(headers["cache-control"], "no-store");
+	let preview: Value = serde_json::from_slice(&preview).unwrap();
+	assert_eq!(preview["readingSessions"], 1);
+	assert_eq!(preview["updates"], 1);
+	assert_eq!(preview["removedHistory"], 0);
+	assert_eq!(preview["history"], 3);
+	let fingerprint = preview["previewFingerprint"].as_str().unwrap();
+	let download = format!("{PATH}&previewFingerprint={fingerprint}");
+	let (status, _, output) = request_bytes(&app.app, "POST", &download, bytes.clone(), "application/octet-stream").await;
+	if preview["fixtureDownloadEnabled"] == true {
+		assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&output));
+		assert!(output.starts_with(b"bplist00"));
+		let original: plist::Value = plist::from_bytes(&bytes).unwrap();
+		let restored: plist::Value = plist::from_bytes(&output).unwrap();
+		let restored = restored.as_dictionary().unwrap();
+		let original = original.as_dictionary().unwrap();
+		assert_eq!(restored["readingSessions"], original["readingSessions"]);
+		assert_eq!(restored["updates"], original["updates"]);
+		for section in ["library", "categories", "trackItems", "settings", "sources", "sourceLists"] {
+			assert!(!restored.contains_key(section));
+		}
+	} else {
+		assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+	}
+	assert_eq!(db_dump(&app.db_path).await, before);
+
+	let mut newer: plist::Value = plist::from_bytes(&bytes).unwrap();
+	newer.as_dictionary_mut().unwrap().get_mut("history").unwrap().as_array_mut().unwrap()[0]
+		.as_dictionary_mut().unwrap().insert("dateRead".into(), plist::Value::Date(std::time::SystemTime::now().into()));
+	let mut newer_bytes = Vec::new();
+	newer.to_writer_binary(&mut newer_bytes).unwrap();
+	let (status, _, error) = request_bytes(&app.app, "POST", PATH, newer_bytes, "application/octet-stream").await;
+	assert_eq!(status, StatusCode::BAD_REQUEST);
+	assert!(String::from_utf8_lossy(&error).contains("Aidoku has newer reading history"));
+	assert_eq!(db_dump(&app.db_path).await, before);
+
+	let route = format!("/api/v1/chapter/{ch3}");
+	assert_eq!(request(&app.app, "PATCH", &route, Some(json!({"lastPageRead":1}))).await.0, StatusCode::OK);
+	if preview["fixtureDownloadEnabled"] == true {
+		assert_eq!(request_bytes(&app.app, "POST", &download, bytes.clone(), "application/octet-stream").await.0, StatusCode::CONFLICT);
+	}
+	assert_eq!(request(&app.app, "PATCH", &route, Some(json!({"isRead":false}))).await.0, StatusCode::OK);
+	assert_eq!(request_bytes(&app.app, "POST", PATH, bytes, "application/octet-stream").await.0, StatusCode::BAD_REQUEST);
+}

@@ -120,6 +120,40 @@ setting, but do not offer archive management or activation. Legacy import
 clients retain the original skip behavior. Archive counts are separate from
 active tracker counts; the original .aib remains unchanged.
 
+### Aidoku progress export preview
+
+**Export for Aidoku** accepts a backup made within the last 24 hours on the
+target device. Select Library Entries, Chapters, History, Reading Sessions,
+and Updates when making the backup. Turn off sensitive settings and keep a
+separate copy for recovery. Aidoku can emit empty arrays for unchecked backup
+options, so the owner must confirm the sections were selected.
+
+The preview reads canonical Sumidoku progress in one database snapshot. It
+uses the target backup for the complete chapter catalog, reading sessions, and
+chapter updates. It includes only records with verified relationships, blocks
+unmapped progress or newer Aidoku history, and refuses a removal that would
+orphan a reading session.
+Library membership, manga metadata, categories, tracker entries, vocabulary,
+sources, source lists, and settings are outside this export. The original file
+is neither stored nor changed. A download binds the original bytes and the
+exact projected output to the preview fingerprint.
+
+Download is disabled for regular use. A disposable, localhost-only debug
+server can enable the restore test file with
+`SUMIDOKU_AIDOKU_EXPORT_FIXTURE=1`. Replacing chapters can detach download
+links that Aidoku backups do not carry. A disposable Core Data fixture
+reproduced the detachment. Do not use this export on a real library.
+
+To qualify a test file, use an isolated official Aidoku profile with no
+downloads. Back up all five sections, change one existing chapter's progress
+in Sumidoku, and verify the preview. Import the generated file in Aidoku and
+explicitly choose **Restore**. Make a new Aidoku backup and compare full chapter,
+history, session, and update identities and fields against the projection.
+Check that library membership, categories, trackers, and settings still match
+the original target profile. Wait until the restore is complete before reading
+or editing in the test profile. Verify the chapter and session links in the app
+as well as the re-export. This client restore is a separate release gate.
+
 ## Importing from Suwayomi/Mihon
 
 `POST /api/v1/backups/import/suwayomi` imports a Suwayomi-Server or

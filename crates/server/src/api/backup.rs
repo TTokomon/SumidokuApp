@@ -353,47 +353,7 @@ pub async fn build_backup_doc(pool: &SqlitePool) -> ApiResult<BackupDoc> {
 		})
 		.collect();
 
-	// All-default rows carry no user state and are deduped out of the export (is_downloaded is out of backup scope)
-	let progress_rows: Vec<ExportProgressRow> = sqlx::query_as(
-		"SELECT s.key AS source_key, m.key AS manga_key, c.key, c.title, c.number, c.volume,
-		 c.scanlators, c.language, c.thumbnail, c.url, c.date_uploaded, c.source_order, c.page_count, c.locked,
-		 cu.last_page_read, cu.is_read, cu.is_bookmarked, cu.last_read_at
-		 FROM chapter_user cu
-		 JOIN chapter c ON c.id = cu.chapter_id
-		 JOIN manga m ON m.id = c.manga_id
-		 JOIN source s ON s.id = m.source_id
-		 WHERE cu.user_id = ?
-		 AND (cu.last_page_read != 0 OR cu.is_read != 0 OR cu.is_bookmarked != 0 OR cu.last_read_at IS NOT NULL)
-		 ORDER BY c.id",
-	)
-	.bind(user_id)
-	.fetch_all(pool)
-	.await?;
-	let progress = progress_rows
-		.into_iter()
-		.map(|row| BackupProgress {
-			source_key: row.source_key,
-			manga_key: row.manga_key,
-			chapter: BackupChapter {
-				key: row.key,
-				title: row.title,
-				number: row.number,
-				volume: row.volume,
-				scanlators: row.scanlators.0,
-				language: row.language,
-				thumbnail: row.thumbnail,
-				url: row.url,
-				date_uploaded: row.date_uploaded,
-				source_order: row.source_order,
-				page_count: row.page_count,
-				locked: row.locked,
-			},
-			last_page_read: row.last_page_read,
-			is_read: row.is_read,
-			is_bookmarked: row.is_bookmarked,
-			last_read_at: row.last_read_at,
-		})
-		.collect();
+	let progress = read_backup_progress(pool, user_id).await?;
 
 	let tracker_bindings: Vec<BackupTrackerBinding> = sqlx::query_as(
 		"SELECT s.key AS source_key, m.key AS manga_key, tl.provider, tl.track_id,
@@ -445,6 +405,52 @@ pub async fn build_backup_doc(pool: &SqlitePool) -> ApiResult<BackupDoc> {
 		source_settings,
 	};
 	Ok(doc)
+}
+
+pub(super) async fn read_backup_progress<'e, E: sqlx::Executor<'e, Database = Sqlite>>(
+	db: E, user_id: i64,
+) -> ApiResult<Vec<BackupProgress>> {
+	// All-default rows carry no user state and are deduped out of the export (is_downloaded is out of backup scope)
+	let progress_rows: Vec<ExportProgressRow> = sqlx::query_as(
+		"SELECT s.key AS source_key, m.key AS manga_key, c.key, c.title, c.number, c.volume,
+		 c.scanlators, c.language, c.thumbnail, c.url, c.date_uploaded, c.source_order, c.page_count, c.locked,
+		 cu.last_page_read, cu.is_read, cu.is_bookmarked, cu.last_read_at
+		 FROM chapter_user cu
+		 JOIN chapter c ON c.id = cu.chapter_id
+		 JOIN manga m ON m.id = c.manga_id
+		 JOIN source s ON s.id = m.source_id
+		 WHERE cu.user_id = ?
+		 AND (cu.last_page_read != 0 OR cu.is_read != 0 OR cu.is_bookmarked != 0 OR cu.last_read_at IS NOT NULL)
+		 ORDER BY c.id",
+	)
+	.bind(user_id)
+	.fetch_all(db)
+	.await?;
+	Ok(progress_rows
+		.into_iter()
+		.map(|row| BackupProgress {
+			source_key: row.source_key,
+			manga_key: row.manga_key,
+			chapter: BackupChapter {
+				key: row.key,
+				title: row.title,
+				number: row.number,
+				volume: row.volume,
+				scanlators: row.scanlators.0,
+				language: row.language,
+				thumbnail: row.thumbnail,
+				url: row.url,
+				date_uploaded: row.date_uploaded,
+				source_order: row.source_order,
+				page_count: row.page_count,
+				locked: row.locked,
+			},
+			last_page_read: row.last_page_read,
+			is_read: row.is_read,
+			is_bookmarked: row.is_bookmarked,
+			last_read_at: row.last_read_at,
+		})
+		.collect())
 }
 
 pub async fn export_backup(

@@ -1262,6 +1262,15 @@ no alias is derived from migration text.
   existing private `server_state` table. Chapter records from the backup are provisional
   until a source refresh and retain saved lock state, thumbnails and known
   page totals where those fields are present.
+- Aidoku progress export preview (`api/aidoku_export.rs`):
+  `POST /api/v1/backups/export/aidoku` is authenticated and localhost-only.
+  It takes a fresh target-device backup, validates its chapter, history, session,
+  and update relationships, and reads the requesting user's progress in a single
+  database snapshot. A preview refuses unmapped progress and history changes
+  that would orphan sessions. It never writes to the database or changes the input
+  backup. A debug build can produce a disposable restore fixture with a fingerprint
+  binding the input and exact output. Regular downloads are disabled because
+  Aidoku's chapter replacement can detach downloads that its backup cannot restore.
 - Suwayomi/Mihon backup import (`api/suwayomi_backup.rs`):
   `POST /api/v1/backups/import/suwayomi` accepts a Suwayomi-Server or
   Mihon/Tachiyomi backup as a binary body. Both apps write the same

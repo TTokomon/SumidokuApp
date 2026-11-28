@@ -10,6 +10,20 @@ export type AddToLibraryRequest = {
 	categoryIds?: Array<number> | null;
 };
 
+export type AidokuExportPreview = {
+	previewFingerprint: string;
+	included: Array<string>;
+	omitted: Array<string>;
+	fixtureDownloadEnabled: boolean;
+	chapters: number;
+	history: number;
+	readingSessions: number;
+	updates: number;
+	removedHistory: number;
+	addedHistory: number;
+	changedHistory: number;
+};
+
 export type AidokuImportResponse = {
 	dryRun: boolean;
 	previewFingerprint?: string;
