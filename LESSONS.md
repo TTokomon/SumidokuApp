@@ -1,6 +1,15 @@
 <!-- reviewed-through: f4f4a3d (2026-10-30) -->
 # Lessons from merged work
 
+**Verify relationships after a backup restores records with the same key.**
+A replacement can recreate the same logical identity with a different database
+object ID. Include and validate every dependent section that the restore can
+relink. Gate downloads when the target cannot reconstruct a dependent object.
+- Evidence: a disposable Aidoku Core Data fixture lost the session linked to a
+  replaced history row. A separate chapter replacement left one download row
+  and zero attached download relationships. The Aidoku backup includes sessions
+  but carries no download records to reconstruct those links.
+
 **Background cache invalidation must not restart explicit remote work, and
 cancellation must reach both the async queue and the actor queue.** A broad
 `invalidateQueries` on a task event refetches every active observer, including
