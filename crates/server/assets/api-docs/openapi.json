@@ -5345,6 +5345,74 @@
         }
       }
     },
+    "/api/v1/backups/export/aidoku": {
+      "post": {
+        "summary": "Preview a session-preserving Aidoku progress export",
+        "operationId": "exportAidokuBackup",
+        "tags": [
+          "backups"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "completeBackup",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Confirms the fresh target backup includes manga, chapters, history, reading sessions and updates."
+          },
+          {
+            "in": "query",
+            "name": "previewFingerprint",
+            "schema": {
+              "type": "string"
+            },
+            "description": "The same-preview fingerprint required to download an official-restore test fixture."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview or a gated restore fixture",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AidokuExportPreview"
+                }
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/backups/import/suwayomi": {
       "post": {
         "summary": "Import a Suwayomi/Mihon backup archive",
@@ -11729,6 +11797,70 @@
           },
           "reason": {
             "type": "string"
+          }
+        }
+      },
+      "AidokuExportPreview": {
+        "type": "object",
+        "required": [
+          "previewFingerprint",
+          "included",
+          "omitted",
+          "fixtureDownloadEnabled",
+          "chapters",
+          "history",
+          "readingSessions",
+          "updates",
+          "removedHistory",
+          "addedHistory",
+          "changedHistory"
+        ],
+        "properties": {
+          "previewFingerprint": {
+            "type": "string"
+          },
+          "included": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "omitted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fixtureDownloadEnabled": {
+            "type": "boolean"
+          },
+          "chapters": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "history": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "readingSessions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updates": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "removedHistory": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "addedHistory": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "changedHistory": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },

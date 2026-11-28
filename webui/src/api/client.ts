@@ -32,6 +32,7 @@ export interface ApiOptions {
 	/** Probing requests (e.g. a 501 meaning listings are unsupported) don't pop an error toast */
 	silent?: boolean;
 	signal?: AbortSignal;
+	responseType?: 'blob';
 }
 
 export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
@@ -73,6 +74,7 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
 		throw err;
 	}
 	if (res.status === 204) return undefined as T;
+	if (opts.responseType === 'blob') return (await res.blob()) as T;
 	return (await res.json()) as T;
 }
 

@@ -1,4 +1,5 @@
 pub mod aidoku_backup;
+mod aidoku_export;
 pub mod api_keys;
 pub mod backup;
 pub mod docs;
@@ -241,6 +242,11 @@ pub fn router(state: Arc<AppState>) -> Router {
 			"/api/v1/backups/import/suwayomi",
 			post(suwayomi_backup::import_suwayomi_backup)
 				.route_layer(axum::extract::DefaultBodyLimit::max(backup::BODY_MAX)),
+		)
+		.route(
+			"/api/v1/backups/export/aidoku",
+			post(aidoku_export::export_aidoku)
+				.route_layer(axum::extract::DefaultBodyLimit::max(aidoku_export::BODY_MAX)),
 		)
 		.route("/api/v1/auth/password", put(crate::auth::change_password))
 		.route(
